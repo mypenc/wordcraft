@@ -92,7 +92,8 @@ pub fn clipboard_get(app: &AndroidApp) -> Option<String> {
         if value.as_raw().is_null() {
             return Ok(None);
         }
-        let text = env.get_string(&JString::from(value))?;
+        let value = JString::from(value);
+        let text = env.get_string(&value)?;
         Ok(Some(String::from(text)))
     })
     .flatten()
