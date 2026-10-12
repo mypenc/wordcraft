@@ -489,6 +489,19 @@ fn undoing_bold_at_the_caret_turns_bold_typing_off_again() {
     assert_eq!(s.doc.para_at(&Pos::body(0, 0)).unwrap().props_of_char(0).bold, Some(true));
 }
 
+#[test]
+fn clicking_a_new_caret_keeps_pending_character_formatting() {
+    let mut s = typed("word");
+    run(&mut s, "format.bold", json!({"value": true}));
+    run(&mut s, "caret.set", json!({"pos": Pos::body(0, 0)}));
+    typ(&mut s, "new ");
+
+    let p = s.doc.para_at(&Pos::body(0, 0)).unwrap();
+    assert_eq!(p.text, "new word");
+    assert_eq!(p.props_of_char(0).bold, Some(true));
+    assert_ne!(p.props_of_char(4).bold, Some(true));
+}
+
 /// Myanmar (#604): typed in memory order (consonant, medial, then the prevowel ေ that is drawn
 /// before it), the caret steps over whole syllables and Backspace removes one sign at a time.
 #[test]

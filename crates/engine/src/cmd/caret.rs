@@ -273,7 +273,9 @@ fn set(s: &mut Session, v: &Value) -> CmdResult {
     };
     let to = s.doc.clamp(&to);
     s.goal_x = None;
+    let pending = if ext { None } else { s.pending.take() };
     apply(s, to, ext);
+    s.pending = pending;
     sel_result(s)
 }
 

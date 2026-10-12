@@ -76,6 +76,7 @@ pub fn file_dialog(app: &AndroidApp, request: FileDialogRequest) -> Receiver<Fil
 }
 
 /// Help ▸ Show Debug Log: a dialog with this app's log (copy / share).
+#[allow(dead_code)]
 pub fn show_log(app: &AndroidApp) {
     with_activity(app, |env, activity| env.call_method(activity, "showLog", "()V", &[]).map(|_| ()));
 }
