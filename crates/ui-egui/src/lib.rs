@@ -61,6 +61,7 @@ pub mod scroll;
 pub mod table_pen;
 pub mod table_resize;
 pub mod theme;
+pub mod touch;
 pub mod widgets;
 pub mod window_geometry;
 pub mod wordart_menus;
@@ -295,6 +296,9 @@ pub struct WordApp {
     pub(crate) dialog_pick: Option<String>,
     /// macOS: the window has no title bar; leave room for the traffic lights.
     pub integrated_titlebar: bool,
+    /// Touch layer: finger gestures → mouse events, plus the on-screen modifier bar. The host
+    /// calls `touch.process` from its `raw_input_hook` and [`WordApp::touch_frame`] each frame.
+    pub touch: touch::Touch,
     control_rx: Option<std::sync::mpsc::Receiver<ControlRequest>>,
     shot_token: u64,
     queued_shots: Vec<(u64, f64, u32)>,
@@ -389,6 +393,7 @@ impl WordApp {
             status_msg: None,
             previews: previews::Previews::default(),
             integrated_titlebar: false,
+            touch: touch::Touch::new(),
             control_rx: None,
             shot_token: 0,
             queued_shots: Vec::new(),
@@ -968,6 +973,12 @@ impl WordApp {
             // page; this is the button on it, and the one programmatic call that opens system UI
             // here, like `ui.openFileDialog` — only when the host can print.
             "ui.print" => return Some(self.print_to_system(p)),
+            // Help ▸ Touch Bar: show or hide the on-screen modifier / undo bar (touch devices).
+            "ui.touchBar" => {
+                let on = p.get("value").and_then(Value::as_bool).unwrap_or(!self.touch.bar_visible);
+                self.touch.bar_visible = on;
+                json!({"touchBar": on})
+            }
             "ui.discord" => {
                 self.canvas.open_url = Some("https://discord.gg/artcraft".into());
                 json!({})
@@ -1262,6 +1273,23 @@ impl WordApp {
                 log::warn!("AutoSave failed: {e}");
                 self.autosave_path = None;
                 self.status(i18n::fmt(tl!("AutoSave failed: {error}. Save the document to turn AutoSave back on."), &[("error", &e.to_string())]));
+            }
+        }
+    }
+
+    /// Touch layer upkeep, once per frame from the host: touch-sized metrics, the on-screen bar,
+    /// and the undo/redo the gestures and the bar asked for. An inherent method: the host's
+    /// `eframe::App` impl calls it, it is not part of that trait.
+    pub fn touch_frame(&mut self, ctx: &egui::Context) {
+        self.touch.apply_style(ctx);
+        self.touch.show_bar(ctx);
+        for a in self.touch.take_actions() {
+            let id = match a {
+                touch::Action::Undo => "edit.undo",
+                touch::Action::Redo => "edit.redo",
+            };
+            if let Err(e) = self.run(id, json!({})) {
+                log::debug!("{id}: {e}");
             }
         }
     }

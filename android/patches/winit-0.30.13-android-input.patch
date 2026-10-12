@@ -1,0 +1,237 @@
+diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_impl/android/mod.rs
+--- winit-orig/src/platform_impl/android/mod.rs	2026-10-10 03:31:26.627224735 +0000
++++ winit-new/src/platform_impl/android/mod.rs	2026-10-10 03:31:26.648250441 +0000
+@@ -6,7 +6,10 @@
+ use std::sync::{mpsc, Arc, Mutex};
+ use std::time::{Duration, Instant};
+ 
+-use android_activity::input::{InputEvent, KeyAction, Keycode, MotionAction};
++use android_activity::input::{
++    Axis, InputEvent, KeyAction, Keycode, MetaState, MotionAction, MotionEvent, TextInputState, TextSpan,
++    ToolType,
++};
+ use android_activity::{
+     AndroidApp, AndroidAppWaker, ConfigurationRef, InputStatus, MainEvent, Rect,
+ };
+@@ -17,6 +20,7 @@
+ use crate::error;
+ use crate::error::EventLoopError;
+ use crate::event::{self, Force, InnerSizeWriter, StartCause};
++use crate::keyboard::{Key, KeyCode, KeyLocation, ModifiersState, NamedKey, PhysicalKey};
+ use crate::event_loop::{self, ActiveEventLoop as RootAEL, ControlFlow, DeviceEvents};
+ use crate::platform::pump_events::PumpStatus;
+ use crate::platform_impl::Fullscreen;
+@@ -143,6 +147,11 @@
+     cause: StartCause,
+     ignore_volume_keys: bool,
+     combining_accent: Option<char>,
++    // Mouse buttons held, in the order left, right, middle, back, forward.
++    mouse_buttons: [bool; 5],
++    modifiers: ModifiersState,
++    // The soft keyboard's text as last seen, to turn its edits into key and IME events.
++    ime_text: String,
+ }
+ 
+ #[derive(Debug, Clone, PartialEq)]
+@@ -192,6 +201,9 @@
+             cause: StartCause::Init,
+             ignore_volume_keys: attributes.ignore_volume_keys,
+             combining_accent: None,
++            mouse_buttons: [false; 5],
++            modifiers: ModifiersState::empty(),
++            ime_text: String::new(),
+         })
+     }
+ 
+@@ -362,6 +374,142 @@
+         self.pending_redraw = pending_redraw;
+     }
+ 
++    fn dispatch_window_event<F>(&self, callback: &mut F, event: event::WindowEvent)
++    where
++        F: FnMut(event::Event<T>, &RootAEL),
++    {
++        let event = event::Event::WindowEvent { window_id: window::WindowId(WindowId), event };
++        callback(event, self.window_target());
++    }
++
++    /// Keep winit's modifier state in step with the meta state Android reports on every key
++    /// and motion event, so Ctrl/Shift/Alt shortcuts work from a hardware keyboard.
++    fn sync_modifiers<F>(&mut self, meta: MetaState, callback: &mut F)
++    where
++        F: FnMut(event::Event<T>, &RootAEL),
++    {
++        let mut state = ModifiersState::empty();
++        state.set(ModifiersState::SHIFT, meta.shift_on());
++        state.set(ModifiersState::CONTROL, meta.ctrl_on());
++        state.set(ModifiersState::ALT, meta.alt_on());
++        state.set(ModifiersState::SUPER, meta.meta_on());
++        if state != self.modifiers {
++            self.modifiers = state;
++            self.dispatch_window_event(callback, event::WindowEvent::ModifiersChanged(state.into()));
++        }
++    }
++
++    /// Mouse hover, buttons and wheel (`TOOL_TYPE_MOUSE` motion events).
++    fn handle_mouse_motion<F>(&mut self, motion_event: &MotionEvent<'_>, callback: &mut F)
++    where
++        F: FnMut(event::Event<T>, &RootAEL),
++    {
++        let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
++        let pointer = motion_event.pointer_at_index(motion_event.pointer_index());
++        let position = PhysicalPosition { x: pointer.x() as f64, y: pointer.y() as f64 };
++
++        match motion_event.action() {
++            MotionAction::HoverEnter => {
++                self.dispatch_window_event(callback, event::WindowEvent::CursorEntered { device_id });
++            },
++            MotionAction::HoverExit => {
++                self.dispatch_window_event(callback, event::WindowEvent::CursorLeft { device_id });
++                return;
++            },
++            _ => {},
++        }
++
++        self.dispatch_window_event(callback, event::WindowEvent::CursorMoved { device_id, position });
++
++        if motion_event.action() == MotionAction::Scroll {
++            // Axes other than X/Y must be enabled on the AndroidApp (`enable_motion_axis`).
++            let delta = event::MouseScrollDelta::LineDelta(
++                pointer.axis_value(Axis::Hscroll),
++                pointer.axis_value(Axis::Vscroll),
++            );
++            self.dispatch_window_event(callback, event::WindowEvent::MouseWheel {
++                device_id,
++                delta,
++                phase: event::TouchPhase::Moved,
++            });
++            return;
++        }
++
++        // Buttons: report whatever changed against the last event. This covers DOWN, UP and
++        // BUTTON_PRESS/RELEASE alike, including a second button pressed while one is held.
++        let held = if motion_event.action() == MotionAction::Cancel {
++            [false; 5]
++        } else {
++            let b = motion_event.button_state();
++            [b.primary(), b.secondary(), b.teriary(), b.back(), b.forward()]
++        };
++        const BUTTONS: [event::MouseButton; 5] = [
++            event::MouseButton::Left,
++            event::MouseButton::Right,
++            event::MouseButton::Middle,
++            event::MouseButton::Back,
++            event::MouseButton::Forward,
++        ];
++        for (i, button) in BUTTONS.into_iter().enumerate() {
++            if held[i] != self.mouse_buttons[i] {
++                let state = if held[i] {
++                    event::ElementState::Pressed
++                } else {
++                    event::ElementState::Released
++                };
++                self.dispatch_window_event(callback, event::WindowEvent::MouseInput {
++                    device_id,
++                    state,
++                    button,
++                });
++            }
++        }
++        self.mouse_buttons = held;
++    }
++
++    /// Soft-keyboard text (GameActivity's `TextEvent`): the IME reports the whole field, so
++    /// send the difference from last time as Backspaces and a commit.
++    fn handle_ime_text<F>(&mut self, android_app: &AndroidApp, text: &str, callback: &mut F)
++    where
++        F: FnMut(event::Event<T>, &RootAEL),
++    {
++        let old = std::mem::replace(&mut self.ime_text, text.to_owned());
++        let common = old.chars().zip(text.chars()).take_while(|(a, b)| a == b).count();
++        let removed = old.chars().count() - common;
++        let added: String = text.chars().skip(common).collect();
++
++        for _ in 0..removed {
++            for state in [event::ElementState::Pressed, event::ElementState::Released] {
++                self.dispatch_window_event(callback, event::WindowEvent::KeyboardInput {
++                    device_id: event::DeviceId(DeviceId(0)),
++                    event: event::KeyEvent {
++                        state,
++                        physical_key: PhysicalKey::Code(KeyCode::Backspace),
++                        logical_key: Key::Named(NamedKey::Backspace),
++                        location: KeyLocation::Standard,
++                        repeat: false,
++                        text: None,
++                        platform_specific: KeyEventExtra {},
++                    },
++                    is_synthetic: true,
++                });
++            }
++        }
++        if !added.is_empty() {
++            self.dispatch_window_event(callback, event::WindowEvent::Ime(event::Ime::Commit(added)));
++        }
++
++        // The IME keeps the whole field; start over before it grows without bound.
++        if self.ime_text.chars().count() > 128 {
++            self.ime_text.clear();
++            android_app.set_text_input_state(TextInputState {
++                text: String::new(),
++                selection: TextSpan { start: 0, end: 0 },
++                compose_region: None,
++            });
++        }
++    }
++
+     fn handle_input_event<F>(
+         &mut self,
+         android_app: &AndroidApp,
+@@ -377,17 +525,25 @@
+                 let window_id = window::WindowId(WindowId);
+                 let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
+ 
+-                let phase = match motion_event.action() {
++                self.sync_modifiers(motion_event.meta_state(), callback);
++                // A mouse (USB, Bluetooth or DeX) is not a finger: hover, buttons and the wheel
++                // go out as the pointer events desktop apps expect. Fingers and styluses keep
++                // the touch path below.
++                let is_mouse = motion_event.pointer_at_index(motion_event.pointer_index()).tool_type()
++                    == ToolType::Mouse;
++                if is_mouse {
++                    self.handle_mouse_motion(motion_event, callback);
++                }
++
++                let phase = if is_mouse { None } else { match motion_event.action() {
+                     MotionAction::Down | MotionAction::PointerDown => {
+                         Some(event::TouchPhase::Started)
+                     },
+                     MotionAction::Up | MotionAction::PointerUp => Some(event::TouchPhase::Ended),
+                     MotionAction::Move => Some(event::TouchPhase::Moved),
+                     MotionAction::Cancel => Some(event::TouchPhase::Cancelled),
+-                    _ => {
+-                        None // TODO mouse events
+-                    },
+-                };
++                    _ => None,
++                } };
+                 if let Some(phase) = phase {
+                     let pointers: Box<dyn Iterator<Item = android_activity::input::Pointer<'_>>> =
+                         match phase {
+@@ -423,6 +579,7 @@
+                 }
+             },
+             InputEvent::KeyEvent(key) => {
++                self.sync_modifiers(key.meta_state(), callback);
+                 match key.key_code() {
+                     // Flag keys related to volume as unhandled. While winit does not have a way for
+                     // applications to configure what keys to flag as handled,
+@@ -473,6 +630,9 @@
+                     },
+                 }
+             },
++            InputEvent::TextEvent(state) => {
++                self.handle_ime_text(android_app, &state.text, callback);
++            },
+             _ => {
+                 warn!("Unknown android_activity input event {event:?}")
+             },

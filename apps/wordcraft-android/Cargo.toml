@@ -1,0 +1,32 @@
+[package]
+name = "wordcraft-android"
+description = "WordCraft for Android: the same engine and egui UI, native (GameActivity app, not a web view)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "wordcraft_android"
+crate-type = ["cdylib"]
+
+# Everything is Android-only. On other targets this crate is an empty library, so
+# `cargo build --workspace` and `cargo test --workspace` keep working on desktop CI.
+[target.'cfg(target_os = "android")'.dependencies]
+wordcraft-doc = { workspace = true }
+wordcraft-engine = { workspace = true }
+wordcraft-fonts = { workspace = true }
+wordcraft-ui-egui = { workspace = true }
+wordcraft-control-key = { workspace = true }
+egui = { workspace = true }
+# GameActivity (not NativeActivity): it brings the input-method plumbing the soft keyboard needs.
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "android-game-activity"] }
+android-activity = { version = "0.6", features = ["game-activity"] }
+jni = "0.21"
+serde_json = { workspace = true }
+log = { workspace = true }
+
+# JNI and the exported entry points need `unsafe`; the workspace forbids it
+# (`[workspace.lints.rust] unsafe_code = "forbid"`), so this crate opts out of that table.
+[lints.rust]
+unsafe_code = "allow"

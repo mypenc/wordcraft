@@ -92,6 +92,8 @@ fn candidates(hans: bool) -> Vec<&'static str> {
     } else {
         (
             &[
+                // Android keeps its Noto CJK straight in /system/fonts.
+                "NotoSansCJK-Regular.ttc",
                 "noto-cjk/NotoSansCJK-Regular.ttc",
                 "opentype/noto/NotoSansCJK-Regular.ttc",
                 "google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc",
