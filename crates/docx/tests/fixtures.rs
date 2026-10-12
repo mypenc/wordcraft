@@ -1146,7 +1146,8 @@ fn formatting_revisions_round_trip() {
         assert!(xml.contains(parent), "{tag} last: {xml}");
     }
     assert!(xml.contains(r#"<w:numberingChange w:id="#) && xml.contains(r#"w:original="1."/></w:numPr>"#), "{xml}");
-    assert!(xml.contains(r#"<w:b/><w:bCs/><w:rPrChange w:id="#), "{xml}");
+    assert!(xml.contains(r#"<w:b/><w:rPrChange w:id="#), "{xml}");
+    assert!(!xml.contains("<w:bCs"), "Saving must not add an absent complex-script bold: {xml}");
     let again = wordcraft_docx::read(&bytes).unwrap();
     assert_eq!(again.body, d.body);
     assert_eq!(again.last_section, d.last_section);

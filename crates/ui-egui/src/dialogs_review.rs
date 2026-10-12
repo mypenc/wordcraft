@@ -5,7 +5,7 @@
 //! agents get the same result without them. Shown through [`crate::dialogs::Dialog::Review`] and
 //! [`crate::panes`].
 
-use egui::{Color32, Ui, vec2};
+use egui::{Ui, vec2};
 use serde::Serialize;
 use serde_json::{Value, json};
 use wordcraft_engine::Password;
@@ -71,8 +71,7 @@ fn buttons(ui: &mut Ui, ok_enabled: bool) -> (bool, bool) {
             if ui.button(tl!("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 r.1 = true;
             }
-            let okb =
-                ui.add_enabled(ok_enabled, egui::Button::new(egui::RichText::new(tl!("OK")).color(Color32::WHITE)).fill(crate::theme::APP_COLOR));
+            let okb = ui.add_enabled(ok_enabled, crate::widgets::primary_button(ui, tl!("OK")));
             if okb.clicked() {
                 r.0 = true;
             }

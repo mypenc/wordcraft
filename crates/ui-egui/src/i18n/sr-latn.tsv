@@ -104,6 +104,7 @@
 	Color: {color}	Boja: {color}
 	Compress punctuation at the start of a line	Sažmi interpunkciju na početku reda
 	Confirm password:	Potvrdite lozinku:
+	Couldn't make WordCraft the default: {error}	WordCraft nije mogao da postane podrazumevana aplikacija: {error}
 	Custom dictionary	Prilagođeni rečnik
 	Dark page (white text on black)	Tamna stranica (beo tekst na crnom)
 	Drag a rectangle to draw a table, or a line across cells to split them. Esc stops.	Prevucite pravougaonik da nacrtate tabelu ili liniju preko ćelija da ih podelite. Esc završava.
@@ -148,6 +149,10 @@
 	Number format	Format broja
 	Number style for this level:	Stil broja za ovaj nivo:
 	Outside border	Spoljna ivica
+	In Default apps, choose WordCraft for the document types you want it to open.	U podrazumevanim aplikacijama izaberite WordCraft za vrste dokumenata koje želite da otvara.
+	Make WordCraft the default for Word documents…	Postavi WordCraft kao podrazumevanu aplikaciju za Word dokumente…
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	Od sada će se .docx, .doc, .rtf i .odt datoteke i Word šabloni otvarati u WordCraft-u.
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Otvara Podešavanja › Podrazumevane aplikacije, gde birate WordCraft za .docx i druge vrste dokumenata.
 	Overtype	Prepisivanje
 	Overtype (typing replaces the characters after the caret)	Prepisivanje (otkucano zamenjuje znakove posle kursora)
 	Page display	Prikaz strane
@@ -367,6 +372,8 @@
 	Delete Style	Obriši stil
 	Delete Table	Obriši tabelu
 	Design	Dizajn
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	Da bi se Word dokumenti podrazumevano otvarali u WordCraft-u: izaberite jedan u Finder-u, izaberite Datoteka › Prikaži informacije, pod „Otvori pomoću” izaberite WordCraft, pa kliknite „Promeni sve”.
+	WordCraft is now the default app for Word documents.	WordCraft je sada podrazumevana aplikacija za Word dokumente.
 	development build	razvojna verzija
 	Diagonal	Dijagonalno
 	Diamond	Dijamant
@@ -1635,6 +1642,12 @@
 	Enlarge symbol	Uvećaj simbol
 	Enclosure	Okvir
 	Circle	Krug
+	Numerals:	Brojevi:
+	Numerals	Brojevi
+	Arabic	Arapski
+	Hindi	Hindi
+	Context	Kontekst
+	System	Sistem
 	Templates	Šabloni
 	Templates and Add-ins	Šabloni i dodaci
 	Attach Template	Priloži šablon
@@ -1688,6 +1701,7 @@
 	Middle	Sredina
 	Click the empty text box the text should continue in (Esc cancels)	Kliknite prazno polje za tekst u kom tekst treba da se nastavi (Esc otkazuje)
 	Not linked: click a text box	Nije povezano: kliknite polje za tekst
+	Show KeyTips (Alt or F10)	Prikaži savete za tastere (Alt ili F10)
 	Location	Lokacija
 	Endnotes	Endnote
 	Below text	Ispod teksta
@@ -1700,6 +1714,10 @@
 	Continuous numbering	Neprekidna numeracija
 	Apply	Primeni
 	Convert Notes	Pretvori napomene
+	Reading	Čitanje
+	Reading Column Width	Širina kolone za čitanje
+	Reading Line Spacing	Proređenost pri čitanju
+	Reading Text Size	Veličina teksta za čitanje
 	English (United Kingdom)	Engleski (Velika Britanija)
 	Polish	Poljski
 	Do Not Check Spelling or Grammar	Ne proveravaj pravopis i gramatiku
@@ -1980,7 +1998,6 @@
 	Add line numbering	Dodaj brojeve redova
 	Add to Document	Dodaj u dokument
 	Address labels	Adresne nalepnice
-	Arabic	Arapski
 	Auto	Automatski
 	Automatically hyphenate document	Automatski deli reči u dokumentu
 	Chinese (Simplified)	Kineski (pojednostavljeni)

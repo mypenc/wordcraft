@@ -1998,6 +1998,19 @@ preview	Title	Пример
 	Search icons	Поиск значков
 	No icons match your search.	Нет значков, соответствующих поиску.
 	Recolor a one-color picture, such as an icon	Перекрасить одноцветный рисунок, например значок
+	Numerals:	Цифры:
+	Numerals	Цифры
+	Arabic	Арабские
+	Hindi	Хинди
+	Context	Контекст
+	System	Системные
+	Couldn't make WordCraft the default: {error}	Не удалось сделать WordCraft приложением по умолчанию: {error}
+	In Default apps, choose WordCraft for the document types you want it to open.	В разделе «Приложения по умолчанию» выберите WordCraft для нужных типов документов.
+	Make WordCraft the default for Word documents…	Сделать WordCraft приложением по умолчанию для документов Word…
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	Отныне файлы .docx, .doc, .rtf и .odt и шаблоны Word будут открываться в WordCraft.
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Открывает «Параметры» › «Приложения по умолчанию», где можно выбрать WordCraft для .docx и других типов документов.
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	Чтобы открывать документы Word в WordCraft по умолчанию: выберите документ в Finder, выберите «Файл» › «Свойства», укажите WordCraft в разделе «Открывать в программе» и нажмите «Изменить все».
+	WordCraft is now the default app for Word documents.	WordCraft теперь приложение по умолчанию для документов Word.
 	Templates	Шаблоны
 	Templates and Add-ins	Шаблоны и надстройки
 	Attach Template	Присоединить шаблон
@@ -2123,6 +2136,7 @@ preview	Title	Пример
 	Middle	По центру
 	Click the empty text box the text should continue in (Esc cancels)	Щёлкните пустую надпись, в которой должен продолжиться текст (Esc — отмена)
 	Not linked: click a text box	Не связано: щёлкните надпись
+	Show KeyTips (Alt or F10)	Показывать подсказки клавиш (Alt или F10)
 	Location	Расположение
 	Endnotes	Концевые сноски
 	Below text	Под текстом
@@ -2135,6 +2149,10 @@ preview	Title	Пример
 	Continuous numbering	Сквозная нумерация
 	Apply	Применить
 	Convert Notes	Преобразовать сноски
+	Reading	Чтение
+	Reading Column Width	Ширина столбца в режиме чтения
+	Reading Line Spacing	Межстрочный интервал в режиме чтения
+	Reading Text Size	Размер текста в режиме чтения
 	Do Not Check Spelling or Grammar	Не проверять орфографию и грамматику
 	English (United Kingdom)	Английский (Великобритания)
 	Polish	Польский
@@ -2316,7 +2334,6 @@ preview	Title	Пример
 	Add line numbering	Добавить нумерацию строк
 	Add to Document	Добавить в документ
 	Address labels	Адресные наклейки
-	Arabic	Арабский
 	Auto	Авто
 	Automatically hyphenate document	Автоматически расставлять переносы в документе
 	Chinese (Simplified)	Китайский (упрощённый)

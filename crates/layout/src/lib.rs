@@ -48,8 +48,92 @@ pub enum ViewMode {
     Web,
     /// Draft: like web, page breaks shown as rules.
     Draft,
+    /// Reading: reflow into viewport-height narrow pages, navigated horizontally.
+    Read,
     /// Outline: like draft, the body as an outline of its headings ([`outline`]).
     Outline,
+}
+
+/// How digits look on screen (Word › File › Options › Advanced › Numeral).
+///
+/// Display only: the document text keeps the typed codepoints, so find, spelling, copying and
+/// the saved file all see the original digits. Extended Arabic-Indic digits (U+06F0–U+06F9,
+/// Persian/Urdu ۰۱۲۳…) always show as typed; only ASCII and Arabic-Indic (U+0660–U+0669) digits
+/// are substituted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NumeralMode {
+    /// Western digits everywhere (`0123456789`); the default, today's behaviour.
+    #[default]
+    Arabic,
+    /// Eastern Arabic-Indic digits everywhere (`٠١٢٣٤٥٦٧٨٩`).
+    Hindi,
+    /// Hindi digits in and around right-to-left text, Western digits elsewhere (numbers take
+    /// an even bidi level, so the surrounding text decides).
+    Context,
+    /// Hindi digits when the system locale is an Arabic-script language, else Western digits.
+    /// Call [`NumeralMode::resolve`] before laying out.
+    System,
+}
+
+impl NumeralMode {
+    /// Short UI label (Word's option names).
+    pub fn label(self) -> &'static str {
+        match self {
+            NumeralMode::Arabic => "Arabic",
+            NumeralMode::Hindi => "Hindi",
+            NumeralMode::Context => "Context",
+            NumeralMode::System => "System",
+        }
+    }
+
+    /// Parse a command value (`"arabic" | "hindi" | "context" | "system"`, any case).
+    pub fn parse(s: &str) -> Option<NumeralMode> {
+        match s.to_lowercase().as_str() {
+            "arabic" => Some(NumeralMode::Arabic),
+            "hindi" => Some(NumeralMode::Hindi),
+            "context" => Some(NumeralMode::Context),
+            "system" => Some(NumeralMode::System),
+            _ => None,
+        }
+    }
+
+    /// Resolve `System` against the system locale (a BCP 47 or POSIX tag such as `ar-EG` or
+    /// `fa_IR.UTF-8`, found by the shell: layout never reads the environment). Hindi digits for
+    /// Arabic-script languages, else Western; unknown locale = Western. Other modes pass through.
+    pub fn resolve(self, system_locale: Option<&str>) -> NumeralMode {
+        if self != NumeralMode::System {
+            return self;
+        }
+        if system_locale.is_some_and(hindi_locale) { NumeralMode::Hindi } else { NumeralMode::Arabic }
+    }
+
+    /// The displayed form of `c` in a run shaped with direction `rtl`.
+    ///
+    /// One character maps to exactly one character, so shaped text stays codepoint-aligned
+    /// with the document text (only byte offsets shift). A `System` mode that was not
+    /// resolved falls back to Western digits.
+    pub fn map(self, c: char, rtl: bool) -> char {
+        let hindi = match self {
+            NumeralMode::Arabic => false,
+            NumeralMode::Hindi => true,
+            NumeralMode::Context => rtl,
+            NumeralMode::System => false,
+        };
+        if hindi {
+            if c.is_ascii_digit() { char::from_u32(0x660 + (c as u32 - '0' as u32)).unwrap_or(c) } else { c }
+        } else if ('\u{660}'..='\u{669}').contains(&c) {
+            (b'0' + (c as u32 - 0x660) as u8) as char
+        } else {
+            c
+        }
+    }
+}
+
+/// Does locale `tag` use Hindi digits (Arabic, Persian, Urdu, Pashto, Sindhi, Kurdish)?
+fn hindi_locale(tag: &str) -> bool {
+    let lang = tag.split(['_', '-', '.', '@']).next().unwrap_or_default().to_ascii_lowercase();
+    matches!(lang.as_str(), "ar" | "fa" | "ur" | "ps" | "sd" | "ku" | "ckb")
 }
 
 #[derive(Clone, Debug, Default)]
@@ -57,6 +141,10 @@ pub struct LayoutOptions {
     pub view: ViewMode,
     /// Width of the window in Web/Draft views, points.
     pub web_width: f32,
+    /// Page height in Reading Mode (document points).
+    pub read_height: f32,
+    /// Transient read-only line-spacing override; ignored by print/export views.
+    pub read_line_spacing: Option<f32>,
     pub show_hidden: bool,
     /// Final text ("No Markup"): tracked deletions take no space and draw nothing.
     pub hide_deleted: bool,
@@ -66,6 +154,9 @@ pub struct LayoutOptions {
     pub deletions_in_balloons: bool,
     /// Check spelling as you type (squiggles).
     pub proofing: bool,
+    /// How digits look on screen (display only; the text is untouched). Callers resolve
+    /// `System` ([`NumeralMode::resolve`]); an unresolved `System` shows Western digits.
+    pub numeral: NumeralMode,
     /// Print Markup (PDF, print, page images): widen each page by [`balloons::MARKUP_AREA`]
     /// and show the comments there in balloons joined to their anchors, as Word prints them.
     /// The editor draws its own interactive balloons and leaves this off.
@@ -360,7 +451,9 @@ struct Key {
     notes: u64,
     excl: u64,
     eq: u32,
+    read_spacing: Option<u32>,
     grid: (u32, u32, u32, bool),
+    fit: bool,
     hide_deleted: bool,
 }
 
@@ -409,6 +502,7 @@ fn env_hash(doc: &Document, opts: &LayoutOptions) -> u64 {
         opts.hide_deleted,
         opts.deletions_in_balloons,
         opts.proofing,
+        opts.numeral,
         opts.field_codes,
         opts.proof,
         wordcraft_proof::dictionary_generation(),
@@ -549,9 +643,12 @@ impl Ctx<'_> {
             hide_deleted: false,
             table: None,
             proofing: None,
+            numeral: self.opts.numeral,
             exclusions: &[],
             eq_number: 0,
+            read_line_spacing: None,
             grid: para::Grid::default(),
+            fit_objects: false,
         };
         let pl = Arc::new(para::layout_para(&p, &env));
         self.numbers.insert(n, pl.clone());
@@ -599,7 +696,9 @@ impl Ctx<'_> {
             notes: if p.objects.iter().any(|o| matches!(o, InlineObject::NoteRef { .. })) { self.notes_hash } else { 0 },
             excl: if exclusions.is_empty() { 0 } else { hash_of(&format!("{exclusions:?}")) },
             eq: if eq_here > 0 { eq_number } else { 0 },
+            read_spacing: if self.opts.view == ViewMode::Read { self.opts.read_line_spacing.map(f32::to_bits) } else { None },
             grid: self.grid.key(),
+            fit: self.boxes.inside(),
             hide_deleted: self.hide_deleted,
         };
         self.cache.used.insert(key.clone());
@@ -618,9 +717,12 @@ impl Ctx<'_> {
             hide_deleted: self.hide_deleted,
             table,
             proofing: self.opts.proofing.then_some(self.opts.proof),
+            numeral: self.opts.numeral,
             exclusions,
             eq_number,
+            read_line_spacing: if self.opts.view == ViewMode::Read { self.opts.read_line_spacing } else { None },
             grid: self.grid,
+            fit_objects: self.boxes.inside(),
         };
         let pl = Arc::new(para::layout_para(p, &env));
         self.cache.paras.insert(key, pl.clone());
@@ -1583,7 +1685,9 @@ fn layout_pass(
         track_totals: true,
     };
     let sections = doc.sections();
-    let web = opts.view != ViewMode::Print;
+    let web = matches!(opts.view, ViewMode::Web | ViewMode::Draft | ViewMode::Outline);
+    let read = opts.view == ViewMode::Read;
+    let reflow = web || read;
     let outline = (opts.view == ViewMode::Outline).then(|| OutlinePass::new(doc, opts.outline.clone().unwrap_or_default()));
     let default_sect = SectionProps::default();
     let mut web_sect;
@@ -1591,14 +1695,21 @@ fn layout_pass(
         Some((_, s)) => *s,
         None => &default_sect,
     };
-    let sect_ref = if web {
+    let sect_ref = if reflow {
         web_sect = first_sect.clone();
-        web_sect.page_w = opts.web_width.max(144.0);
+        web_sect.page_w = if opts.web_width.is_finite() { opts.web_width.clamp(144.0, 20_000.0) } else { 300.0 };
+        if read {
+            web_sect.page_h = if opts.read_height.is_finite() { opts.read_height.clamp(144.0, 20_000.0) } else { 500.0 };
+            web_sect.margin_bottom = 18.0;
+            web_sect.page_borders = None;
+            web_sect.line_numbers = None;
+        }
         web_sect.margin_left = 18.0;
         web_sect.margin_right = 18.0;
         web_sect.margin_top = 18.0;
         web_sect.gutter = 0.0;
         web_sect.columns = Default::default();
+        web_sect.valign = wordcraft_doc::props::VAlign::Top;
         &web_sect
     } else {
         first_sect
@@ -1660,10 +1771,10 @@ fn layout_pass(
         .collect();
     let mut prev_turn = TextDirection::Horizontal;
     for (si, (end, sect)) in sections.iter().enumerate() {
-        let turn = if web { TextDirection::Horizontal } else { sect.text_direction };
+        let turn = if reflow { TextDirection::Horizontal } else { sect.text_direction };
         let sect: &SectionProps = match turned.get(si) {
             Some(Some(t)) => t,
-            _ if web => sect_ref,
+            _ if reflow => sect_ref,
             _ => sect,
         };
         pb.sect = sect;
@@ -1678,10 +1789,10 @@ fn layout_pass(
         ctx.fields.section_pages = totals.section(si);
         // Headers and footers left out are linked to the previous section's, and take its room.
         let (heads, feet) = (linked(&sections, si, |s| s.headers), linked(&sections, si, |s| s.footers));
-        let body_top = if web || turn.is_turned() { sect.margin_top } else { body_top_for(&mut ctx, sect, heads.default) };
-        let first_top = if web || turn.is_turned() || !sect.title_page { body_top } else { body_top_for(&mut ctx, sect, heads.first) };
-        let foot_top = if web || turn.is_turned() { f32::MAX } else { foot_top_for(&mut ctx, sect, feet.default) };
-        let first_foot = if web || turn.is_turned() || !sect.title_page { foot_top } else { foot_top_for(&mut ctx, sect, feet.first) };
+        let body_top = if reflow || turn.is_turned() { sect.margin_top } else { body_top_for(&mut ctx, sect, heads.default) };
+        let first_top = if reflow || turn.is_turned() || !sect.title_page { body_top } else { body_top_for(&mut ctx, sect, heads.first) };
+        let foot_top = if reflow || turn.is_turned() { f32::MAX } else { foot_top_for(&mut ctx, sect, feet.default) };
+        let first_foot = if reflow || turn.is_turned() || !sect.title_page { foot_top } else { foot_top_for(&mut ctx, sect, feet.first) };
         ctx.grid = para::Grid::of(doc, sect);
         let restart = sect.page_num_start;
         if sect.line_numbers.as_ref().is_some_and(|l| l.restart == wordcraft_doc::section::LineNumberRestart::Section) {
@@ -1790,13 +1901,13 @@ fn layout_pass(
         p.h = bottom + 36.0;
     }
     ctx.grid = para::Grid::default();
-    if !web && ctx.uses_totals && may_repeat {
+    if !reflow && ctx.uses_totals && may_repeat {
         let found = Totals::of(&pages, sections.len());
         if found != *totals {
             return Pass::Again(found);
         }
     }
-    if !web {
+    if !reflow {
         ctx.track_totals = false;
         headers_footers(&mut ctx, &mut pages, &sections);
         if doc.settings.mirror_margins {
@@ -2715,9 +2826,12 @@ fn next_first_line(ctx: &mut Ctx, block: usize, width: f32) -> f32 {
                 hide_deleted: ctx.opts.hides_deleted(StoryRef::Body),
                 table: None,
                 proofing: None,
+                numeral: ctx.opts.numeral,
                 exclusions: &[],
                 eq_number: ctx.eq_count,
+                read_line_spacing: if ctx.opts.view == ViewMode::Read { ctx.opts.read_line_spacing } else { None },
                 grid: ctx.grid,
+                fit_objects: false,
             };
             let _ = rp;
             let pl = para::layout_para(p, &env);
@@ -3037,6 +3151,8 @@ mod tests_bidi;
 mod tests_complex;
 #[cfg(test)]
 mod tests_grid;
+#[cfg(test)]
+mod tests_numeral;
 #[cfg(test)]
 mod tests_pages;
 #[cfg(test)]

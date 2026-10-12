@@ -1,6 +1,6 @@
 # UI parity with Microsoft Word
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (status bar language follows the caret and sets the proofing language; Review › Language is a menu; previously trivial: Customize Ribbon and the Quick Access Toolbar, #379; previously: major, first version; ribbon, dialogs, shortcuts and on-canvas interaction measured from `crates/ui-egui` and the command registry) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (Android touch gutters scroll without stealing page selection; visible keyboard toggle; IME cursor updates; device validation pending; previously trivial: Navigation headings truncate in the resizable pane, #759; previously trivial: Find and Replace special characters and wildcards, #543; previously trivial: Customize Ribbon and the Quick Access Toolbar, #379; previously: major, first version; ribbon, dialogs, shortcuts and on-canvas interaction measured from `crates/ui-egui` and the command registry) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
 
 How WordCraft looks and feels next to Word: ribbon, dialogs, panes, keyboard, mouse and touch.
 Typing behaviour has its own checklist ([`typing-parity.md`](typing-parity.md)). All assets are our
@@ -11,7 +11,7 @@ own (`AGENTS.md`: no Microsoft iconography, ever).
 | Area | WordCraft | Word | Parity | Hours |
 |---|---|---|---|---|
 | Ribbon tabs and groups | All Word tabs including contextual Table Design/Layout, Picture Format, Shape Format, Header & Footer, Equation, Outlining (Outline view, #493); ribbon overflow (#43, #129). Draw tab: Select, Eraser, Pen, Pencil, Highlighter with colour and thickness (#307); Lasso (drag to move, Delete, recolour), Add Pen gallery (right-click to remove), Ink to Shape, Ink Replay with play/pause/rewind/forward bar (#395); missing: Ink to Math | Same plus Draw | 85% | (Draw in features) |
-| Keytips (Alt / ⌃⌥ letters) | ✅ (#43) | ✅ | 85% | 1–2 |
+| Keytips (Alt / F10) | Ribbon badges (#43) and numbered Quick Access Toolbar badges in the user's button order (#620); File › Options › Advanced › Display switch saved per user (`ui.keytips`); Alt leaves macOS Option typing alone | ✅ | 85% | 1–2 |
 | Mini-toolbar on selection | ✅ (#43, two rows #535) | ✅ | 80% | 1–2 |
 | Mini-toolbar on selection | ✅ (#43) | ✅ | 80% | 1–2 |
 | Colour drop-downs: theme/standard colours, Recent Colors, More Colors… → Colors dialog (Standard honeycomb, Custom hue/saturation field with lightness, RGB/HSL and hex) | ✅ Font Color (ribbon, mini toolbar, Font dialog), Shading, Page Color, Shape Fill/Outline/Glow, pen colours, dialog colour fields (#606); no Gradient or eyedropper | ✅ | 90% | 1 |
@@ -19,7 +19,7 @@ own (`AGENTS.md`: no Microsoft iconography, ever).
 | Customize Ribbon / Customize Keyboard | Customize Keyboard (#368): categories, a command's keys, press a combination to see which command uses it, Assign / Remove / Reset All; custom keys override built-ins, removed built-ins do nothing, saved per user; `tools.customizeKeyboard` for agents. Customize Ribbon (#379): show, hide and reorder tabs, custom tabs and custom groups (on any tab) holding any commands, rename, remove, Reset; right-click on the ribbon; saved per user; `tools.customizeRibbon` for agents. Built-in tabs can't be renamed; no import/export file | ✅ | 85% | 1–2 |
 | Keyboard shortcuts | **137** commands bound in `CommandSpec::key`, 156 key combinations (measured on Linux/Windows); styles, spacing, symbols, fields, views, mail merge (#330); field keys Alt+F9, Shift+F9, Ctrl+Shift+F9, Ctrl+F11, Ctrl+Shift+F11, F11, Shift+F11 (#339); Alt+Shift+arrows (move paragraphs, promote/demote), Shift+F5 Go Back and Alt+X (#343); Outline view: Alt+Shift+Plus/Minus expand/collapse, Alt+Shift+1–9 and Alt+Shift+A Show Level (#493). Missing: en dash on the numeric keypad | ~250 default shortcuts | ~70% | 2–4 |
 | Modal dialogs | **54** (`Dialog` enum: Font, Enclose Characters, Paragraph, Tabs, Borders and Shading, Find, Go To, Insert Table, Table Properties, Page Setup, Link, Bookmark, Word Count, Zoom, Watermark, New Style, Modify Style, Manage Styles, Table Style, Commands, Icons, Templates and Add-ins, Organizer, Compare and Combine, AutoCorrect Options, Paste Special, About, Save Changes, Password, Encrypt with Password, Define New Multilevel List, Track Changes Options; Columns, Symbol with Special Characters, Field (#321); Field code (#339); mail merge Recipients, Insert Merge Field, Find Recipient, Rules, Match Fields, Check for Errors; Caption with New Label and Numbering, Index, Mark Index Entry, Custom Table of Contents with Options and TOC styles, Source Manager, Create/Edit Source (#402); Line Numbers, Hyphenation with Manual Hyphenation, Language, Envelopes, Labels (#407)) plus panes and menus for the rest | ~100 (Options panes…) | ~45% | 11–19 |
-| Task panes (Navigation, Styles, Comments, Reviewing, Format Picture/Shape, Thesaurus, Accessibility, Clipboard, Selection) | Navigation, Styles, Comments, Thesaurus, Restrict Editing, Accessibility (grouped findings, jump-to, fixes) and Alt Text (#386), Read Aloud, Zotero; Style Inspector (#236); Clipboard pane (#264) open | all | 70% | 4–6 |
+| Task panes (Navigation, Styles, Comments, Reviewing, Format Picture/Shape, Thesaurus, Accessibility, Clipboard, Selection) | Navigation (long headings truncate with an ellipsis instead of expanding the pane, #759), Styles, Comments, Thesaurus, Restrict Editing, Accessibility (grouped findings, jump-to, fixes) and Alt Text (#386), Read Aloud, Zotero; Style Inspector (#236); Clipboard pane (#264) open | all | 70% | 4–6 |
 | Context menus (right-click) | text, spelling suggestions, fields (Update Field, Edit Field…, Toggle Field Codes, #339); right-click selects a picture, shape or text box and offers Wrap Text (styles, Move with Text / Fix Position on Page, #513); tables partial | rich per context | 60% | 3–5 |
 | Backstage (Home, New, Open, Info, Save As, Print, Share, Export, Options) | Home and New separate (#254), Info properties kept (#268), Options in Word's panes with working settings (#485), Print page with preview, page range and copies (#641) | | 68% | 4–6 |
 | Rulers: indents, tabs, margins, table columns | indents draggable (one undo, #62); tabs; table column drag pending (#49) | ✅ | 70% | 2–3 |
@@ -29,6 +29,7 @@ own (`AGENTS.md`: no Microsoft iconography, ever).
 | Selection: word/sentence/paragraph clicks, dragging after a double-click/triple-click/Ctrl+click extends by whole words/paragraphs/sentences (#549), Shift extend, F8 extend mode, column (Alt+drag, #237) | ✅ | ✅ | 90% | 1 |
 | Zoom: Ctrl+scroll, pinch (#179), zoom buttons (#232), pages side by side when zoomed out (#251) | ✅ | ✅ | 85% | — |
 | Touchpad smooth/inertial scroll | ✅ (#252) | ✅ | 90% | — |
+| Reading Mode | Existing Read Mode ribbon button opens a read-only, viewport-column layout with animated horizontal paging, transient width/text/spacing controls, heading navigation (Navigation pane) and resize anchoring; print/export layout unchanged | reading-optimized view and navigation | 75% | 1–2 |
 | Status bar (page x of y, words, language, view buttons, zoom slider) | ✅ (the language is the caret's; a click sets the proofing language) | ✅ | 85% | — |
 | Caret motion: keys and typing glide the caret to its new place (100 ms, `cubic-bezier(0, 0, 0, 1)`), the blink fades (530 ms on and off, 100 ms fades); clicks and scripted moves don't glide. File › Options › Advanced › Animation (`ui.caretAnimation`) turns it off | ✅ as measured from Word for Windows (`caret_glide.rs`); zoom levels other than 100%, modifier keys and off-screen moves not measured | ✅ on Windows; Word for Mac not measured | 90% | 1–2 |
 | Interface themes (light, dark, system #249, follows OS changes live #311), dark page separate from the interface theme (#194, #312) | ✅ | ✅ | 90% | — |
@@ -43,6 +44,12 @@ own (`AGENTS.md`: no Microsoft iconography, ever).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | Android: background touch swipes scroll, page drags remain selections, keyboard toggle stays visible, and IME selection changes move the caret; device verification pending |
+| 2026-10-12 | trivial | Navigation headings truncate with an ellipsis within the pane width, preserving resizing and full-text hover (#759) |
+| 2026-10-11 | minor | Reading Mode: viewport-height horizontal columns, animated paging, transient display controls, heading navigation and responsive anchored resizing |
+| 2026-10-11 | trivial | Alt activation handles native key/modifier events in either order, including key-up with the old Alt flag; taps toggle once, chords and focus loss do not activate KeyTips |
+| 2026-10-11 | trivial | Quick Access Toolbar KeyTips (#620): 1–9, zero-prefixed numbers for longer toolbars, disabled commands stay disabled, Escape cancels, badge keystrokes never type into the document; persisted File › Options switch |
+| 2026-10-11 | trivial | Ribbon buttons that run a command (alignment, Bold, styles…) hand keyboard focus back to the document, so typing continues without another click; they also report their name and enabled state to screen readers (#686) |
 | 2026-10-11 | trivial | Tables on the page: column and row borders and the resize handle drag, with a dashed guide and one undo step per drag (#217) |
 | 2026-10-11 | trivial | Animation effects › Use system setting also reads macOS (Reduce motion) and the Linux/BSD desktops (settings portal: the cross-desktop reduced-motion preference, GNOME's switch, KDE's animation speed; the GTK and KDE settings files where no portal answers), and follows a change without a restart |
 | 2026-10-11 | trivial | Animation effects setting in File › Options › Accessibility (Use system setting, On, Off), kept between runs: the app eased wheel scrolling, zooming and its fades whatever the system's setting was; off, they land at once. Follows the system's setting on Windows and in browsers; `ui.animations` for agents |
@@ -68,6 +75,14 @@ own (`AGENTS.md`: no Microsoft iconography, ever).
 | 2026-10-11 | trivial | Text field and combo outlines reach 3:1 against their fill and surroundings in both themes (light #8A8A8A, dark #7A7A7A); a test pins the ratios (#657) |
 | 2026-10-11 | trivial | Font dialog: Asian text font and Latin text font boxes, each with its own list and type-to-find, shown for a Chinese/Japanese interface or East Asian text in the selection; OK sets only the fonts changed; `format.font {"eastAsia"}` (#505) |
 | 2026-10-11 | trivial | References › Table of Authorities: Insert Table of Authorities is labelled and joined by Update Table (`references.updateAuthorities`), as in the Index group (#661) |
+| 2026-10-11 | trivial | Layout › Paragraph: Indent and Spacing fields fit above the group title, on shared label and field columns, all the same width (#654) |
+| 2026-10-11 | trivial | Two-line labels on large ribbon buttons end above the group title row (icon and label moved up, title row 18 px; shared constants with a compile-time check) (#653) |
+| 2026-10-11 | trivial | Menu buttons (Header, Page Number, Breaks, Wrap Text, table Select/Delete/AutoFit…) grey out and don't open while the command their menu is about is disabled, like the other ribbon buttons (#658) |
+| 2026-10-11 | trivial | One drop-down marker everywhere: large ribbon buttons, Equation and the Editing/Reviewing button draw the `dropdown` icon after their label, like split and menu buttons, instead of a text glyph (#659) |
+| 2026-10-11 | trivial | Dark theme: Styles, style-set and table-style previews sit on a dimmer page tone; with View › Switch Modes on, the Styles gallery previews the dark page (#663) |
+| 2026-10-11 | trivial | Dialog primary buttons, the Discord pill, the table eraser line and the Navigation search highlight take their colours from the theme in both themes (`widgets::primary_button`); a test bans the old fixed values (#656) |
+| 2026-10-11 | trivial | Dark theme: Share, the avatar initials, the AutoSave knob and keytips use dark `on_accent` text on the light accent (6.2:1, 8.4:1 on hover; white was 2.9:1) (#655) |
+| 2026-10-11 | trivial | Text field and combo outlines reach 3:1 against their fill and surroundings in both themes (light #8A8A8A, dark #7A7A7A); a test pins the ratios (#657) |
 | 2026-10-11 | trivial | Customize Ribbon (custom tabs and groups, hidden and reordered tabs) and a customizable Quick Access Toolbar with a working … menu (#379, #376) |
 | 2026-10-11 | trivial | Customize Keyboard dialog (Tools › Customize Keyboard, File › Options › Keyboard shortcuts): custom keys override built-ins and persist (#368) |
 | 2026-10-11 | minor | Keyboard shortcuts 101 → 125 commands (#330): Reset Paragraph/Character Formatting, symbols, DATE/TIME/PAGE fields, view switches, Word Count, mail merge, F4 Repeat now reachable |
@@ -92,4 +107,9 @@ own (`AGENTS.md`: no Microsoft iconography, ever).
 | 2026-10-10 | minor | Merged main: Style Inspector, Column Selection, zoom buttons, inertial scrolling, File Info landed |
 | 2026-10-10 | major | First version: ribbon, dialog, shortcut and interaction inventory |
 | 2026-10-10 | trivial | Draw tab tools and Review › Hide Ink (#307) |
+
+Quick Access Toolbar labels are generated from the current button order. For more than nine
+buttons, the remaining labels start with zero and use the same number of digits (for example
+`01`, `02` on a ten-button toolbar; `001` through `011` on a twenty-button toolbar). This keeps
+labels unambiguous. Those extra-number assignments have not been compared with Word.
 | 2026-10-11 | trivial | Draw: Lasso, Add Pen gallery, Ink to Shape and Ink Replay (#395) |

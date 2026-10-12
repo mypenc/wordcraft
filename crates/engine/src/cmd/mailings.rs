@@ -320,14 +320,8 @@ fn extension(path: &str) -> Option<String> {
     std::path::Path::new(path).extension().map(|e| e.to_string_lossy().to_ascii_lowercase())
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn read_file(path: &str) -> Result<Vec<u8>, CmdError> {
-    std::fs::read(path).map_err(|e| CmdError::Failed(format!("{path}: {e}")))
-}
-
-#[cfg(target_arch = "wasm32")]
-fn read_file(_path: &str) -> Result<Vec<u8>, CmdError> {
-    Err(CmdError::Failed("paths aren't available on the web; pass `data`".into()))
+    crate::io::read_file(path).map_err(CmdError::Failed)
 }
 
 /// Field names and records from a table's rows: with `headers`, the first row names the fields

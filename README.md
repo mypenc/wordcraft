@@ -117,7 +117,7 @@ Every screenshot below is WordCraft itself, rendered offscreen by its own UI tes
 | **References** | Table of contents, footnotes and endnotes, citations and bibliography (APA, MLA, Chicago, IEEE), captions, table of figures, cross-references, index, table of authorities |
 | **Review** | Spelling and grammar with suggestions (English and Polish, by each run's language), thesaurus, word count, comments in margin balloons or a pane, track changes, accept/reject, compare documents, restrict editing, accessibility checker, document inspector |
 | **Mailings** | Mail merge from CSV, merge fields, address block, greeting line, rules, preview, finish to a document; envelopes and labels |
-| **View** | Print layout, web layout, draft, read mode, focus, zoom, one/multiple pages, page width, Navigation pane, rulers, gridlines, dark mode; interface in English, 简体中文, 繁體中文, 日本語, Português (Brasil), Español, Українська, Српски / Srpski, Eesti, Türkçe, Русский, Italiano, Deutsch, Polski or Čeština (follows the system language by default) |
+| **View** | Print layout, web layout, draft, read mode, focus, zoom, one/multiple pages, page width, Navigation pane, rulers, gridlines, dark mode; interface in English, 简体中文, 繁體中文, 日本語, Português (Brasil), Español, Українська, Српски / Srpski, Eesti, Türkçe, Русский, Italiano, Deutsch, Polski, Čeština, Magyar or Français (follows the system language by default) |
 | **Files** | .docx read/write (opens in Word), Word 97-2003 .doc import, PDF export, .odt, .rtf, .html, .md, .tex, .txt import/export, page images |
 
 The honest picture, area by area, is in [ROADMAP.md](ROADMAP.md), the
@@ -151,6 +151,7 @@ WordCraft was designed to be driven by people *and* by AI agents.
 
 ```sh
 claude mcp add wordcraft -- wordcraft-cli mcp                  # headless documents
+# confine the agent to folders: wordcraft-cli mcp --automation-read-root DIR --automation-write-root DIR
 wordcraft --control 7981 &                                     # or drive the running app…
 claude mcp add wordcraft-app -- wordcraft-cli mcp --connect 127.0.0.1:7981
 ```
@@ -267,17 +268,23 @@ instead, without setting anything. The log file records the choice (lines starti
 RISC-V (riscv64): `wordcraft-<ver>-linux-riscv64.tar.gz`, a tarball cross-compiled for glibc 2.39+
 (Ubuntu 24.04, Debian 13 and newer).
 
+**Wayland:** on a Wayland desktop the app runs through XWayland when it is available, because
+winit (the windowing library) supports dragging files into the window only on X11. To use the
+native Wayland backend instead (for example for sharper text with fractional scaling, at the cost
+of file drag-and-drop), start it with `WORDCRAFT_WAYLAND=1`:
+
+```sh
+WORDCRAFT_WAYLAND=1 wordcraft
+```
+
 **Arch Linux (AUR).** Community members maintain three AUR packages; the project doesn't publish
 to the AUR itself. Install one of them:
-
 | Package | What it installs | Choose it when |
 |---|---|---|
 | [`wordcraft-bin`](https://aur.archlinux.org/packages/wordcraft-bin) | The release tarball above, prebuilt (x86_64, aarch64) | You want the latest release without compiling (quickest) |
 | [`wordcraft`](https://aur.archlinux.org/packages/wordcraft) | The latest release, built from source with `cargo` | You prefer to build releases yourself |
 | [`wordcraft-git`](https://aur.archlinux.org/packages/wordcraft-git) | The current `main` branch, built from source | You want unreleased changes and accept an occasional broken build |
-
 For example `yay -S wordcraft-bin` or `paru -S wordcraft-bin`.
-
 ### FreeBSD
 
 | Build | File |

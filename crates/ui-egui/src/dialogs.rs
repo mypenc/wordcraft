@@ -1205,7 +1205,9 @@ impl Dialog {
 pub fn table_grid_picker(ui: &mut Ui, app: &mut WordApp) {
     let t = Tokens::get(ui.ctx());
     let id = egui::Id::new("table_picker_hover");
+    let press_id = egui::Id::new("table_picker_press");
     let hover: (usize, usize) = ui.data(|d| d.get_temp(id)).unwrap_or((0, 0));
+    let pressing: bool = ui.data(|d| d.get_temp(press_id)).unwrap_or(false);
     ui.label(if hover.0 > 0 {
         crate::i18n::fmt(tl!("{cols}×{rows} Table"), &[("cols", &hover.1.to_string()), ("rows", &hover.0.to_string())])
     } else {
@@ -1213,10 +1215,12 @@ pub fn table_grid_picker(ui: &mut Ui, app: &mut WordApp) {
     });
     let mut new_hover = (0, 0);
     let mut clicked = None;
+    let mut cells: Vec<((usize, usize), egui::Rect)> = Vec::new();
     egui::Grid::new("tgp").spacing(vec2(2.0, 2.0)).show(ui, |ui| {
         for r in 1..=8 {
             for c in 1..=10 {
                 let (rect, resp) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click_and_drag());
+                cells.push(((r, c), rect));
                 let on = r <= hover.0 && c <= hover.1;
                 ui.painter().rect(
                     rect,
@@ -1225,7 +1229,7 @@ pub fn table_grid_picker(ui: &mut Ui, app: &mut WordApp) {
                     egui::Stroke::new(1.0, if on { t.accent } else { t.border_strong }),
                     egui::StrokeKind::Inside,
                 );
-                if resp.hovered() || resp.dragged() {
+                if resp.hovered() {
                     new_hover = (r, c);
                 }
                 if resp.clicked() {
@@ -1235,7 +1239,30 @@ pub fn table_grid_picker(ui: &mut Ui, app: &mut WordApp) {
             ui.end_row();
         }
     });
-    ui.data_mut(|d| d.insert_temp(id, new_hover));
+    // Fingers send no hover, so a finger dragged across the grid is tracked by the pointer
+    // position while the button is held: the cell under it is the size, and lifting inserts it.
+    let (pointer, down, pressed, released) =
+        ui.input(|i| (i.pointer.interact_pos(), i.pointer.primary_down(), i.pointer.primary_pressed(), i.pointer.primary_released()));
+    let under = |p: egui::Pos2| cells.iter().find(|(_, r)| r.contains(p)).map(|(rc, _)| *rc);
+    let mut now_pressing = pressing;
+    if pressed {
+        now_pressing = pointer.is_some_and(|p| under(p).is_some());
+    }
+    if now_pressing && down
+        && let Some(cell) = pointer.and_then(under)
+    {
+        new_hover = cell;
+    } else if now_pressing && down {
+        new_hover = hover;
+    }
+    if now_pressing && released {
+        now_pressing = false;
+        if clicked.is_none() {
+            clicked = pointer.and_then(under).or(if hover.0 > 0 { Some(hover) } else { None });
+        }
+    }
+    ui.data_mut(|d| d.insert_temp(press_id, now_pressing));
+    ui.data_mut(|d| d.insert_temp(id, if down || released { new_hover } else { hover }));
     if let Some((r, c)) = clicked {
         let _ = app.run("insert.table", json!({"rows": r, "cols": c}));
         ui.close();
@@ -1359,7 +1386,7 @@ pub(crate) fn buttons(ui: &mut Ui, ok: &str) -> (bool, bool) {
             if ui.button(tl!("Cancel")).clicked() || (keys && ui.input(|i| i.key_pressed(egui::Key::Escape))) {
                 r.1 = true;
             }
-            let okb = ui.add(egui::Button::new(egui::RichText::new(ok).color(egui::Color32::WHITE)).fill(crate::theme::APP_COLOR));
+            let okb = ui.add(crate::widgets::primary_button(ui, ok));
             if okb.clicked() || (keys && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
                 r.0 = true;
             }
@@ -2321,7 +2348,7 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let cancel = ui.button(tl!("Cancel"));
                     let dont_save = ui.button(tl!("Don't Save"));
-                    let save = ui.add(egui::Button::new(egui::RichText::new(tl!("Save")).color(egui::Color32::WHITE)).fill(crate::theme::APP_COLOR));
+                    let save = ui.add(crate::widgets::primary_button(ui, tl!("Save")));
                     [(cancel, "cancel"), (dont_save, "dontSave"), (save, "save")]
                 })
                 .inner
@@ -2939,7 +2966,7 @@ fn close_button(ui: &mut Ui) -> bool {
     ui.add_space(8.0);
     let mut close = ui.input(|i| i.key_pressed(egui::Key::Escape));
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        close |= ui.add(egui::Button::new(egui::RichText::new(tl!("Close")).color(egui::Color32::WHITE)).fill(crate::theme::APP_COLOR)).clicked();
+        close |= ui.add(crate::widgets::primary_button(ui, tl!("Close"))).clicked();
     });
     close
 }

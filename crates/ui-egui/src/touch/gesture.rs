@@ -12,6 +12,7 @@
 //! | press, move past the slop, drag        | left press + drag                     |
 //! | press and hold still (long press)      | right click (context menu) + haptic   |
 //! | two fingers moving together            | wheel / trackpad scroll (pan)         |
+//! | one-finger drag on the canvas background | scroll, without selecting text      |
 //! | pinch                                  | left to egui's own multi-touch zoom   |
 //! | quick two-finger tap                   | undo                                  |
 //! | quick three-finger tap                 | redo                                  |
@@ -99,9 +100,14 @@ enum Mode {
     Pending {
         origin: Pt,
         t0: f64,
+        scroll_on_drag: bool,
     },
     /// Primary pressed and dragging.
     Dragging,
+    /// A one-finger swipe over the canvas background scrolls without selecting text.
+    Scrolling {
+        last: Pt,
+    },
     /// The long press fired; swallow the rest of this touch.
     Spent,
     /// Two or more fingers.
@@ -152,13 +158,19 @@ impl Recognizer {
 
     /// Feed one touch event (`t` in seconds).
     pub fn touch(&mut self, id: u64, phase: Phase, pos: Pt, t: f64) -> Vec<Out> {
+        self.touch_with_scroll(id, phase, pos, t, false)
+    }
+
+    /// Feed one touch event, optionally scrolling if a one-finger drag starts in the canvas
+    /// background rather than on a page.
+    pub fn touch_with_scroll(&mut self, id: u64, phase: Phase, pos: Pt, t: f64, scroll_on_drag: bool) -> Vec<Out> {
         let mut out = Vec::new();
         match phase {
             Phase::Down => {
                 self.fingers.retain(|f| f.id != id);
                 self.fingers.push(Finger { id, pos });
                 if self.fingers.len() == 1 {
-                    self.mode = Mode::Pending { origin: pos, t0: t };
+                    self.mode = Mode::Pending { origin: pos, t0: t, scroll_on_drag };
                     out.push(Out::Move(pos));
                 } else {
                     // A second finger ends any one-finger gesture: pinch/pan take over.
@@ -179,12 +191,21 @@ impl Recognizer {
                 let Some(f) = self.fingers.iter_mut().find(|f| f.id == id) else { return out };
                 f.pos = pos;
                 match self.mode {
-                    Mode::Pending { origin, .. } if pos.dist(origin) > self.cfg.slop => {
-                        out.push(Out::Press(Btn::Primary, origin));
-                        out.push(Out::Move(pos));
-                        self.mode = Mode::Dragging;
+                    Mode::Pending { origin, scroll_on_drag, .. } if pos.dist(origin) > self.cfg.slop => {
+                        if scroll_on_drag {
+                            out.push(Out::Scroll { at: pos, delta: Pt::new(pos.x - origin.x, pos.y - origin.y) });
+                            self.mode = Mode::Scrolling { last: pos };
+                        } else {
+                            out.push(Out::Press(Btn::Primary, origin));
+                            out.push(Out::Move(pos));
+                            self.mode = Mode::Dragging;
+                        }
                     }
                     Mode::Dragging => out.push(Out::Move(pos)),
+                    Mode::Scrolling { last } => {
+                        out.push(Out::Scroll { at: pos, delta: Pt::new(pos.x - last.x, pos.y - last.y) });
+                        self.mode = Mode::Scrolling { last: pos };
+                    }
                     Mode::Multi { t0, max, travel, last } => {
                         let c = self.centroid();
                         let d = Pt::new(c.x - last.x, c.y - last.y);
@@ -213,6 +234,7 @@ impl Recognizer {
                         out.push(Out::Release(Btn::Primary, pos));
                         out.push(Out::Gone);
                     }
+                    Mode::Scrolling { .. } => out.push(Out::Gone),
                     Mode::Spent => out.push(Out::Gone),
                     Mode::Multi { t0, max, travel, .. } => {
                         if self.fingers.is_empty() {
@@ -329,6 +351,19 @@ mod tests {
         assert_eq!(delta, Pt::new(0.0, 20.0), "centroid moved half of one finger's travel");
         let end = r.touch(1, Phase::Up, Pt::new(100.0, 140.0), 0.6);
         assert!(!end.iter().any(|o| matches!(o, Out::Press(..) | Out::Undo | Out::Redo)));
+    }
+
+    #[test]
+    fn one_finger_drag_over_canvas_background_scrolls_without_clicking() {
+        let mut r = Recognizer::default();
+        r.touch_with_scroll(1, Phase::Down, Pt::new(10.0, 10.0), 0.0, true);
+        let first = r.touch_with_scroll(1, Phase::Move, Pt::new(10.0, 30.0), 0.1, false);
+        assert!(first.contains(&Out::Scroll { at: Pt::new(10.0, 30.0), delta: Pt::new(0.0, 20.0) }));
+
+        let next = r.touch_with_scroll(1, Phase::Move, Pt::new(10.0, 45.0), 0.2, false);
+        assert!(next.contains(&Out::Scroll { at: Pt::new(10.0, 45.0), delta: Pt::new(0.0, 15.0) }));
+        let end = r.touch_with_scroll(1, Phase::Up, Pt::new(10.0, 45.0), 0.3, false);
+        assert!(!end.iter().any(|o| matches!(o, Out::Press(..) | Out::Release(..))));
     }
 
     #[test]

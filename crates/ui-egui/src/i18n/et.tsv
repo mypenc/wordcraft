@@ -80,6 +80,7 @@
 	Bold	Paks
 	Bookmark	Järjehoidja
 	Bookmark name:	Järjehoidja nimi:
+	Book Title	Raamatu pealkiri
 	Border Painter	Äärisepintsel
 	Border\nPainter	Äärise-\npintsel
 	Borders	Äärised
@@ -95,6 +96,7 @@
 	Cancel	Loobu
 	Capitalize Each Word	Iga sõna suure algustähega
 	Captions	Pealdised
+	Category	Kategooria
 	Cell Margins	Lahtri veerised
 	Cell Size	Lahtri suurus
 	Cell\nMargins	Lahtri\nveerised
@@ -150,6 +152,7 @@
 	Compare	Võrdle
 	Compress Pictures	Tihenda pildid
 	Continuous	Pidev
+	Contributors	Panustajad
 	Convert	Teisenda
 	Convert Text to Table	Teisenda tekst tabeliks
 	Convert Text to Table…	Teisenda tekst tabeliks…
@@ -237,6 +240,9 @@
 	Editor	Toimetaja
 	Effects	Efektid
 	Emboss	Reljeef
+	Emphasis	Rõhutus
+	Endnote Reference	Lõpumärkuse viide
+	Endnote Text	Lõpumärkuse tekst
 	Encrypt with Password	Krüpti parooliga
 	English (United States)	Inglise (Ameerika Ühendriigid)
 	Engrave	Süvend
@@ -277,6 +283,8 @@
 	Fonts	Fondid
 	Footer	Jalus
 	Footnote and Endnote	Allmärkus ja lõpumärkus
+	Footnote Reference	Allmärkuse viide
+	Footnote Text	Allmärkuse tekst
 	Footnotes	Allmärkused
 	Format	Vorming
 	Format Page Numbers	Vorminda leheküljenumbrid
@@ -318,6 +326,7 @@
 	Home	Avaleht
 	Horizontal	Rõhtne
 	Horizontal Line	Rõhtjoon
+	Hyperlink	Hüperlink
 	Hyphenation	Poolitus
 	Icons	Ikoonid
 	Ignore All	Eira kõiki
@@ -362,6 +371,9 @@
 	Insert\nCaption	Lisa\npealdis
 	Insert\nCitation	Lisa\nviide
 	Insert\nFootnote	Lisa\nallmärkus
+	Intense Emphasis	Intensiivne rõhutus
+	Intense Quote	Intensiivne tsitaat
+	Intense Reference	Intensiivne viide
 	Inside Borders	Siseäärised
 	Inside:	Sisemine:
 	Inspect Document	Kontrolli dokumenti
@@ -379,6 +391,7 @@
 	Keep with Next	Hoia järgmisega koos
 	Keep with next	Hoia järgmisega koos
 	Keeps the fonts and formatting of the copied text.	Säilitab kopeeritud teksti fondid ja vorminduse.
+	Keywords	Märksõnad
 	Labels	Sildid
 	Landscape	Rõhtpaigutus
 	Language	Keel
@@ -466,6 +479,7 @@
 	No Color	Värvita
 	No Markup	Märgistuseta
 	No Paragraph Space	Lõiguvaheta
+	No Spacing	Vahedeta
 	No contributor data was built into this copy.	Selles versioonis pole kaasautorite andmeid.
 	No model credits were built into this copy.	Selles versioonis pole mudelite autoriteavet.
 	No templates match your search.	Otsingule vastavaid malle pole.
@@ -574,6 +588,7 @@
 	Quick Access Toolbar	Kiirpääsuriba
 	Quick Parts	Kiirplokid
 	Quick Tables	Kiirtabelid
+	Quote	Tsitaat
 	Read Aloud	Loe ette
 	Read Mode	Lugemisrežiim
 	Read\nAloud	Loe\nette
@@ -733,6 +748,7 @@
 	Statistics	Statistika
 	Status Bar	Olekuriba
 	Strikethrough	Läbikriipsutus
+	Strong	Tugev
 	Studio cover	Stuudio esileht
 	Studio handbook (sample)	Stuudio käsiraamat (näidis)
 	Style	Stiil
@@ -742,7 +758,11 @@
 	Style: {style}	Stiil: {style}
 	Styles	Stiilid
 	Styles Pane	Stiilipaan
+	Subject	Teema
 	Subscript	Allindeks
+	Subtitle	Alapealkiri
+	Subtle Emphasis	Tagasihoidlik rõhutus
+	Subtle Reference	Tagasihoidlik viide
 	Superscript	Ülaindeks
 	Switch Modes	Vaheta režiimi
 	Switch\nModes	Vaheta\nrežiimi
@@ -788,6 +808,8 @@
 	Thick	Paks
 	Three	Kolm
 	Tight	Tihe
+	TOC Heading	Sisukorra pealkiri
+	TOC {n}	Sisukord {n}
 	Top Border	Ülemine ääris
 	Top of Page	Lehe ülaserv
 	Top:	Ülal:
@@ -1199,6 +1221,7 @@
 	First	Esimene
 	Last	Viimane
 	Model	Mudel
+	Models	Mudelid
 	Version	Versioon
 	% of all commits	% kõigist commitidest
 	Lines +/−	Read +/−
@@ -1334,6 +1357,7 @@
 	Index and Tables	Register ja tabelid
 	Line between	Joon vahel
 	Links and References	Lingid ja viited
+	List Paragraph	Loendilõik
 	Mail Merge	Kirjakooste
 	More Columns…	Rohkem veerge…
 	More Symbols…	Rohkem sümboleid…
@@ -1579,6 +1603,19 @@
 	Right (vertical)	Paremal (vertikaalne)
 	Ruby text:	Ruby-tekst:
 	Size (pt):	Suurus (pt):
+	Numerals:	Numbrid:
+	Numerals	Numbrid
+	Arabic	Araabia
+	Hindi	Hindi
+	Context	Kontekst
+	System	Süsteem
+	Couldn't make WordCraft the default: {error}	WordCrafti ei õnnestunud vaikerakenduseks määrata: {error}
+	In Default apps, choose WordCraft for the document types you want it to open.	Vali jaotises „Vaikerakendused“ WordCraft nende dokumenditüüpide jaoks, mida see peaks avama.
+	Make WordCraft the default for Word documents…	Määra WordCraft Wordi dokumentide vaikerakenduseks…
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	Edaspidi avatakse .docx-, .doc-, .rtf- ja .odt-failid ning Wordi mallid WordCraftiga.
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Avab Sätted › Vaikerakendused, kus saad valida WordCrafti .docx-i ja teiste dokumenditüüpide jaoks.
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	Wordi dokumentide vaikimisi avamiseks WordCraftiga vali Finderis üks dokument, vali Fail › Hangi teave, vali jaotises „Ava rakendusega“ WordCraft ja klõpsa „Muuda kõiki“.
+	WordCraft is now the default app for Word documents.	WordCraft on nüüd Wordi dokumentide vaikerakendus.
 	Templates	Mallid
 	Templates and Add-ins	Mallid ja lisandmoodulid
 	Attach Template	Manusta mall
@@ -1634,6 +1671,7 @@
 	Rotate all text 270°	Pööra kogu teksti 270°
 	Rotate all text 90°	Pööra kogu teksti 90°
 	Stacked	Virnas
+	Show KeyTips (Alt or F10)	Näita klahvivihjeid (Alt või F10)
 	Accessibility Pane	Ligipääsetavuse paan
 	Alt Text Pane	Asendusteksti paan
 	Alt\nText	Asendus-\ntekst
@@ -1667,6 +1705,10 @@
 	Continuous numbering	Pidev nummerdus
 	Apply	Rakenda
 	Convert Notes	Teisenda märkused
+	Reading	Lugemine
+	Reading Column Width	Lugemisveeru laius
+	Reading Line Spacing	Lugemise reavahe
+	Reading Text Size	Lugemisteksti suurus
 	Do Not Check Spelling or Grammar	Ära kontrolli õigekirja ega grammatikat
 	English (United Kingdom)	Inglise (Ühendkuningriik)
 	Polish	Poola
@@ -1980,7 +2022,6 @@
 	Add line numbering	Lisa reanummerdus
 	Add to Document	Lisa dokumenti
 	Address labels	Aadressisildid
-	Arabic	Araabia
 	Auto	Automaatne
 	Automatically hyphenate document	Poolita dokumenti automaatselt
 	Chinese (Simplified)	Hiina (lihtsustatud)

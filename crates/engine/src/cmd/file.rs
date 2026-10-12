@@ -233,8 +233,7 @@ fn export_png(s: &mut Session, v: &Value) -> CmdResult {
     let pg = l.pages.get(page).ok_or_else(|| CmdError::Params(format!("no page {}", page + 1)))?;
     let img = wordcraft_render::render_page(&s.doc, pg, scale, &Default::default());
     let png = img.to_png();
-    #[cfg(not(target_arch = "wasm32"))]
-    std::fs::write(path, &png).map_err(|e| CmdError::Failed(format!("{path}: {e}")))?;
+    crate::io::write_file(path, &png).map_err(CmdError::Failed)?;
     Ok(json!({"path": path, "width": img.width, "height": img.height, "bytes": png.len()}))
 }
 

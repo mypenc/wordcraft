@@ -152,7 +152,9 @@ fn nav(app: &mut WordApp, ui: &mut Ui) {
                 let mut job = egui::text::LayoutJob::default();
                 let fmt = |c| egui::TextFormat { font_id: regular(12.0), color: c, ..Default::default() };
                 job.append(pre, 0.0, fmt(ui.visuals().text_color()));
-                job.append(hit, 0.0, egui::TextFormat { font_id: semibold(12.0), background: egui::Color32::from_rgb(0xFF, 0xF1, 0x76), color: egui::Color32::BLACK, ..Default::default() });
+                // The match is marked the way Find marks it on the page, per theme (#656).
+                let mark = Tokens::get(ui.ctx()).find_highlight;
+                job.append(hit, 0.0, egui::TextFormat { font_id: semibold(12.0), background: mark, color: ui.visuals().text_color(), ..Default::default() });
                 job.append(post, 0.0, fmt(ui.visuals().text_color()));
                 job.wrap.max_width = ui.available_width();
                 if ui.add(egui::Button::new(job).frame(false)).clicked() {
@@ -183,17 +185,31 @@ fn nav(app: &mut WordApp, ui: &mut Ui) {
                 ui.label(egui::RichText::new(tl!("Create an interactive outline of your document.\n\nIt's a great way to keep track of where you are or quickly move your content around.\n\nTo get started, go to the Home tab and apply Heading styles to the headings in your document.")).weak());
             }
             for (i, (path, lv, txt)) in items.into_iter().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.add_space(lv as f32 * 14.0);
-                    let r = ui.selectable_label(current == Some(i), egui::RichText::new(txt).font(if lv == 0 { semibold(12.5) } else { regular(12.5) }));
-                    if r.clicked() {
-                        let _ = app.run("caret.set", json!({"pos": Pos { story: StoryRef::Body, path, off: 0 }}));
-                        app.canvas.want_focus = true;
-                    }
-                });
+                if nav_heading(ui, lv, &txt, current == Some(i)).clicked() {
+                    let _ = app.run("caret.set", json!({"pos": Pos { story: StoryRef::Body, path, off: 0 }}));
+                    // Align the chosen heading's page immediately against this pane, rather
+                    // than the indeterminate minimum movement from scroll_to_rect.
+                    app.canvas.nav_to_caret = true;
+                    app.canvas.scroll_to_caret = false;
+                    app.canvas.want_focus = true;
+                }
             }
         }
     });
+}
+
+/// Constrain each heading to the available pane width so long document text cannot
+/// enlarge the panel. The full heading stays accessible on hover.
+fn nav_heading(ui: &mut Ui, level: u8, text: &str, selected: bool) -> egui::Response {
+    ui.horizontal(|ui| {
+        ui.add_space(level as f32 * 14.0);
+        ui.add_sized(
+            vec2(ui.available_width(), ui.spacing().interact_size.y),
+            egui::Button::selectable(selected, egui::RichText::new(text).font(if level == 0 { semibold(12.5) } else { regular(12.5) })).truncate(),
+        )
+        .on_hover_text(text)
+    })
+    .inner
 }
 
 /// Items collected by Copy and Cut, newest first; clicking one pastes it at the caret.
@@ -688,4 +704,42 @@ fn camel_words(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod navigation_tests {
+    use super::*;
+
+    #[test]
+    fn long_headings_truncate_without_stretching_navigation() {
+        let text = "An extremely long heading with words that must stay inside the navigation pane ".repeat(20);
+        for (width, level) in [(260.0, 0), (180.0, 5)] {
+            let ctx = egui::Context::default();
+            crate::theme::install_fonts(&ctx);
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(900.0, 600.0));
+            let mut panel_rect = egui::Rect::NOTHING;
+            let mut heading_rect = egui::Rect::NOTHING;
+            let output = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| {
+                let result = egui::Panel::left("navigation_test")
+                    .default_size(width)
+                    .resizable(true)
+                    .show(ui, |ui| egui::ScrollArea::vertical().show(ui, |ui| nav_heading(ui, level, &text, true)).inner);
+                panel_rect = result.response.rect;
+                heading_rect = result.inner.rect;
+            });
+
+            assert!(panel_rect.width() < width + 20.0, "long heading expanded the {width}px pane to {panel_rect:?}");
+            assert!(heading_rect.max.x <= panel_rect.max.x, "heading escaped pane: {heading_rect:?} / {panel_rect:?}");
+            assert!(
+                output.shapes.iter().any(|s| match &s.shape {
+                    egui::Shape::Text(t) => {
+                        t.galley.elided && t.galley.rows.last().is_some_and(|r| r.row.glyphs.last().is_some_and(|g| g.chr == '…'))
+                    }
+                    _ => false,
+                }),
+                "long heading must render a trailing ellipsis at {width}px"
+            );
+            output.drop_without_applying_deltas();
+        }
+    }
 }

@@ -1,13 +1,22 @@
 //! The editing session: document, selection, undo/redo, layout, view state.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+
+/// The system locale (BCP 47 tag) the shell found at startup, for Numeral › System.
+static SYSTEM_LOCALE: OnceLock<String> = OnceLock::new();
+
+/// Tell the engine the system locale (the shell calls this once at startup; layout never reads
+/// the environment). Headless sessions without it show Western digits for Numeral › System.
+pub fn set_system_locale(tag: &str) {
+    let _ = SYSTEM_LOCALE.set(tag.to_string());
+}
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use wordcraft_doc::edit::Fragment;
 use wordcraft_doc::props::CharProps;
 use wordcraft_doc::{Document, Path, Pos, StoryRef};
-use wordcraft_layout::{DocLayout, LayoutCache, LayoutOptions, ViewMode};
+use wordcraft_layout::{DocLayout, LayoutCache, LayoutOptions, NumeralMode, ViewMode};
 
 use crate::{CmdError, Registry};
 
@@ -81,11 +90,27 @@ pub struct ViewState {
     /// Zoom to fit: "pageWidth", "onePage", "multiplePages", or empty.
     pub fit: String,
     pub web_width: f32,
+    /// Transient viewport metrics for reading pagination; never saved in a document or preferences.
+    #[serde(skip, default = "default_read_width")]
+    pub read_width: f32,
+    #[serde(skip, default = "default_read_height")]
+    pub read_height: f32,
+    /// Reader-only layout controls; they are neither document formatting nor saved UI prefs.
+    /// `None` chooses responsive column width and keeps the document's line spacing.
+    #[serde(skip)]
+    pub read_column_width: Option<f32>,
+    #[serde(skip, default = "default_read_zoom")]
+    pub read_zoom: f32,
+    #[serde(skip)]
+    pub read_line_spacing: Option<f32>,
     pub dark_mode: bool,
     pub show_markup: bool,
     pub track_changes_pane: bool,
     /// Check spelling and grammar as you type.
     pub proofing: bool,
+    /// How digits look on screen (Word › File › Options › Advanced › Numeral).
+    #[serde(default)]
+    pub numeral: NumeralMode,
     /// Review › Hide Ink: ink strokes aren't shown on screen (they stay in the document).
     #[serde(default)]
     pub hide_ink: bool,
@@ -112,6 +137,18 @@ fn on() -> bool {
     true
 }
 
+fn default_read_width() -> f32 {
+    300.0
+}
+
+fn default_read_height() -> f32 {
+    500.0
+}
+
+fn default_read_zoom() -> f32 {
+    1.0
+}
+
 impl Default for ViewState {
     fn default() -> Self {
         ViewState {
@@ -134,10 +171,16 @@ impl Default for ViewState {
             multi_page: false,
             fit: String::new(),
             web_width: 800.0,
+            read_width: default_read_width(),
+            read_height: default_read_height(),
+            read_column_width: None,
+            read_zoom: default_read_zoom(),
+            read_line_spacing: None,
             dark_mode: false,
             show_markup: true,
             track_changes_pane: false,
             proofing: true,
+            numeral: NumeralMode::default(),
             hide_ink: false,
             draw: Default::default(),
             field_codes: false,
@@ -232,6 +275,11 @@ pub struct Session {
     pub pending: Option<CharProps>,
     pub path: Option<std::path::PathBuf>,
     pub dirty: bool,
+    /// Where the custom dictionary is kept on disk, if the host wired one up. Only the desktop
+    /// app does: headless sessions (MCP, `wordcraft-cli run`), tests and the web build leave
+    /// `None`, so an agent's words stay in memory and never change the person's dictionary.
+    /// Add to Dictionary and File › Options › Proofing save through it (#40).
+    pub user_dict_path: Option<std::path::PathBuf>,
     pub clipboard: Option<Fragment>,
     /// A tracked cut the next paste can turn into a move (see `cmd::moves`).
     pub pending_move: Option<crate::cmd::moves::PendingMove>,
@@ -268,9 +316,21 @@ pub struct Session {
     /// mail merge, recover), never on an edit.
     document_id: u64,
     cache: LayoutCache,
-    /// (revision, web width, view, layout, proofing, outline, (deletions left out, body
-    /// deletions in balloons)).
-    layout: Option<(u64, f32, ViewMode, Arc<DocLayout>, bool, Option<wordcraft_layout::outline::OutlineView>, (bool, bool))>,
+    /// (revision, width, read height, view, read line spacing, layout, proofing, outline,
+    /// (deletions left out, body deletions in balloons), numeral display).
+    #[allow(clippy::type_complexity)]
+    layout: Option<(
+        u64,
+        f32,
+        f32,
+        ViewMode,
+        Option<u32>,
+        Arc<DocLayout>,
+        bool,
+        Option<wordcraft_layout::outline::OutlineView>,
+        (bool, bool),
+        NumeralMode,
+    )>,
     /// Picture edits: edited media key → original media key (Reset Picture).
     pub originals: std::collections::HashMap<String, String>,
     /// Last mutating command (Repeat).
@@ -416,6 +476,20 @@ fn doc_bib_style(doc: &Document) -> String {
 const MAX_UNDO: usize = 500;
 
 impl Session {
+    /// File name of the persisted custom dictionary inside the settings folder.
+    pub const USER_DICT_FILE: &str = "custom-dictionary.txt";
+
+    /// Save the custom dictionary through [`Session::user_dict_path`], if the host wired one up,
+    /// with `removed` (words just taken out) left out of the merge with the file. A failed save
+    /// keeps the words in memory and never fails the command (#40).
+    pub(crate) fn persist_user_dictionary(&self, removed: &[String]) {
+        if let Some(path) = self.user_dict_path.as_deref()
+            && let Err(e) = wordcraft_proof::save_user_dictionary(path, removed)
+        {
+            log::warn!("custom dictionary: save failed: {e}");
+        }
+    }
+
     pub fn new(doc: Document) -> Self {
         let start = doc.start_of(StoryRef::Body);
         let bib_style = doc_bib_style(&doc);
@@ -425,6 +499,7 @@ impl Session {
             view: ViewState::default(),
             pending: None,
             path: None,
+            user_dict_path: None,
             dirty: false,
             clipboard: None,
             pending_move: None,
@@ -566,36 +641,45 @@ impl Session {
 
     /// The current layout (recomputed when the document or view changed).
     pub fn layout(&mut self) -> Arc<DocLayout> {
-        let ww = self.view.web_width;
+        let mode = if self.view.read_mode { ViewMode::Read } else { self.view.mode };
+        let width = if self.view.read_mode { self.view.read_width } else { self.view.web_width };
+        let height = if self.view.read_mode { self.view.read_height } else { 0.0 };
+        let spacing = if self.view.read_mode { self.view.read_line_spacing.map(f32::to_bits) } else { None };
         // Deletions in balloons depend on the view (the Comments pane, Read Mode, side by side), so
         // a view change that moves them in or out of the text lays it out again.
         let hide_deleted = !self.view.show_markup || self.prefs.markup.hides_deletions();
         let deleted = (hide_deleted, self.revisions_in_balloons());
-        let outline = (self.view.mode == ViewMode::Outline).then(|| self.view.outline.view());
-        if let Some((r, w, m, l, pf, o, hd)) = &self.layout
+        let outline = (mode == ViewMode::Outline).then(|| self.view.outline.view());
+        if let Some((r, w, h, m, sp, l, pf, o, hd, n)) = &self.layout
             && *r == self.rev
-            && (*w == ww || self.view.mode == ViewMode::Print)
-            && *m == self.view.mode
+            && (*w == width || mode == ViewMode::Print)
+            && *h == height
+            && *m == mode
+            && *sp == spacing
             && *pf == self.view.proofing
+            && *n == self.view.numeral
             && *hd == deleted
             && *o == outline
         {
             return l.clone();
         }
         let opts = LayoutOptions {
-            view: self.view.mode,
-            web_width: ww,
+            view: mode,
+            web_width: width,
+            read_height: height,
+            read_line_spacing: spacing.map(f32::from_bits),
             show_hidden: self.view.marks || self.prefs.marks.hidden,
             hide_deleted,
             deletions_in_balloons: deleted.1,
             proofing: self.view.proofing,
+            numeral: self.view.numeral.resolve(SYSTEM_LOCALE.get().map(String::as_str)),
             comment_balloons: false,
             field_codes: self.view.field_codes,
             outline: outline.clone(),
             proof: wordcraft_layout::ProofOptions { grammar: self.prefs.mark_grammar, spelling: self.prefs.spelling() },
         };
         let l = Arc::new(wordcraft_layout::layout(&self.doc, &mut self.cache, &opts));
-        self.layout = Some((self.rev, ww, self.view.mode, l.clone(), self.view.proofing, outline, deleted));
+        self.layout = Some((self.rev, width, height, mode, spacing, l.clone(), self.view.proofing, outline, deleted, self.view.numeral));
         l
     }
     /// A layout for output (PDF, images, print): no proofing marks, print view.
@@ -780,6 +864,8 @@ impl Session {
             view: _,
             pending: _,
             path: _,
+            // The custom dictionary file, like the file path: host wiring, not an edit.
+            user_dict_path: _,
             dirty,
             clipboard: _,
             // Like the clipboard: what the next paste can make a move of.

@@ -171,7 +171,7 @@ pub fn insert(s: &mut Session, mut frag: Fragment) -> Result<(), CmdError> {
 }
 
 /// Every paragraph in a block, tables included (bounded depth).
-fn each_para(b: &mut Block, depth: usize, f: &mut dyn FnMut(&mut Paragraph)) {
+pub(crate) fn each_para(b: &mut Block, depth: usize, f: &mut dyn FnMut(&mut Paragraph)) {
     if depth > MAX_DEPTH {
         return;
     }
@@ -218,6 +218,11 @@ fn adopt(s: &mut Session, src: Document) -> Fragment {
         }
     }
     let mut blocks: Vec<Block> = src.body.iter().map(|b| (**b).clone()).collect();
+    // Pasted pictures fit our text width, like Insert › Pictures (layout keeps their size).
+    let max_w = crate::io::text_width(&s.doc);
+    for b in &mut blocks {
+        crate::io::fit_block_pictures(b, max_w);
+    }
     for b in &mut blocks {
         each_para(b, 0, &mut |p| {
             if let Some(n) = p.props.numbering.as_mut()

@@ -718,3 +718,39 @@ fn plain_text_paste_keeps_an_empty_paragraph_in_a_list() {
     typ(&mut s, "A\n\nB");
     assert_eq!(paras(&s), vec![para("A", Some(0)), para("B", None)]);
 }
+
+/// #713: Arabic or Hebrew typed into an empty paragraph makes it right-to-left; a paragraph that
+/// already has letters, or whose style sets a direction, keeps its own.
+#[test]
+fn typing_rtl_letters_into_an_empty_paragraph_makes_it_rtl() {
+    let bidi = |s: &Session, i: usize| s.doc.body.iter().filter_map(|b| b.as_para()).nth(i).and_then(|p| p.props.bidi);
+    // Empty paragraph: the first Arabic letter flips it, the rest keep it.
+    let s = typed("سلام");
+    assert_eq!(bidi(&s, 0), Some(true));
+    // Digits first, then Arabic: still no letters before, so it flips.
+    let s = typed("1. سلام");
+    assert_eq!(bidi(&s, 0), Some(true));
+    // Latin first: Arabic typed later doesn't flip the paragraph.
+    let s = typed("Hello سلام");
+    assert_eq!(bidi(&s, 0), None);
+    // A new paragraph after an RTL one starts its own detection.
+    let s = typed("سلام\nHello");
+    assert_eq!(bidi(&s, 1), Some(true), "Enter carries the paragraph's direction on, as in Word");
+    // A style that sets left-to-right wins.
+    let mut doc = Session::new(wordcraft_doc::Document::new());
+    if let Some(st) = doc.doc.styles.get_mut("Normal") {
+        st.para.bidi = Some(false);
+    }
+    typ(&mut doc, "سلام");
+    assert_eq!(bidi(&doc, 0), None);
+    // An opened paragraph without w:bidi lays out left-to-right whatever its text: the caret
+    // after the Arabic word sits near the left margin, not the right one.
+    let mut doc = typed("سلام");
+    let path = doc.sel.focus.path.clone();
+    if let Ok(p) = doc.doc.para_mut(StoryRef::Body, &path) {
+        p.props.bidi = None;
+        p.touch();
+    }
+    let x = doc.layout().caret(&doc.sel.focus).map(|c| c.x).unwrap_or(f32::MAX);
+    assert!(x < 300.0, "left-to-right paragraph: caret at {x}");
+}

@@ -1,7 +1,7 @@
 //! View tab and status bar: views, zoom, show/hide, panes.
 
 use serde_json::{Value, json};
-use wordcraft_layout::ViewMode;
+use wordcraft_layout::{NumeralMode, ViewMode};
 
 use super::sel_result;
 use crate::{CmdError, CmdResult, CommandSpec, Session, p};
@@ -27,6 +27,15 @@ pub fn specs() -> Vec<CommandSpec> {
         // The body as an outline of its headings, with the Outlining tab (`outline.*`).
         CommandSpec::new("view.outline", "Outline", "View › Views", |s, _| mode(s, ViewMode::Outline, false)).key("Mod+Alt+O").pure(),
         CommandSpec::new("view.readMode", "Read Mode", "View › Views", |s, _| mode(s, ViewMode::Print, true)).pure(),
+        CommandSpec::new("view.readColumnWidth", "Reading Column Width", "Reading › Layout", read_column_width)
+            .params(r#"{"value": "auto" | "narrow" | "medium" | "wide" | "page"}"#)
+            .pure(),
+        CommandSpec::new("view.readTextSize", "Reading Text Size", "Reading › Layout", read_text_size)
+            .params(r#"{"value": percent (75–150)}"#)
+            .pure(),
+        CommandSpec::new("view.readLineSpacing", "Reading Line Spacing", "Reading › Layout", read_line_spacing)
+            .params(r#"{"value": "document" | 1.0 | 1.25 | 1.5 | 2.0}"#)
+            .pure(),
         // Print Layout: hide the white space (margins, headers, footers) between pages. Screen only.
         CommandSpec::new("view.hideWhiteSpace", "Hide White Space", "View › Show", |s, v| toggle(s, v, |x| &mut x.hide_white_space))
             .params(r#"{"value"?: bool}"#)
@@ -83,14 +92,71 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("view.state", "View State", "View", |s, _| serde_json::to_value(&s.view).map_err(|e| CmdError::Failed(e.to_string())))
             .pure(),
+        // Word › File › Options › Advanced › Numeral: how digits look on screen (display
+        // only; the document text keeps the typed codepoints).
+        CommandSpec::new("view.numeral", "Numerals", "File › Options › Advanced", |s, v| match v.get("value") {
+            None => Ok(json!({"value": s.view.numeral})),
+            Some(Value::String(name)) => {
+                let Some(mode) = NumeralMode::parse(name) else {
+                    return Err(CmdError::Params("numeral mode: arabic|hindi|context|system".into()));
+                };
+                s.view.numeral = mode;
+                s.relayout();
+                Ok(json!({"value": s.view.numeral}))
+            }
+            Some(_) => Err(CmdError::Params("numeral mode: arabic|hindi|context|system".into())),
+        })
+        .params(r#"{"value"?: "arabic|hindi|context|system"}"#)
+        .pure(),
     ]
 }
 
 fn mode(s: &mut Session, m: ViewMode, read: bool) -> CmdResult {
+    if read && !s.view.read_mode {
+        // Reading controls are session-only, and reset on each entry to the view.
+        s.view.read_column_width = None;
+        s.view.read_zoom = 1.0;
+        s.view.read_line_spacing = None;
+    }
     s.view.mode = m;
     s.view.read_mode = read;
     s.relayout();
     Ok(json!({"mode": m, "readMode": read}))
+}
+
+fn read_column_width(s: &mut Session, v: &Value) -> CmdResult {
+    let width = match v.get("value").and_then(Value::as_str) {
+        Some("auto") => None,
+        Some("narrow") => Some(180.0),
+        Some("medium") => Some(240.0),
+        Some("wide") => Some(350.0),
+        Some("page") => Some(612.0),
+        _ => return Err(CmdError::Params("column width must be auto, narrow, medium, wide, or page".into())),
+    };
+    s.view.read_column_width = width;
+    Ok(json!({"width": width}))
+}
+
+fn read_text_size(s: &mut Session, v: &Value) -> CmdResult {
+    let Some(pct) = v.get("value").and_then(Value::as_f64) else {
+        return Err(CmdError::Params("reading text size must be a percentage".into()));
+    };
+    if !pct.is_finite() || !(75.0..=150.0).contains(&pct) {
+        return Err(CmdError::Params("reading text size must be 75–150%".into()));
+    }
+    s.view.read_zoom = pct as f32 / 100.0;
+    Ok(json!({"percent": pct}))
+}
+
+fn read_line_spacing(s: &mut Session, v: &Value) -> CmdResult {
+    let value = v.get("value");
+    let spacing = match value {
+        Some(Value::String(s)) if s == "document" => None,
+        Some(Value::Number(n)) if matches!(n.as_f64(), Some(1.0 | 1.25 | 1.5 | 2.0)) => n.as_f64().map(|n| n as f32),
+        _ => return Err(CmdError::Params("reading line spacing must be document, 1, 1.25, 1.5, or 2".into())),
+    };
+    s.view.read_line_spacing = spacing;
+    Ok(json!({"spacing": spacing}))
 }
 
 fn zoom(s: &mut Session, v: &Value) -> CmdResult {

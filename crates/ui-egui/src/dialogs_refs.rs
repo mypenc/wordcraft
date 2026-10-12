@@ -590,10 +590,7 @@ fn mark_ui(app: &mut WordApp, ui: &mut Ui, f: &mut MarkForm) -> Next {
                     Err(e) => e,
                 };
             }
-            if ui
-                .add_enabled(can, egui::Button::new(egui::RichText::new(tl!("Mark")).color(egui::Color32::WHITE)).fill(crate::theme::APP_COLOR))
-                .clicked()
-            {
+            if ui.add_enabled(can, crate::widgets::primary_button(ui, tl!("Mark"))).clicked() {
                 f.message = match app.run("references.markEntry", f.params(false)) {
                     Ok(_) => tl!("Entry marked.").to_string(),
                     Err(e) => e,

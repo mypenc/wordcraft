@@ -163,6 +163,7 @@
 	Bold	Negrita
 	Bookmark	Marcador
 	Bookmark name:	Nombre del marcador:
+	Book Title	Título de libro
 	Border Painter	Pincel de bordes
 	Border\nPainter	Pincel de\nbordes
 	Borders	Bordes
@@ -211,6 +212,7 @@
 	Cancel	Cancelar
 	Capitalize Each Word	Mayúscula inicial en cada palabra
 	Captions	Leyendas
+	Category	Categoría
 	Cell Margins	Márgenes de celda
 	Cell Size	Tamaño de celda
 	Cell\nMargins	Márgenes de\ncelda
@@ -273,6 +275,7 @@
 	Compress Pictures	Comprimir imágenes
 	Compress punctuation at the start of a line	Comprimir la puntuación al inicio de la línea
 	Continuous	Continuo
+	Contributors	Colaboradores
 	Convert	Convertir
 	Convert Text to Table	Convertir texto en tabla
 	Convert Text to Table…	Convertir texto en tabla…
@@ -280,6 +283,7 @@
 	Copy	Copiar
 	Copy Formatting	Copiar formato
 	Corrections	Correcciones
+	Couldn't make WordCraft the default: {error}	No se pudo hacer de WordCraft la aplicación predeterminada: {error}
 	Count words in text boxes and notes	Contar las palabras de los cuadros de texto y las notas
 	Cover Page	Portada
 	Create	Crear
@@ -364,6 +368,9 @@
 	Editor	Editor
 	Effects	Efectos
 	Emboss	Relieve
+	Emphasis	Énfasis
+	Endnote Reference	Referencia de nota al final
+	Endnote Text	Texto de nota al final
 	Encrypt with Password	Cifrar con contraseña
 	English (United States)	Inglés (Estados Unidos)
 	Engrave	Grabado
@@ -404,6 +411,8 @@
 	Fonts	Fuentes
 	Footer	Pie de página
 	Footnote and Endnote	Nota al pie y nota final
+	Footnote Reference	Referencia de nota al pie
+	Footnote Text	Texto de nota al pie
 	Footnotes	Notas al pie
 	Format	Formato
 	Format Page Numbers	Formato de números de página
@@ -442,6 +451,7 @@
 	Home	Inicio
 	Horizontal	Horizontal
 	Horizontal Line	Línea horizontal
+	Hyperlink	Hipervínculo
 	Hyphenation	Separación de palabras
 	Icons	Iconos
 	Ignore All	Omitir todo
@@ -449,6 +459,7 @@
 	Immersive	Inmersivo
 	Immersive Reader	Lector inmersivo
 	Immersive\nReader	Lector\ninmersivo
+	In Default apps, choose WordCraft for the document types you want it to open.	En Aplicaciones predeterminadas, elige WordCraft para los tipos de documento que quieras que abra.
 	Increase Font Size	Aumentar tamaño de fuente
 	Increase Indent	Aumentar sangría
 	Indent	Sangría
@@ -482,6 +493,9 @@
 	Insert\nCaption	Insertar\nleyenda
 	Insert\nCitation	Insertar\ncita
 	Insert\nFootnote	Insertar nota\nal pie
+	Intense Emphasis	Énfasis intenso
+	Intense Quote	Cita intensa
+	Intense Reference	Referencia intensa
 	Inside Borders	Bordes interiores
 	Inspect Document	Inspeccionar documento
 	Inspect Styles at Selection	Inspeccionar estilos de la selección
@@ -496,6 +510,7 @@
 	Keep with Next	Mantener con el siguiente
 	Keep with next	Mantener con el siguiente
 	Keeps the fonts and formatting of the copied text.	Conserva las fuentes y el formato del texto copiado.
+	Keywords	Palabras clave
 	Labels	Etiquetas
 	Landscape	Horizontal
 	Language	Idioma
@@ -531,6 +546,7 @@
 	MIT OR Apache-2.0. Copyright (c) 2026 ArtCraft Team and the WordCraft contributors.	MIT o Apache-2.0. Copyright (c) 2026 ArtCraft Team y los colaboradores de WordCraft.
 	Macros	Macros
 	Mailings	Correspondencia
+	Make WordCraft the default for Word documents…	Hacer de WordCraft la aplicación predeterminada para documentos de Word…
 	Manage Sources	Administrar fuentes
 	Many pages	Varias páginas
 	Margins	Márgenes
@@ -578,6 +594,7 @@
 	No Color	Sin color
 	No Markup	Sin marcas
 	No Paragraph Space	Sin espacio entre párrafos
+	No Spacing	Sin espaciado
 	No contributor data was built into this copy.	Esta copia no incluye datos de colaboradores.
 	No model credits were built into this copy.	Esta copia no incluye créditos de modelos.
 	No templates match your search.	Ninguna plantilla coincide con la búsqueda.
@@ -602,6 +619,8 @@
 	One Page	Una página
 	Open	Abrir
 	OpenDocument Text (*.odt)	Texto de OpenDocument (*.odt)
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	A partir de ahora, los archivos .docx, .doc, .rtf y .odt y las plantillas de Word se abren con WordCraft.
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Abre Configuración › Aplicaciones predeterminadas, donde eliges WordCraft para .docx y los demás tipos de documento.
 	Optional Hyphen	Guion opcional
 	Copyright Sign	Signo de copyright
 	Ellipsis	Puntos suspensivos
@@ -686,6 +705,7 @@
 	Quick Access Toolbar	Barra de herramientas de acceso rápido
 	Quick Parts	Elementos rápidos
 	Quick Tables	Tablas rápidas
+	Quote	Cita
 	Read Aloud	Leer en voz alta
 	Read Mode	Modo lectura
 	Read\nAloud	Leer en\nvoz alta
@@ -848,6 +868,7 @@
 	Statistics	Estadísticas
 	Status Bar	Barra de estado
 	Strikethrough	Tachado
+	Strong	Fuerte
 	Studio cover	Portada de Studio
 	Studio handbook (sample)	Manual de Studio (ejemplo)
 	Style	Estilo
@@ -857,7 +878,11 @@
 	Style: {style}	Estilo: {style}
 	Styles	Estilos
 	Styles Pane	Panel de estilos
+	Subject	Asunto
 	Subscript	Subíndice
+	Subtitle	Subtítulo
+	Subtle Emphasis	Énfasis sutil
+	Subtle Reference	Referencia sutil
 	Superscript	Superíndice
 	Switch Modes	Cambiar de modo
 	Switch\nModes	Cambiar\nde modo
@@ -903,6 +928,9 @@
 	Thick	Gruesa
 	Three	Tres
 	Tight	Ajustado
+	TOC Heading	Título de tabla de contenido
+	TOC {n}	Tabla de contenido {n}
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	Para abrir los documentos de Word con WordCraft de forma predeterminada: selecciona uno en el Finder, elige Archivo › Obtener información, selecciona WordCraft en «Abrir con» y haz clic en «Cambiar todo».
 	Top Border	Borde superior
 	Top Margin	Margen superior
 	Top of Page	Parte superior de la página
@@ -963,6 +991,7 @@
 	Word XML Document (*.xml)	Documento XML de Word (*.xml)
 	WordArt	WordArt
 	WordCraft	WordCraft
+	WordCraft is now the default app for Word documents.	WordCraft es ahora la aplicación predeterminada para los documentos de Word.
 	Words	Palabras
 	Words only	Solo palabras
 	Wrap Text	Ajustar texto
@@ -1244,6 +1273,7 @@
 	Index and Tables	Índices y tablas
 	Line between	Línea entre columnas
 	Links and References	Vínculos y referencias
+	List Paragraph	Párrafo de lista
 	Mail Merge	Combinar correspondencia
 	More Columns…	Más columnas…
 	More Symbols…	Más símbolos…
@@ -1365,6 +1395,7 @@
 	First	Primero
 	Last	Último
 	Model	Modelo
+	Models	Modelos
 	Version	Versión
 	% of all commits	% de todos los commits
 	Lines +/−	Líneas +/−
@@ -1641,6 +1672,12 @@
 	Enlarge symbol	Agrandar símbolo
 	Enclosure	Contorno
 	Circle	Círculo
+	Numerals:	Números:
+	Numerals	Números
+	Arabic	Árabe
+	Hindi	Hindi
+	Context	Contexto
+	System	Sistema
 	Templates	Plantillas
 	Templates and Add-ins	Plantillas y complementos
 	Attach Template	Adjuntar plantilla
@@ -1694,6 +1731,7 @@
 	Middle	En medio
 	Click the empty text box the text should continue in (Esc cancels)	Haga clic en el cuadro de texto vacío donde debe continuar el texto (Esc cancela)
 	Not linked: click a text box	Sin vincular: haga clic en un cuadro de texto
+	Show KeyTips (Alt or F10)	Mostrar sugerencias de teclas (Alt o F10)
 	Location	Ubicación
 	Endnotes	Notas finales
 	Below text	Debajo del texto
@@ -1706,6 +1744,10 @@
 	Continuous numbering	Numeración continua
 	Apply	Aplicar
 	Convert Notes	Convertir notas
+	Reading	Lectura
+	Reading Column Width	Ancho de columna de lectura
+	Reading Line Spacing	Interlineado de lectura
+	Reading Text Size	Tamaño del texto de lectura
 	English (United Kingdom)	Inglés (Reino Unido)
 	Polish	Polaco
 	Do Not Check Spelling or Grammar	No revisar la ortografía ni la gramática
@@ -1986,7 +2028,6 @@
 	Add line numbering	Agregar numeración de líneas
 	Add to Document	Agregar al documento
 	Address labels	Etiquetas de dirección
-	Arabic	Árabe
 	Auto	Auto
 	Automatically hyphenate document	Separar palabras automáticamente en el documento
 	Chinese (Simplified)	Chino (simplificado)

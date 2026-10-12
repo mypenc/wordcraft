@@ -300,11 +300,44 @@ fn hidden_heading_text_stays_out_of_bookmarks_and_tags() {
     }
 }
 
+/// The CPU time `f` takes on this thread, in seconds. On Linux it is the scheduler's count of the
+/// time the thread actually ran, so the time it waits while other work on a busy machine has the
+/// CPU is left out; elsewhere, wall-clock time.
+fn cpu_cost(f: &mut impl FnMut()) -> f64 {
+    let ran = || {
+        let s = std::fs::read_to_string("/proc/thread-self/schedstat").ok()?;
+        s.split_whitespace().next()?.parse::<u64>().ok()
+    };
+    let (t, before) = (std::time::Instant::now(), ran());
+    f();
+    match (before, ran()) {
+        (Some(a), Some(b)) => b.saturating_sub(a) as f64 * 1e-9,
+        _ => t.elapsed().as_secs_f64(),
+    }
+}
+
+/// How much more `big` costs than `small`, for `big` an input `scale` times the size of `small`'s:
+/// (small, big, big / small), ~`scale` when linear and ~`scale`² when quadratic. Each is the
+/// cheapest of several runs after a warm-up, the runs alternating so a busy spell slows both sizes
+/// alike; `small` is timed `scale` times over per run, so both timings are long against the clock's
+/// resolution.
+fn cost_ratio(scale: usize, mut small: impl FnMut(), mut big: impl FnMut()) -> (f64, f64, f64) {
+    small();
+    big();
+    let mut small_scaled = || (0..scale).for_each(|_| small());
+    let (mut t1, mut tk) = (f64::INFINITY, f64::INFINITY);
+    for _ in 0..5 {
+        t1 = t1.min(cpu_cost(&mut small_scaled) / scale as f64);
+        tk = tk.min(cpu_cost(&mut big));
+    }
+    (t1, tk, tk / t1.max(1e-9))
+}
+
 #[test]
 fn long_fragmented_hidden_headings_export_in_linear_time() {
     // Headings of n chars in one-char runs: all hidden with bold alternating, and hidden and visible
     // alternating. Layout and the bookmark/tag titles once scanned every left-out range for every
-    // char, quadratic in n. Machine-independent: the time for 4n against n, linear ~4, quadratic ~16.
+    // char, quadratic in n. Machine-independent: the cost for 8n against n, linear ~8, quadratic ~64.
     let doc = |n: usize| {
         let heading = |visible_every_other: bool| {
             let mut h = Paragraph::with_text(&"abcdefg ".repeat(n / 8), CharProps::default()).styled("Heading1");
@@ -321,23 +354,19 @@ fn long_fragmented_hidden_headings_export_in_linear_time() {
         d
     };
     let opts = PdfOptions { compress: false, ..Default::default() };
-    // The fastest of a few runs, after a warm-up, so one slow run on a busy machine counts less.
-    let fastest = |d: &Document| {
-        (0..3)
-            .map(|_| {
-                let t = std::time::Instant::now();
-                export(d, &opts).unwrap();
-                t.elapsed().as_secs_f64()
-            })
-            .fold(f64::INFINITY, f64::min)
-    };
-    let n = 25_000;
-    let (small, big) = (doc(n), doc(4 * n));
-    export(&small, &opts).unwrap();
-    let (t1, t4) = (fastest(&small), fastest(&big));
-    let ratio = t4 / t1.max(1e-9);
-    eprintln!("t(n) {t1:.3} s, t(4n) {t4:.3} s, ratio {ratio:.1}");
-    assert!(ratio < 8.0, "4x the text took {ratio:.1}x the time ({t1:.3} s → {t4:.3} s): not linear");
+    let n = 12_500;
+    let (small, big) = (doc(n), doc(8 * n));
+    let (t1, t8, ratio) = cost_ratio(
+        8,
+        || {
+            export(&small, &opts).unwrap();
+        },
+        || {
+            export(&big, &opts).unwrap();
+        },
+    );
+    eprintln!("t(n) {t1:.3} s, t(8n) {t8:.3} s, ratio {ratio:.1}");
+    assert!(ratio < 24.0, "8x the text took {ratio:.1}x the time ({t1:.3} s → {t8:.3} s): not linear");
     let pdf = String::from_utf8_lossy(&export(&big, &opts).unwrap()).into_owned();
     // The all-hidden heading has no bookmark; the other is titled with its visible chars only.
     assert!(!pdf.contains("abcd"), "hidden heading text in a title");

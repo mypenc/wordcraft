@@ -10,9 +10,10 @@
 //!   Kotlin's system pickers ([`bridge`]): Open copies the document into the app's folder; Save
 //!   writes there and `Exports.kt` mirrors it to the file the user named.
 //! * **Input.** Fingers become mouse events in `wordcraft_ui_egui::touch` (long press = right
-//!   click, two fingers scroll, pinch zooms…) plus an on-screen Shift/Ctrl/Alt/Space bar (Help ▸
-//!   Touch Bar hides it); a mouse and keyboard reach egui through the patched winit
-//!   (`android/patches/`), whose soft-keyboard text events also feed the editor.
+//!   click, two fingers scroll, one finger scrolls on the canvas background, pinch zooms…) plus
+//!   an on-screen Shift/Ctrl/Alt/Space bar and keyboard toggle (Help ▸ Touch Bar hides the bar);
+//!   a mouse and keyboard reach egui through the patched winit (`android/patches/`), whose
+//!   soft-keyboard text and cursor events also feed the editor.
 //! * **Clipboard.** egui-winit has none on Android (it falls back to an in-app one), so Copy and
 //!   Cut are mirrored to the system clipboard and the ribbon's Paste reads it.
 //! * **No** window geometry, control server, native print, drag and drop or title bar.
@@ -168,7 +169,7 @@ struct AndroidHost {
 
 impl eframe::App for AndroidHost {
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
-        self.app.touch.process(ctx, raw);
+        self.app.touch.process(ctx, raw, self.app.canvas.canvas_rect, &self.app.canvas.page_rects);
         self.app.raw_input_hook(raw);
     }
 
@@ -192,11 +193,14 @@ impl eframe::App for AndroidHost {
         self.app.ui(ui);
         let ctx = ui.ctx().clone();
         self.app.touch_frame(&ctx);
-        // The on-screen bar's keyboard button. (Focusing the page raises the keyboard by itself:
-        // the editor publishes an IME rect, egui-winit calls `set_ime_allowed`, and winit
-        // forwards that to `show_soft_input`.)
+        self.app.touch.show_keyboard_toggle(&ctx);
+        // Focusing the page raises the keyboard by itself; this button also lets the user hide it.
         if std::mem::take(&mut self.app.touch.keyboard_request) {
-            self.android.show_soft_input(false);
+            match bridge::soft_keyboard_visible(&self.android) {
+                Some(true) => bridge::hide_soft_keyboard(&self.android),
+                Some(false) => self.android.show_soft_input(false),
+                None => log::warn!("could not determine whether the Android keyboard is visible"),
+            }
         }
         // Copy / Cut → the system clipboard.
         let copied = ctx.output(|o| {

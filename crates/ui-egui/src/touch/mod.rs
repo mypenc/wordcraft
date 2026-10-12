@@ -7,7 +7,7 @@
 //! * a long press becomes a right click, so every context menu works;
 //! * a tap or drag becomes a left click or drag (the press is deferred until it is known not
 //!   to be a long press);
-//! * two fingers scroll, pinch zooms (egui's own multi-touch, which this layer leaves alone),
+//! * two fingers scroll, one finger scrolls on the canvas background, pinch zooms (egui's own multi-touch, which this layer leaves alone),
 //!   a quick two-finger tap undoes and a three-finger tap redoes;
 //! * an on-screen bar holds the keys a finger can't: Shift, Ctrl, Alt and Space (sticky, and
 //!   double-tap to lock), plus Delete, Esc, Enter, Undo, Redo and the soft keyboard.
@@ -44,7 +44,7 @@ pub struct Touch {
     pub enabled: bool,
     /// Show the on-screen modifier bar.
     pub bar_visible: bool,
-    /// The user asked for the soft keyboard (the host shows it).
+    /// The user asked to toggle the soft keyboard.
     pub keyboard_request: bool,
     rec: Recognizer,
     queue: VecDeque<Event>,
@@ -89,7 +89,7 @@ impl Touch {
     }
 
     /// Run from `raw_input_hook`, before egui sees this frame's input.
-    pub fn process(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+    pub fn process(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput, canvas: Option<egui::Rect>, pages: &[egui::Rect]) {
         let now = raw.time.unwrap_or_else(|| ctx.input(|i| i.time));
         let mut outs = Vec::new();
         let mut touch_frame = false;
@@ -108,7 +108,10 @@ impl Touch {
                     TouchPhase::End => Phase::Up,
                     TouchPhase::Cancel => Phase::Cancel,
                 };
-                outs.extend(self.rec.touch(id.0, phase, Pt::new(pos.x, pos.y), now));
+                let scroll_on_drag = phase == Phase::Down
+                    && canvas.is_some_and(|r| r.contains(*pos))
+                    && !pages.iter().any(|r| r.contains(*pos));
+                outs.extend(self.rec.touch_with_scroll(id.0, phase, Pt::new(pos.x, pos.y), now, scroll_on_drag));
             }
         }
         if self.enabled {
@@ -271,6 +274,10 @@ impl Touch {
                             });
                         }
                         ui.separator();
+                        // Enter stays even when the bar is collapsed: the soft keyboard has none.
+                            if ui.add(egui::Button::new("Enter").min_size(min)).on_hover_text("Enter").clicked() {
+                                self.key(Key::Enter, Modifiers::NONE);
+                            }
                         if !self.collapsed {
                             if ui.add(egui::Button::new("Undo").min_size(min)).on_hover_text("Undo").clicked() {
                                 self.actions.push(Action::Undo);
@@ -284,18 +291,27 @@ impl Touch {
                             if ui.add(egui::Button::new("Esc").min_size(min)).clicked() {
                                 self.key(Key::Escape, Modifiers::NONE);
                             }
-                            if ui.add(egui::Button::new("Enter").min_size(min)).on_hover_text("Enter").clicked() {
-                                self.key(Key::Enter, Modifiers::NONE);
-                            }
-                            if ui.add(egui::Button::new("Keys").min_size(min)).on_hover_text("Soft keyboard").clicked() {
-                                self.keyboard_request = true;
-                            }
                         }
                         if ui.add(egui::Button::new(if self.collapsed { ">" } else { "<" }).min_size(min)).on_hover_text("Collapse").clicked() {
                             self.collapsed = !self.collapsed;
                         }
                     });
                 });
+            });
+    }
+
+    /// Keep a keyboard toggle visible above the system IME, which can cover the bottom bar.
+    pub fn show_keyboard_toggle(&mut self, ctx: &egui::Context) {
+        if !self.enabled {
+            return;
+        }
+        egui::Area::new(egui::Id::new("wordcraft_touch_keyboard"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, 72.0))
+            .show(ctx, |ui| {
+                if ui.button("Keyboard").on_hover_text("Show or hide the on-screen keyboard").clicked() {
+                    self.keyboard_request = true;
+                }
             });
     }
 }
@@ -328,7 +344,7 @@ mod tests {
 
     fn run(t: &mut Touch, ctx: &egui::Context, mut frames: Vec<egui::RawInput>) -> Vec<egui::RawInput> {
         for f in &mut frames {
-            t.process(ctx, f);
+            t.process(ctx, f, None, &[]);
         }
         frames
     }
@@ -385,6 +401,29 @@ mod tests {
         let out = run(&mut t, &ctx, frames);
         assert_eq!(clicks(&out, PointerButton::Primary), 1);
         assert!(out.iter().flat_map(|r| &r.events).any(|e| matches!(e, Event::Touch { .. })), "multi-touch needs the raw touches");
+    }
+
+    #[test]
+    fn one_finger_scrolls_canvas_gutters_but_keeps_page_drags_for_selection() {
+        let ctx = egui::Context::default();
+        let canvas = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(300.0, 400.0));
+        let page = egui::Rect::from_min_size(Pos2::new(80.0, 40.0), Vec2::new(140.0, 220.0));
+        let mut touch = Touch::new();
+        touch.enabled = true;
+
+        let mut start = raw(0.0, vec![touch_event(1, TouchPhase::Start, 20.0, 100.0)]);
+        touch.process(&ctx, &mut start, Some(canvas), &[page]);
+        let mut move_bg = raw(0.1, vec![touch_event(1, TouchPhase::Move, 20.0, 130.0)]);
+        touch.process(&ctx, &mut move_bg, Some(canvas), &[page]);
+        assert!(move_bg.events.iter().any(|e| matches!(e, Event::MouseWheel { .. })), "canvas gutter drag scrolls");
+        let mut end_bg = raw(0.2, vec![touch_event(1, TouchPhase::End, 20.0, 130.0)]);
+        touch.process(&ctx, &mut end_bg, Some(canvas), &[page]);
+
+        let mut page_start = raw(1.0, vec![touch_event(2, TouchPhase::Start, 100.0, 100.0)]);
+        touch.process(&ctx, &mut page_start, Some(canvas), &[page]);
+        let mut page_move = raw(1.1, vec![touch_event(2, TouchPhase::Move, 100.0, 130.0)]);
+        touch.process(&ctx, &mut page_move, Some(canvas), &[page]);
+        assert!(!page_move.events.iter().any(|e| matches!(e, Event::MouseWheel { .. })), "page drag remains a selection gesture");
     }
 
     #[test]

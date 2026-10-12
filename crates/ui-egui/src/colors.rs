@@ -513,7 +513,7 @@ fn body(ui: &mut Ui, d: &mut ColorsDialog) -> Option<bool> {
             if ui.button(tl!("Cancel")).clicked() {
                 out = Some(false);
             }
-            let okb = ui.add(egui::Button::new(egui::RichText::new(tl!("OK")).color(Color32::WHITE)).fill(crate::theme::APP_COLOR));
+            let okb = ui.add(crate::widgets::primary_button(ui, tl!("OK")));
             let typing = ui.ctx().memory(|m| m.focused().is_some());
             if okb.clicked() || (!typing && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
                 out = Some(true);

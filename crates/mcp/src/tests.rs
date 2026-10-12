@@ -107,3 +107,15 @@ fn render_and_screenshot_through_the_app_use_no_temp_file() {
         assert!(params.get("path").is_none(), "{tool} asked for a file: {params}");
     }
 }
+
+/// #40: a headless session never reads or writes the person's custom dictionary file: an agent's
+/// Add to Dictionary stays in memory (only the desktop app saves the dictionary).
+#[test]
+fn headless_sessions_keep_the_dictionary_in_memory() {
+    let mut h = Headless::default();
+    assert!(h.session.user_dict_path.is_none());
+    let mut s = Server::new(Box::new(Headless::default()));
+    tool(&mut s, "execute", json!({"command": "review.addToDictionary", "params": {"word": "zxqmcpword"}}));
+    h.session.run("review.addToDictionary", &json!({"word": "zxqmcpword2"})).expect("added");
+    assert!(h.session.user_dict_path.is_none());
+}

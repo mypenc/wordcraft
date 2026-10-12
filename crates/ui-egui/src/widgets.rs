@@ -8,7 +8,17 @@ use crate::{WordApp, icons};
 
 /// Height of the ribbon content area (without group labels).
 pub const CONTENT_H: f32 = 66.0;
-pub const LABEL_H: f32 = 16.0;
+/// Height of the group title row under the content.
+pub const LABEL_H: f32 = 18.0;
+/// Large buttons: centre of the 32 px icon, top of the first label line, and the pitch and
+/// height of a label line (`regular(11.5)`; a test checks the font's real line height).
+pub const BIG_ICON_Y: f32 = 18.0;
+pub const BIG_LABEL_Y: f32 = 36.0;
+pub const LABEL_PITCH: f32 = 13.0;
+pub const LABEL_LINE_H: f32 = 14.0;
+// #653: a two-line label ends inside the content, above the group title row.
+const _: () = assert!(BIG_LABEL_Y + LABEL_PITCH + LABEL_LINE_H <= CONTENT_H);
+const _: () = assert!(BIG_ICON_Y + 16.0 <= BIG_LABEL_Y);
 
 /// Shortcut text for a command (`⌘B` on macOS, `Ctrl+B` elsewhere): its first key in effect,
 /// custom keys included (Customize Keyboard).
@@ -105,6 +115,16 @@ pub(crate) fn bg(ui: &Ui, r: Rect, resp: &Response, checked: bool, t: &Tokens) {
     }
 }
 
+/// Runs a ribbon button's command, then hands keyboard focus back to the document so typing
+/// continues without another click, as in Word (#686). Interface commands (`ui.*`) open dialogs,
+/// panes and tabs that take focus themselves, so they keep it.
+pub(crate) fn run_from_ribbon(app: &mut WordApp, id: &str, params: Value) {
+    let _ = app.run(id, params);
+    if !id.starts_with("ui.") {
+        app.canvas.want_focus = true;
+    }
+}
+
 /// A large ribbon button: 32 px icon over a (possibly two-line) label.
 pub fn big(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, id: &str, params: Value, menu: bool) -> Response {
     big_button(ui, app, icon, label, id, params, menu, false)
@@ -113,6 +133,24 @@ pub fn big(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, id: &str, pa
 /// A large ribbon button for a mode that stays on (`checked` draws it pressed), run without params.
 pub fn big_toggle(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, id: &str, checked: bool) -> Response {
     big_button(ui, app, icon, label, id, Value::Object(Default::default()), false, checked)
+}
+
+/// Size of the drop-down marker drawn after a label or beside a split button (#659: one marker,
+/// the `dropdown` icon, everywhere; no text glyph).
+pub const DROPDOWN: f32 = 10.0;
+
+/// One centred label line (top at `y`); `marker` draws the drop-down icon after the text, in the
+/// text's colour, and the pair is centred together.
+pub fn label_line(ui: &Ui, cx: f32, y: f32, text: &str, font: egui::FontId, color: Color32, marker: bool) {
+    let galley = ui.painter().layout_no_wrap(text.to_string(), font, color);
+    let extra = if marker { DROPDOWN + 3.0 } else { 0.0 };
+    let size = galley.size();
+    let x = cx - (size.x + extra) / 2.0;
+    ui.painter().galley(pos2(x, y), galley, color);
+    if marker {
+        let c = pos2(x + size.x + 3.0 + DROPDOWN / 2.0, y + size.y / 2.0);
+        icons::paint(ui.painter(), Rect::from_center_size(c, vec2(DROPDOWN, DROPDOWN)), "dropdown", color, color);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -126,20 +164,19 @@ fn big_button(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, id: &str,
     keytip_badge(ui, r, id, &label.replace('\n', " "));
     let on = enabled(app, id);
     bg(ui, r, &resp, checked, &t);
-    let ic = Rect::from_center_size(pos2(r.center().x, r.min.y + 20.0), vec2(32.0, 32.0));
+    let ic = Rect::from_center_size(pos2(r.center().x, r.min.y + BIG_ICON_Y), vec2(32.0, 32.0));
     let (c, a) = if on { (t.icon, t.accent) } else { (t.text_disabled, t.text_disabled) };
     icons::paint(ui.painter(), ic, icon, c, a);
-    let mut y = r.min.y + 43.0;
+    let mut y = r.min.y + BIG_LABEL_Y;
     let lines: Vec<&str> = label.split('\n').collect();
     for (i, l) in lines.iter().enumerate() {
-        let txt = if menu && i + 1 == lines.len() { format!("{l} ▾") } else { (*l).to_string() };
-        ui.painter().text(pos2(r.center().x, y), Align2::CENTER_TOP, txt, regular(11.5), if on { t.text } else { t.text_disabled });
-        y += 13.0;
+        label_line(ui, r.center().x, y, l, regular(11.5), if on { t.text } else { t.text_disabled }, menu && i + 1 == lines.len());
+        y += LABEL_PITCH;
     }
     let resp = tooltip(app, resp, &label.replace('\n', " "), id);
     command_menu(&resp, app, id);
     if resp.clicked() && on && !menu {
-        let _ = app.run(id, params);
+        run_from_ribbon(app, id, params);
     }
     resp
 }
@@ -162,8 +199,9 @@ pub fn small(ui: &mut Ui, app: &mut WordApp, icon: &str, label: Option<&str>, ti
     let resp = tooltip(app, resp, tip, id);
     command_menu(&resp, app, id);
     if resp.clicked() && on {
-        let _ = app.run(id, params);
+        run_from_ribbon(app, id, params);
     }
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, on, tip));
     resp
 }
 
@@ -191,11 +229,11 @@ pub fn split(
     if let Some(sw) = swatch {
         ui.painter().rect_filled(Rect::from_min_max(pos2(r.min.x + 4.0, r.max.y - 5.0), pos2(r.max.x - 4.0, r.max.y - 2.0)), 0.0, sw);
     }
-    icons::paint(ui.painter(), Rect::from_center_size(ar.center(), vec2(10.0, 10.0)), "dropdown", t.icon, t.accent);
+    icons::paint(ui.painter(), Rect::from_center_size(ar.center(), vec2(DROPDOWN, DROPDOWN)), "dropdown", t.icon, t.accent);
     let resp = tooltip(app, resp, tip, id);
     command_menu(&resp, app, id);
     if resp.clicked() {
-        let _ = app.run(id, params);
+        run_from_ribbon(app, id, params);
     }
     egui::Popup::menu(&aresp).show(|ui| {
         ui.set_min_width(180.0);
@@ -203,7 +241,12 @@ pub fn split(
     });
 }
 
-/// A button that only opens a menu (icon + label + ▾).
+/// Whether a menu button whose menu is about command `id` is on ("" = always).
+pub fn menu_enabled(app: &WordApp, id: &str) -> bool {
+    id.is_empty() || enabled(app, id)
+}
+
+/// A button that only opens a menu (icon + label + drop-down marker).
 pub fn menu_button(
     ui: &mut Ui,
     app: &mut WordApp,
@@ -211,10 +254,15 @@ pub fn menu_button(
     label: Option<&str>,
     tip: &str,
     big_btn: bool,
+    id: &str,
     menu: impl FnOnce(&mut Ui, &mut WordApp),
 ) {
     let (label, tip) = (label.map(|l| tl!(l)), tl!(tip));
     let t = Tokens::get(ui.ctx());
+    // `id` names the command the menu is about (Header for the Header menu…); while it is
+    // disabled the button greys out and doesn't open, like the other ribbon buttons. "" = always on.
+    let on = menu_enabled(app, id);
+    let (c, a, text) = if on { (t.icon, t.accent, t.text) } else { (t.text_disabled, t.text_disabled, t.text_disabled) };
     let resp = if big_btn {
         let galley_w = label
             .unwrap_or("")
@@ -225,13 +273,12 @@ pub fn menu_button(
         let (r, resp) = ui.allocate_exact_size(vec2(w, CONTENT_H), Sense::click());
         keytip_badge(ui, r, "menu", tip);
         bg(ui, r, &resp, false, &t);
-        icons::paint(ui.painter(), Rect::from_center_size(pos2(r.center().x, r.min.y + 20.0), vec2(32.0, 32.0)), icon, t.icon, t.accent);
+        icons::paint(ui.painter(), Rect::from_center_size(pos2(r.center().x, r.min.y + BIG_ICON_Y), vec2(32.0, 32.0)), icon, c, a);
         let lines: Vec<&str> = label.unwrap_or("").split('\n').collect();
-        let mut y = r.min.y + 43.0;
+        let mut y = r.min.y + BIG_LABEL_Y;
         for (i, l) in lines.iter().enumerate() {
-            let txt = if i + 1 == lines.len() { format!("{l} ▾") } else { (*l).to_string() };
-            ui.painter().text(pos2(r.center().x, y), Align2::CENTER_TOP, txt, regular(11.5), t.text);
-            y += 13.0;
+            label_line(ui, r.center().x, y, l, regular(11.5), text, i + 1 == lines.len());
+            y += LABEL_PITCH;
         }
         resp
     } else {
@@ -239,14 +286,17 @@ pub fn menu_button(
         let (r, resp) = ui.allocate_exact_size(vec2(24.0 + text_w + 10.0, 22.0), Sense::click());
         keytip_badge(ui, r, "menu", tip);
         bg(ui, r, &resp, false, &t);
-        icons::paint(ui.painter(), Rect::from_center_size(pos2(r.min.x + 12.0, r.center().y), vec2(17.0, 17.0)), icon, t.icon, t.accent);
+        icons::paint(ui.painter(), Rect::from_center_size(pos2(r.min.x + 12.0, r.center().y), vec2(17.0, 17.0)), icon, c, a);
         if let Some(l) = label {
-            ui.painter().text(pos2(r.min.x + 24.0, r.center().y), Align2::LEFT_CENTER, l, regular(11.5), t.text);
+            ui.painter().text(pos2(r.min.x + 24.0, r.center().y), Align2::LEFT_CENTER, l, regular(11.5), text);
         }
-        icons::paint(ui.painter(), Rect::from_center_size(pos2(r.max.x - 6.0, r.center().y), vec2(9.0, 9.0)), "dropdown", t.icon, t.accent);
+        icons::paint(ui.painter(), Rect::from_center_size(pos2(r.max.x - 6.0, r.center().y), vec2(DROPDOWN, DROPDOWN)), "dropdown", c, c);
         resp
     };
     let resp = resp.on_hover_text(tip);
+    if !on {
+        return;
+    }
     egui::Popup::menu(&resp).show(|ui| {
         ui.set_min_width(200.0);
         menu(ui, app);
@@ -273,9 +323,10 @@ pub fn group_titled(ui: &mut Ui, id_title: &str, title: &str, launcher: Option<&
     });
     let r = inner.response.rect;
     let r = Rect::from_min_max(start, pos2(r.max.x, start.y + CONTENT_H + LABEL_H));
-    ui.painter().text(pos2(r.center().x, r.max.y - 8.0), Align2::CENTER_CENTER, title, regular(11.0), t.group_label);
+    let title_y = r.max.y - LABEL_H / 2.0;
+    ui.painter().text(pos2(r.center().x, title_y), Align2::CENTER_CENTER, title, regular(11.0), t.group_label);
     if let Some(cmd) = launcher {
-        let lr = Rect::from_center_size(pos2(r.max.x - 6.0, r.max.y - 8.0), vec2(11.0, 11.0));
+        let lr = Rect::from_center_size(pos2(r.max.x - 6.0, title_y), vec2(11.0, 11.0));
         let resp = ui.interact(lr, ui.id().with(("launch", id_title)), Sense::click());
         if resp.hovered() {
             ui.painter().rect_filled(lr.expand(2.0), 2.0, t.hover);
@@ -564,7 +615,7 @@ fn combo_impl(
         }
         let (ar, aresp) = ui.allocate_exact_size(vec2(16.0, resp.rect.height()), Sense::click());
         ui.painter().rect(ar, 0.0, if aresp.hovered() { t.hover } else { t.input }, Stroke::new(1.0, t.input_border), egui::StrokeKind::Inside);
-        icons::paint(ui.painter(), Rect::from_center_size(ar.center(), vec2(10.0, 10.0)), "dropdown", t.icon, t.accent);
+        icons::paint(ui.painter(), Rect::from_center_size(ar.center(), vec2(DROPDOWN, DROPDOWN)), "dropdown", t.icon, t.accent);
         // The list drops from the box's left edge, as in Word, not from the arrow (#535).
         egui::Popup::menu(&aresp).anchor(resp.rect.union(ar)).show(|ui| {
             if let Some(v) = combo_list(ui, width, current, items, preview) {
@@ -722,6 +773,12 @@ pub fn drawn_state(ui: &Ui, resp: &Response, framed: bool) -> DrawnState {
     }
 }
 
+/// A dialog's primary button (OK, Save, Close): the accent fill with `on_accent` text, per theme.
+pub fn primary_button(ui: &Ui, text: impl Into<String>) -> egui::Button<'static> {
+    let t = Tokens::get(ui.ctx());
+    egui::Button::new(egui::RichText::new(text.into()).color(t.on_accent)).fill(t.accent)
+}
+
 /// A frameless 22 px icon button (pane close buttons): ribbon-style hover and press feedback.
 pub fn icon_button(ui: &mut Ui, icon: &str, tip: &str) -> Response {
     let t = Tokens::get(ui.ctx());
@@ -736,11 +793,21 @@ pub fn icon_button(ui: &mut Ui, icon: &str, tip: &str) -> Response {
 /// fonts and would draw as empty boxes, so icons are painted (`icons.rs`) rather than typed.
 /// It looks and reacts like `ui.button` (see [`drawn_state`]).
 pub fn icon_text_button(ui: &mut Ui, icon: &str, text: &str, font: egui::FontId) -> Response {
+    icon_text_button_with(ui, icon, text, font, false)
+}
+
+/// [`icon_text_button`] that opens a menu: the drop-down marker follows the text.
+pub fn icon_text_menu_button(ui: &mut Ui, icon: &str, text: &str, font: egui::FontId) -> Response {
+    icon_text_button_with(ui, icon, text, font, true)
+}
+
+fn icon_text_button_with(ui: &mut Ui, icon: &str, text: &str, font: egui::FontId, marker: bool) -> Response {
     let t = Tokens::get(ui.ctx());
     let galley = ui.painter().layout_no_wrap(text.to_string(), font, Color32::PLACEHOLDER);
     let pad = ui.spacing().button_padding;
     let icon_w = 16.0;
-    let size = vec2(pad.x + icon_w + 4.0 + galley.size().x + pad.x, galley.size().y.max(icon_w) + 2.0 * pad.y);
+    let marker_w = if marker { DROPDOWN + 4.0 } else { 0.0 };
+    let size = vec2(pad.x + icon_w + 4.0 + galley.size().x + marker_w + pad.x, galley.size().y.max(icon_w) + 2.0 * pad.y);
     let (r, resp) = ui.allocate_exact_size(size, Sense::click());
     let st = drawn_state(ui, &resp, true);
     let r = r.expand(st.expansion);
@@ -752,13 +819,30 @@ pub fn icon_text_button(ui: &mut Ui, icon: &str, text: &str, font: egui::FontId)
         t.icon,
         t.accent,
     );
-    ui.painter().galley(pos2(r.min.x + pad.x + icon_w + 4.0, r.center().y - galley.size().y / 2.0), galley, st.text);
+    let text_x = r.min.x + pad.x + icon_w + 4.0;
+    let text_w = galley.size().x;
+    ui.painter().galley(pos2(text_x, r.center().y - galley.size().y / 2.0), galley, st.text);
+    if marker {
+        let c = pos2(text_x + text_w + 4.0 + DROPDOWN / 2.0, r.center().y);
+        icons::paint(ui.painter(), Rect::from_center_size(c, vec2(DROPDOWN, DROPDOWN)), "dropdown", st.text, st.text);
+    }
     resp
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #653: a large button's label line is no taller than `LABEL_LINE_H` in the interface font, so
+    /// two lines (checked at compile time) end above the group title row.
+    #[test]
+    fn big_button_label_lines_fit_their_slot() {
+        let ctx = egui::Context::default();
+        ctx.set_fonts(crate::theme::font_definitions(false, false));
+        ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
+        let h = ctx.fonts_mut(|f| f.layout_no_wrap("Page Number Mail Merge gjpqy".into(), crate::theme::regular(11.5), Color32::WHITE).size().y);
+        assert!(h <= LABEL_LINE_H, "label line is {h} px tall");
+    }
 
     #[test]
     fn drawn_buttons_fade_in_on_hover_and_darken_while_pressed() {

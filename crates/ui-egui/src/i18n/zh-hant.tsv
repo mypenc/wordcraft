@@ -78,6 +78,7 @@
 	Click to switch back to inserting	按一下以切換回插入模式
 	Color only	僅色彩
 	Compress punctuation at the start of a line	壓縮行首標點
+	Couldn't make WordCraft the default: {error}	無法將 WordCraft 設為預設應用程式：{error}
 	Custom dictionary	自訂字典
 	Dark page (white text on black)	深色頁面（黑底白字）
 	Drag a rectangle to draw a table, or a line across cells to split them. Esc stops.	拖出矩形以繪製表格，或拖出穿過儲存格的線條以分割儲存格。按 Esc 結束。
@@ -106,6 +107,7 @@
 	Inside:	內側：
 	Latin text font:	拉丁文字字型：
 	Left border	左框線
+	In Default apps, choose WordCraft for the document types you want it to open.	請在「預設應用程式」中，為要以 WordCraft 開啟的文件類型選擇 WordCraft。
 	Left Margin	左邊界
 	Indents and Spacing	縮排和間距
 	Legal style numbering	正規形式編號
@@ -126,6 +128,9 @@
 	Number format	編號格式
 	Number style for this level:	此層級的編號樣式：
 	Outside border	外側框線
+	Make WordCraft the default for Word documents…	將 WordCraft 設為 Word 文件的預設應用程式…
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	今後以 WordCraft 開啟 .docx、.doc、.rtf、.odt 檔案和 Word 範本。
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	開啟「設定 › 預設應用程式」，在其中為 .docx 及其他文件類型選擇 WordCraft。
 	Overtype	取代
 	Overtype (typing replaces the characters after the caret)	取代（輸入的內容會取代插入點後的字元）
 	Page display	頁面顯示
@@ -320,6 +325,8 @@
 	Delete Style	刪除樣式
 	Delete Table	刪除表格
 	Design	設計
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	若要預設以 WordCraft 開啟 Word 文件：在 Finder 中選取一份文件，選擇「檔案 › 取得資訊」，在「打開檔案的應用程式」中選擇 WordCraft，然後按一下「全部更改」。
+	WordCraft is now the default app for Word documents.	WordCraft 現在是 Word 文件的預設應用程式。
 	development build	開發版本
 	Diagonal	斜向
 	Diamond	菱形
@@ -1626,6 +1633,12 @@
 	Enlarge symbol	放大符號
 	Enclosure	圍繞符號
 	Circle	圓形
+	Numerals:	數字：
+	Numerals	數字
+	Arabic	阿拉伯
+	Hindi	印地
+	Context	上下文
+	System	系統
 	Templates	範本
 	Templates and Add-ins	範本與增益集
 	Attach Template	附加範本
@@ -1679,6 +1692,7 @@
 	Middle	中間
 	Click the empty text box the text should continue in (Esc cancels)	按一下要接續文字的空白文字方塊（按 Esc 取消）
 	Not linked: click a text box	未連結：請按一下文字方塊
+	Show KeyTips (Alt or F10)	顯示按鍵提示（Alt 或 F10）
 	Location	位置
 	Endnotes	章節附註
 	Below text	文字下方
@@ -1691,6 +1705,10 @@
 	Continuous numbering	連續編號
 	Apply	套用
 	Convert Notes	轉換附註
+	Reading	閱讀
+	Reading Column Width	閱讀欄寬
+	Reading Line Spacing	閱讀行距
+	Reading Text Size	閱讀字級
 	English (United Kingdom)	英文（英國）
 	Polish	波蘭文
 	Do Not Check Spelling or Grammar	不檢查拼字及文法
@@ -1971,7 +1989,6 @@
 	Add line numbering	新增行號
 	Add to Document	新增至文件
 	Address labels	地址標籤
-	Arabic	阿拉伯文
 	Auto	自動
 	Automatically hyphenate document	自動斷字
 	Chinese (Simplified)	中文（簡體）

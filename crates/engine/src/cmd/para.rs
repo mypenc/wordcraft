@@ -1146,3 +1146,29 @@ fn own_format(st: &Style) -> Value {
 pub fn touch_all(s: &mut Session) {
     s.dirty = true;
 }
+
+/// Which Home › Paragraph list buttons show as on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ListButtons {
+    pub bullets: bool,
+    pub numbering: bool,
+    pub multilevel: bool,
+}
+
+/// The list buttons for a paragraph with resolved `numbering` (the ribbon passes the paragraph
+/// props it already resolved). The paragraph's own level decides Bullets (a bulleted level) or
+/// Numbering (a numbered one); Multilevel is on too when the list numbers its levels together:
+/// some level's label shows another level's number (`1.1.`) or uses legal numbering.
+pub fn list_buttons(doc: &wordcraft_doc::Document, numbering: Option<NumRef>) -> ListButtons {
+    let Some(n) = numbering.filter(|n| n.num != 0) else { return ListButtons::default() };
+    let Some(level) = doc.numbering.level(n.num, n.level) else { return ListButtons::default() };
+    let bullets = level.format == wordcraft_doc::section::NumFormat::Bullet;
+    let joined = |i: u8| {
+        doc.numbering.level(n.num, i).is_some_and(|l| {
+            let own = u32::from(i) + 1;
+            l.legal || l.text.split('%').skip(1).filter_map(|t| t.chars().next()?.to_digit(10)).any(|k| k != own)
+        })
+    };
+    let multilevel = (0..9u8).any(joined);
+    ListButtons { bullets, numbering: !bullets, multilevel }
+}

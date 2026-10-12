@@ -108,6 +108,7 @@
 	Color: {color}	Боја: {color}
 	Compress punctuation at the start of a line	Сажми интерпункцију на почетку реда
 	Confirm password:	Потврдите лозинку:
+	Couldn't make WordCraft the default: {error}	WordCraft није могао да постане подразумевана апликација: {error}
 	Custom dictionary	Прилагођени речник
 	Dark page (white text on black)	Тамна страница (бео текст на црном)
 	Drag a rectangle to draw a table, or a line across cells to split them. Esc stops.	Превуците правоугаоник да нацртате табелу или линију преко ћелија да их поделите. Esc завршава.
@@ -152,6 +153,10 @@
 	Number format	Формат броја
 	Number style for this level:	Стил броја за овај ниво:
 	Outside border	Спољна ивица
+	In Default apps, choose WordCraft for the document types you want it to open.	У подразумеваним апликацијама изаберите WordCraft за врсте докумената које желите да отвара.
+	Make WordCraft the default for Word documents…	Постави WordCraft као подразумевану апликацију за Word документе…
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	Од сада ће се .docx, .doc, .rtf и .odt датотеке и Word шаблони отварати у WordCraft-у.
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Отвара Подешавања › Подразумеване апликације, где бирате WordCraft за .docx и друге врсте докумената.
 	Overtype	Преписивање
 	Overtype (typing replaces the characters after the caret)	Преписивање (откуцано замењује знакове после курсора)
 	Page display	Приказ стране
@@ -371,6 +376,8 @@
 	Delete Style	Обриши стил
 	Delete Table	Обриши табелу
 	Design	Дизајн
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	Да би се Word документи подразумевано отварали у WordCraft-у: изаберите један у Finder-у, изаберите Датотека › Прикажи информације, под „Отвори помоћу” изаберите WordCraft, па кликните „Промени све”.
+	WordCraft is now the default app for Word documents.	WordCraft је сада подразумевана апликација за Word документе.
 	development build	развојна верзија
 	Diagonal	Дијагонално
 	Diamond	Дијамант
@@ -1639,6 +1646,12 @@
 	Enlarge symbol	Увећај симбол
 	Enclosure	Оквир
 	Circle	Круг
+	Numerals:	Бројеви:
+	Numerals	Бројеви
+	Arabic	Арапски
+	Hindi	Хинди
+	Context	Контекст
+	System	Систем
 	Templates	Шаблони
 	Templates and Add-ins	Шаблони и додаци
 	Attach Template	Приложи шаблон
@@ -1692,6 +1705,7 @@
 	Middle	Средина
 	Click the empty text box the text should continue in (Esc cancels)	Кликните празно поље за текст у ком текст треба да се настави (Esc отказује)
 	Not linked: click a text box	Није повезано: кликните поље за текст
+	Show KeyTips (Alt or F10)	Прикажи савете за тастере (Alt или F10)
 	Location	Локација
 	Endnotes	Ендноте
 	Below text	Испод текста
@@ -1704,6 +1718,10 @@
 	Continuous numbering	Непрекидна нумерација
 	Apply	Примени
 	Convert Notes	Претвори напомене
+	Reading	Читање
+	Reading Column Width	Ширина колоне за читање
+	Reading Line Spacing	Проређеност при читању
+	Reading Text Size	Величина текста за читање
 	English (United Kingdom)	Енглески (Велика Британија)
 	Polish	Пољски
 	Do Not Check Spelling or Grammar	Не проверавај правопис и граматику
@@ -1984,7 +2002,6 @@
 	Add line numbering	Додај бројеве редова
 	Add to Document	Додај у документ
 	Address labels	Адресне налепнице
-	Arabic	Арапски
 	Auto	Аутоматски
 	Automatically hyphenate document	Аутоматски дели речи у документу
 	Chinese (Simplified)	Кинески (поједностављени)

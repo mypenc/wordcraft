@@ -256,7 +256,18 @@ pub fn ink_mask(img: &mut egui::ColorImage) {
 
 /// Lay out `para` (with `base`'s styles) in a `w`×`h` pt box and rasterise it.
 pub fn snippet(base: &Document, para: Paragraph, w: f32, h: f32, ppp: f32, margin: f32) -> Option<egui::ColorImage> {
-    snippet_blocks(base, vec![Block::Para(para)], w, h, ppp, margin, None)
+    snippet_blocks(base, vec![Block::Para(para)], w, h, ppp, margin, None, false)
+}
+
+/// [`snippet`] on the dark page of View › Switch Modes when `dark` (the Styles gallery, #663).
+pub fn style_snippet(base: &Document, para: Paragraph, w: f32, h: f32, ppp: f32, margin: f32, dark: bool) -> Option<egui::ColorImage> {
+    snippet_blocks(base, vec![Block::Para(para)], w, h, ppp, margin, None, dark)
+}
+
+/// How a gallery draws a page preview: as rendered on a light interface or on Switch Modes' dark
+/// page, and dimmed in the dark theme so a white page isn't the brightest thing on screen (#663).
+pub fn preview_tint(t: &Tokens, dark_page: bool) -> egui::Color32 {
+    if t.dark && !dark_page { egui::Color32::from_gray(0xC8) } else { egui::Color32::WHITE }
 }
 
 fn snippet_blocks(
@@ -267,6 +278,7 @@ fn snippet_blocks(
     ppp: f32,
     margin: f32,
     paper: Option<wordcraft_doc::Rgb>,
+    dark: bool,
 ) -> Option<egui::ColorImage> {
     let mut d = Document::new();
     d.styles = base.styles.clone();
@@ -284,6 +296,7 @@ fn snippet_blocks(
     if let Some(p) = paper {
         opts.paper = p;
     }
+    opts.dark = dark;
     let img = wordcraft_render::render_area(&d, page, 0.0, 0.0, w + 2.0 * margin, h + margin, ppp, &opts);
     let px = img.to_straight();
     Some(egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &px))
@@ -294,7 +307,7 @@ fn snippet_blocks(
 pub fn style_preview(app: &mut WordApp, ui: &mut Ui, id: &str, ty: &str, size: egui::Vec2) {
     let t = Tokens::get(ui.ctx());
     let (r, _) = ui.allocate_exact_size(size, Sense::hover());
-    ui.painter().rect(r, 3.0, egui::Color32::WHITE, Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
+    ui.painter().rect(r, 3.0, preview_tint(&t, false), Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
     let rev = app.session.rev();
     let skey = app.previews.styles_key(&app.session.doc, rev);
     let ppp = ui.ctx().pixels_per_point();
@@ -328,13 +341,13 @@ pub fn style_preview(app: &mut WordApp, ui: &mut Ui, id: &str, ty: &str, size: e
                 Block::Para(p)
             }
         };
-        snippet_blocks(doc, vec![block], w, h, ppp, 4.0, None)
+        snippet_blocks(doc, vec![block], w, h, ppp, 4.0, None, false)
     });
     if let Some(hd) = tex {
         let sz = hd.size_vec2() / ppp;
         let ir = Rect::from_min_size(pos2(r.min.x + 2.0, r.min.y + 2.0), sz.min(r.size() - vec2(4.0, 4.0)));
         let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2((ir.width() / sz.x).min(1.0), (ir.height() / sz.y).min(1.0)));
-        ui.painter().with_clip_rect(r).image(hd.id(), ir, uv, egui::Color32::WHITE);
+        ui.painter().with_clip_rect(r).image(hd.id(), ir, uv, preview_tint(&t, false));
     }
 }
 
@@ -360,7 +373,8 @@ pub fn style_gallery(app: &mut WordApp, ui: &mut Ui, state: &Value) {
             ui.painter().rect_filled(r, 3.0, t.hover);
         }
         let lang = crate::i18n::current().code();
-        let key = format!("style:{id}:{skey}:{ppp}:{lang}");
+        let dark_page = app.session.view.dark_mode;
+        let key = format!("style:{id}:{skey}:{ppp}:{lang}:{dark_page}");
         let doc = &app.session.doc;
         let tex = app.previews.get_or(ui.ctx(), &key, || {
             // Sample letters in the interface's script (`АаБбВвГг` in Russian).
@@ -372,13 +386,13 @@ pub fn style_gallery(app: &mut WordApp, ui: &mut Ui, state: &Value) {
             p.props.indent_left = Some(if first.is_finite() { (-first).max(0.0) } else { 0.0 });
             p.props.borders = None;
             p.props.shading = None;
-            snippet(doc, p, 220.0, 30.0, ppp, 1.0)
+            style_snippet(doc, p, 220.0, 30.0, ppp, 1.0, dark_page)
         });
         if let Some(h) = tex {
             let sz = h.size_vec2() / ppp;
             let ir = Rect::from_min_size(pos2(r.min.x + 3.0, r.min.y + 4.0), sz.min(vec2(68.0, 32.0)));
             let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2((ir.width() / sz.x).min(1.0), (ir.height() / sz.y).min(1.0)));
-            ui.painter().with_clip_rect(r).image(h.id(), ir, uv, egui::Color32::WHITE);
+            ui.painter().with_clip_rect(r).image(h.id(), ir, uv, preview_tint(&t, dark_page));
         }
         let mut job = egui::text::LayoutJob::single_section(name.clone(), egui::TextFormat::simple(regular(10.5), t.text));
         job.wrap = egui::text::TextWrapping::truncate_at_width(r.width() - 6.0);
@@ -446,14 +460,14 @@ pub fn style_set_gallery(app: &mut WordApp, ui: &mut Ui) {
                 Block::Para(Paragraph::with_text(tl!("Heading 1"), CharProps::default()).styled("Heading1")),
                 Block::Para(Paragraph::with_text(tl!("Body text in a short paragraph to show spacing."), CharProps::default())),
             ];
-            snippet_blocks(&s.doc, blocks, 120.0, 110.0, ppp * 0.42, 6.0, None)
+            snippet_blocks(&s.doc, blocks, 120.0, 110.0, ppp * 0.42, 6.0, None, false)
         });
         if let Some(h) = tex {
             let sz = h.size_vec2() / ppp;
             let ir = Rect::from_min_size(pos2(r.min.x + 3.0, r.min.y + 3.0), sz.min(vec2(50.0, 60.0)));
             ui.painter().rect_stroke(ir, 0.0, Stroke::new(1.0, t.border), egui::StrokeKind::Outside);
             let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2((ir.width() / sz.x).min(1.0), (ir.height() / sz.y).min(1.0)));
-            ui.painter().image(h.id(), ir, uv, egui::Color32::WHITE);
+            ui.painter().image(h.id(), ir, uv, preview_tint(&t, false));
         }
         if resp.on_hover_text(format!("Style set: {name}")).clicked() {
             let _ = app.run("design.styleSet", json!({"name": name}));
@@ -481,13 +495,13 @@ pub fn table_style_tile(ui: &mut Ui, app: &mut WordApp, style: &str) -> Response
                 c.blocks = vec![para_block(Paragraph::with_text(" ", CharProps { size: Some(5.0), ..Default::default() }))];
             }
         }
-        snippet_blocks(doc, vec![Block::Table(tb), Block::Para(Paragraph::new())], 104.0, 70.0, ppp * 0.48, 4.0, None)
+        snippet_blocks(doc, vec![Block::Table(tb), Block::Para(Paragraph::new())], 104.0, 70.0, ppp * 0.48, 4.0, None, false)
     });
     if let Some(h) = tex {
         let sz = h.size_vec2() / ppp;
         let ir = Rect::from_center_size(r.center(), sz.min(vec2(54.0, 42.0)));
         let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2((ir.width() / sz.x).min(1.0), (ir.height() / sz.y).min(1.0)));
-        ui.painter().image(h.id(), ir, uv, egui::Color32::WHITE);
+        ui.painter().image(h.id(), ir, uv, preview_tint(&t, false));
     }
     resp
 }
@@ -495,6 +509,17 @@ pub fn table_style_tile(ui: &mut Ui, app: &mut WordApp, style: &str) -> Response
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #663: gallery previews are dimmed in the dark theme, unless they show Switch Modes' dark
+    /// page; the light theme keeps a white page.
+    #[test]
+    fn previews_are_dimmed_in_the_dark_theme() {
+        let (light, dark) = (crate::theme::Tokens::light(), crate::theme::Tokens::dark());
+        assert_eq!(super::preview_tint(&light, false), egui::Color32::WHITE);
+        assert_eq!(super::preview_tint(&dark, true), egui::Color32::WHITE, "the dark page is already dark");
+        let dim = super::preview_tint(&dark, false);
+        assert!(dim.r() < 0xE0 && dim.r() > 0xA0, "{dim:?}");
+    }
 
     #[test]
     fn font_menu_previews_render_defer_and_reuse_without_deadlocking() {

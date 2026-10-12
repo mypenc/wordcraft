@@ -10,6 +10,7 @@ import android.provider.OpenableColumns
 import android.util.Log
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -31,6 +32,7 @@ import java.util.concurrent.Executors
 class MainActivity : GameActivity() {
     private val io = Executors.newSingleThreadExecutor()
     private lateinit var exports: Exports
+    @Volatile private var softKeyboardVisible = false
 
     private class Request(val id: Long, val arg: String)
 
@@ -55,6 +57,7 @@ class MainActivity : GameActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            softKeyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
             WindowInsetsCompat.CONSUMED
         }
         ViewCompat.requestApplyInsets(content)
@@ -88,6 +91,20 @@ class MainActivity : GameActivity() {
 
     @Suppress("unused")
     fun haptic() = runOnUiThread { window.decorView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) }
+
+    @Suppress("unused")
+    fun softKeyboardVisible(): Boolean = softKeyboardVisible
+
+    @Suppress("unused")
+    fun hideSoftKeyboard() = runOnUiThread {
+        val token = window.decorView.windowToken ?: return@runOnUiThread
+        val inputMethod = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        if (inputMethod.hideSoftInputFromWindow(token, 0)) {
+            softKeyboardVisible = false
+        } else {
+            Log.w("WordCraft", "Android did not accept the request to hide the soft keyboard")
+        }
+    }
 
     /** The system clipboard's text, for the ribbon's Paste (Ctrl+V uses egui's in-app clipboard). */
     @Suppress("unused")

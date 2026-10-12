@@ -4,7 +4,7 @@
 //! `table.draw` / `table.eraser` with page coordinates (one undo step each). Esc or the button
 //! again turns it off. The geometry decisions are the engine's (`cmd::table_draw`).
 
-use egui::{Color32, Pos2, Rect, Stroke, Ui, pos2, vec2};
+use egui::{Pos2, Rect, Stroke, Ui, pos2, vec2};
 use serde_json::{Value, json};
 use wordcraft_engine::cmd::table_draw::{self, Stroke as Kind};
 use wordcraft_layout::DocLayout;
@@ -171,7 +171,7 @@ pub fn paint(app: &WordApp, painter: &egui::Painter, t: &Tokens, layout: &DocLay
                 && let Some(e) = table_draw::erase_target(layout, page, x, y)
                 && let (Some(a), Some(b)) = (to_screen(page, e.from.0, e.from.1), to_screen(page, e.to.0, e.to.1))
             {
-                painter.line_segment([a, b], Stroke::new(3.0, Color32::from_rgb(0xD1, 0x3B, 0x3B)));
+                painter.line_segment([a, b], Stroke::new(3.0, t.red));
             }
         }
         _ => {}

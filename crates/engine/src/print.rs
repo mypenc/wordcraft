@@ -161,8 +161,9 @@ pub(crate) fn print_pdf_to_file(s: &mut Session, v: &Value) -> Result<Value, Cmd
     let path = p::req_str(v, "path")?;
     let path = if path.to_ascii_lowercase().ends_with(".pdf") { path.to_string() } else { format!("{path}.pdf") };
     let (bytes, plan) = s.print_pdf(v)?;
+    // Through `io`, so an agent confined to an automation write root (#769) can't print elsewhere.
     #[cfg(not(target_arch = "wasm32"))]
-    std::fs::write(&path, &bytes).map_err(|e| CmdError::Failed(format!("{path}: {e}")))?;
+    crate::io::write_file(&path, &bytes).map_err(CmdError::Failed)?;
     Ok(json!({"path": path, "pages": plan.pages.len(), "chosen": plan.chosen, "copies": plan.copies, "bytes": bytes.len()}))
 }
 
@@ -214,5 +215,32 @@ mod tests {
         assert!(s.print_pdf(&json!({"pages": "9999"})).is_err());
         let r = s.run("file.printPdf", &json!({})).is_err();
         assert!(r, "printPdf needs a path");
+    }
+
+    /// `file.printPdf` writes only inside the automation write root when there is one (#769).
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn print_pdf_to_file_is_held_to_the_write_root() {
+        use crate::file_access::{AutomationRoots, confine};
+        let base = std::env::temp_dir().join(format!("wc-print-roots-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        for d in ["out", "outside"] {
+            std::fs::create_dir_all(base.join(d)).unwrap();
+        }
+        let roots = AutomationRoots::new(None, Some(&base.join("out"))).unwrap();
+        let mut s = Session::new(crate::sample::sample_document());
+        let inside = base.join("out/job").to_string_lossy().into_owned();
+        let outside = base.join("outside/job").to_string_lossy().into_owned();
+        confine(roots.as_ref(), || {
+            let e = s.run("file.printPdf", &json!({"path": outside})).unwrap_err().to_string();
+            assert!(e.contains("outside the write root"), "{e}");
+            s.run("file.printPdf", &json!({"path": inside})).unwrap();
+        });
+        assert!(!base.join("outside/job.pdf").exists(), "nothing printed outside the root");
+        assert!(std::fs::read(base.join("out/job.pdf")).unwrap().starts_with(b"%PDF"));
+        // Without roots nothing is checked: the behaviour is unchanged.
+        s.run("file.printPdf", &json!({"path": outside})).unwrap();
+        assert!(base.join("outside/job.pdf").is_file());
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

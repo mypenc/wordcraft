@@ -1,6 +1,6 @@
 # Hardware parity with Microsoft Word
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4 and Word for Windows
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (Android touch input paths reviewed; physical-device validation pending; previously major: first version) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4 and Word for Windows
 
 Word is not a hardware-heavy app, but a few devices matter to its users: printers above all, then
 pens, microphones (Dictate) and speakers (Read Aloud), and displays.
@@ -19,10 +19,20 @@ pens, microphones (Dictate) and speakers (Read Aloud), and displays.
 | Touch screens and touchpads: pinch zoom, inertial scroll | ✅ | ✅ pinch (#179) | ✅ | ✅ inertial scroll (#252) | ✅ | 85% | 0–1 |
 | Scanners/cameras (Insert from device / Continuity Camera on Mac) | ✅ | ❌ | ❌ | ❌ | ❌ | 0% | 2–4 |
 
+## Android touch input (device validation pending)
+
+On Android, a one-finger drag in the canvas gutter scrolls without changing the document selection;
+page drags still select text, and two-finger scrolling and pinch zoom remain available. A separate
+keyboard toggle stays above Gboard. Winit now ignores repeated IME visibility notifications and
+uses selection-only text updates to move the caret (including Gboard's space-bar cursor gesture).
+Verify the keyboard flicker, Gboard cursor movement and external-keyboard navigation on physical
+devices before calling these fixes confirmed.
+
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | Android touch gutter scrolling, visible keyboard toggle and IME caret updates; device verification pending |
 | 2026-10-10 | trivial | Windows falls back to OpenGL when DirectX 12 offers only the software adapter (#316) |
 | 2026-10-10 | trivial | Desktop File › Print opens the PDF in the system viewer (#286) |
 | 2026-10-10 | trivial | Inertial touchpad scrolling landed (#252) |

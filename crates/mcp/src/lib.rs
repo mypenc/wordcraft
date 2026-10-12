@@ -12,8 +12,11 @@ pub mod tools;
 pub use backend::{Backend, Remote};
 pub use server::Server;
 
+use std::sync::Arc;
+
 use serde_json::{Value, json};
 use wordcraft_engine::Session;
+use wordcraft_engine::file_access::{self, AutomationRoots};
 
 /// Methods that need the desktop app.
 pub const NEEDS_APP: &str = "needs the desktop app: start `wordcraft --control 7981` and run `wordcraft-cli mcp --connect 127.0.0.1:7981`";
@@ -21,16 +24,18 @@ pub const NEEDS_APP: &str = "needs the desktop app: start `wordcraft --control 7
 /// An in-process session.
 pub struct Headless {
     pub session: Session,
+    roots: Option<Arc<AutomationRoots>>,
 }
 
-impl Default for Headless {
-    fn default() -> Self {
-        Headless { session: Session::new(wordcraft_doc::Document::new()) }
+impl Headless {
+    /// Confine every file the session's commands read and write to `roots`
+    /// (`wordcraft-cli mcp --automation-read-root … --automation-write-root …`).
+    pub fn with_automation_roots(mut self, roots: Option<Arc<AutomationRoots>>) -> Self {
+        self.roots = roots;
+        self
     }
-}
 
-impl Backend for Headless {
-    fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
+    fn answer(&mut self, method: &str, params: Value) -> Result<Value, String> {
         match method {
             "engine.execute" | "command" => {
                 let id = params.get("command").and_then(Value::as_str).ok_or("missing `command`")?.to_string();
@@ -54,6 +59,19 @@ impl Backend for Headless {
             m if m.starts_with("ui.") => Err(format!("`{m}` {NEEDS_APP}")),
             other => self.session.run(other, &params).map_err(|e| e.to_string()),
         }
+    }
+}
+
+impl Default for Headless {
+    fn default() -> Self {
+        Headless { session: Session::new(wordcraft_doc::Document::new()), roots: None }
+    }
+}
+
+impl Backend for Headless {
+    fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        let roots = self.roots.clone();
+        file_access::confine(roots.as_ref(), || self.answer(method, params))
     }
     fn has_ui(&self) -> bool {
         false

@@ -77,6 +77,7 @@
 	Click to switch back to inserting	クリックすると挿入モードに戻ります
 	Color only	色のみ
 	Compress punctuation at the start of a line	行頭の約物を詰める
+	Couldn't make WordCraft the default: {error}	WordCraft を既定のアプリにできませんでした: {error}
 	Custom dictionary	ユーザー辞書
 	Dark page (white text on black)	ダーク ページ (黒地に白い文字)
 	Drag a rectangle to draw a table, or a line across cells to split them. Esc stops.	四角形をドラッグして表を描くか、セルを横切る線を引いて分割します。Esc で終了します。
@@ -105,6 +106,7 @@
 	Inside:	内側:
 	Latin text font:	ラテン文字のフォント:
 	Left border	左罫線
+	In Default apps, choose WordCraft for the document types you want it to open.	既定のアプリで、WordCraft で開きたい文書の種類ごとに WordCraft を選んでください。
 	Left Margin	左余白
 	Indents and Spacing	インデントと間隔
 	Legal style numbering	正規形式で番号付け
@@ -125,6 +127,9 @@
 	Number format	番号書式
 	Number style for this level:	このレベルの番号の種類:
 	Outside border	外側の罫線
+	Make WordCraft the default for Word documents…	WordCraft を Word 文書の既定のアプリにする…
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	今後、.docx、.doc、.rtf、.odt ファイルと Word テンプレートを WordCraft で開きます。
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	設定 › 既定のアプリ を開きます。そこで .docx などの文書の種類ごとに WordCraft を選びます。
 	Overtype	上書き
 	Overtype (typing replaces the characters after the caret)	上書き (入力した文字がカーソルの後ろの文字を置き換えます)
 	Page display	ページの表示
@@ -319,6 +324,8 @@
 	Delete Style	スタイルの削除
 	Delete Table	表の削除
 	Design	デザイン
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	Word 文書を既定で WordCraft で開くには: Finder で文書を選び、ファイル › 情報を見る を選んで、「このアプリケーションで開く」で WordCraft を選び、「すべてを変更」をクリックします。
+	WordCraft is now the default app for Word documents.	WordCraft が Word 文書の既定のアプリになりました。
 	development build	開発ビルド
 	Diagonal	対角線
 	Diamond	ひし形
@@ -1625,6 +1632,12 @@
 	Enlarge symbol	記号を拡大
 	Enclosure	囲い
 	Circle	円
+	Numerals:	数字:
+	Numerals	数字
+	Arabic	アラビア
+	Hindi	ヒンディー
+	Context	コンテキスト
+	System	システム
 	Templates	テンプレート
 	Templates and Add-ins	テンプレートとアドイン
 	Attach Template	テンプレートの添付
@@ -1678,6 +1691,7 @@
 	Middle	中央
 	Click the empty text box the text should continue in (Esc cancels)	テキストの続きを入れる空のテキスト ボックスをクリックしてください (Esc でキャンセル)
 	Not linked: click a text box	リンクされていません: テキスト ボックスをクリックしてください
+	Show KeyTips (Alt or F10)	キー操作のヒントを表示（Alt または F10）
 	Location	場所
 	Endnotes	文末脚注
 	Below text	本文の直後
@@ -1690,6 +1704,10 @@
 	Continuous numbering	通し番号
 	Apply	適用
 	Convert Notes	注の変換
+	Reading	閲覧
+	Reading Column Width	閲覧時の列幅
+	Reading Line Spacing	閲覧時の行間
+	Reading Text Size	閲覧時の文字サイズ
 	English (United Kingdom)	英語（英国）
 	Polish	ポーランド語
 	Do Not Check Spelling or Grammar	スペル チェックと文章校正を行わない
@@ -1970,7 +1988,6 @@
 	Add line numbering	行番号を追加する
 	Add to Document	文書に追加
 	Address labels	宛名ラベル
-	Arabic	アラビア語
 	Auto	自動
 	Automatically hyphenate document	文書を自動的にハイフネーションする
 	Chinese (Simplified)	中国語（簡体字）

@@ -37,6 +37,26 @@ pub fn has_rtl(text: &str) -> bool {
     text.chars().any(is_rtl_script)
 }
 
+/// Does the first strong directional character in `text` belong to a right-to-left script?
+///
+/// Follows UAX #9 rules P2 and P3: characters with strong bidirectional class AL or R
+/// (Arabic, Hebrew, Syriac, Thaana…) give `true`; strong L characters (Latin, Greek,
+/// Cyrillic, CJK…) give `false`. Neutral, weak and whitespace characters are skipped.
+pub fn first_strong_is_rtl(text: &str) -> bool {
+    for c in text.chars() {
+        if c == '\u{200F}' {
+            return true;
+        }
+        if c == '\u{200E}' {
+            return false;
+        }
+        if c.is_alphabetic() {
+            return is_rtl_script(c);
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,5 +76,11 @@ mod tests {
         assert!("می‌خواهم".chars().all(is_word_char), "ZWNJ is inside the word");
         assert!("کِتاب".chars().all(is_word_char), "so are harakat");
         assert!(!is_word_char(' ') && !is_word_char('،'));
+        assert!(first_strong_is_rtl("سلام"));
+        assert!(first_strong_is_rtl("من ناوم هێڤاره"));
+        assert!(first_strong_is_rtl("  123. سلام"));
+        assert!(!first_strong_is_rtl("Hello سلام"));
+        assert!(!first_strong_is_rtl("123 Hello"));
+        assert!(!first_strong_is_rtl(""));
     }
 }

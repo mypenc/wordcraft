@@ -33,14 +33,8 @@ fn font_json(f: &UserFont) -> Value {
 /// Read a font file named by the user, refusing one larger than the cap before reading it.
 #[cfg(not(target_arch = "wasm32"))]
 fn read_font_file(path: &str) -> Result<Vec<u8>, CmdError> {
-    let meta = std::fs::metadata(path).map_err(|e| CmdError::Failed(format!("{path}: {e}")))?;
-    if !meta.is_file() {
-        return Err(CmdError::Failed(format!("{path}: not a file")));
-    }
-    if meta.len() > wordcraft_fonts::MAX_FONT_FILE_BYTES as u64 {
-        return Err(CmdError::Failed(format!("{path}: the font file is larger than {} MB", wordcraft_fonts::MAX_FONT_FILE_BYTES >> 20)));
-    }
-    std::fs::read(path).map_err(|e| CmdError::Failed(format!("{path}: {e}")))
+    // Through `io`, which keeps automation inside its read root (#769).
+    crate::io::read_file_capped(path, wordcraft_fonts::MAX_FONT_FILE_BYTES as u64, "font file").map_err(CmdError::Failed)
 }
 
 fn add(s: &mut Session, v: &Value) -> CmdResult {

@@ -136,6 +136,11 @@ impl BoxBudget {
         self.open.pop();
     }
 
+    /// Whether a text box is being expanded now.
+    pub fn inside(&self) -> bool {
+        !self.open.is_empty()
+    }
+
     /// Boxes expanded so far.
     pub fn total(&self) -> usize {
         self.total

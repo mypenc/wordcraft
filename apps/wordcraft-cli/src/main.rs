@@ -1,6 +1,8 @@
 //! `wordcraft-cli`: WordCraft from the command line.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod automation_args;
+
 use std::fmt;
 use std::io::Write;
 use std::process::ExitCode;
@@ -25,8 +27,14 @@ USAGE:
                                               who tracked changes and comments are by)
   wordcraft-cli commands [--json]             list every command
   wordcraft-cli parity [--markdown]           feature-catalog parity
-  wordcraft-cli mcp [--connect HOST:PORT | --author NAME]
-                                              MCP server on stdio (headless, or bridged to the app)
+  wordcraft-cli mcp [--connect HOST:PORT | --author NAME] [--automation-read-root DIR] [--automation-write-root DIR]
+                                              MCP server on stdio (headless, or bridged to the app).
+                                              --automation-read-root / --automation-write-root confine
+                                              the files the agent's commands read (open, insert text
+                                              or picture, mail-merge data, templates…) and write (save,
+                                              export, merge output…) to DIR, links followed; a root left
+                                              out grants none of its access. They apply to the headless
+                                              server and are an error with --connect.
   wordcraft-cli zotero <command> <file> [--cmd 'id={json}' …] [--save OUT] [--trace] [--port P]
                                               run a Zotero command on a document (Zotero must be
                                               running): addEditCitation, addEditBibliography,
@@ -74,6 +82,26 @@ fn validate_options(command: &str, args: &[String], specs: &[OptionSpec]) -> Res
         }
     }
     Ok(())
+}
+
+/// Take `--automation-read-root` / `--automation-write-root` (each `--flag DIR` or `--flag=DIR`,
+/// once) out of `args`, and open the roots, which must be existing folders. Returns the arguments
+/// that are left. A malformed root flag is an error, never a root silently left out.
+fn automation_roots(
+    command: &str,
+    args: &[String],
+) -> Result<(Option<std::sync::Arc<wordcraft_engine::file_access::AutomationRoots>>, Vec<String>), String> {
+    let mut found = automation_args::AutomationArgs::new(None, None);
+    let mut left = Vec::new();
+    let mut it = args.iter().cloned();
+    while let Some(arg) = it.next() {
+        if !found.consume(&arg, &mut it).map_err(|e| format!("{command}: {e}"))? {
+            left.push(arg);
+        }
+    }
+    let roots = wordcraft_engine::file_access::AutomationRoots::new(found.read_root.as_deref(), found.write_root.as_deref())
+        .map_err(|e| format!("{command}: {e}"))?;
+    Ok((roots, left))
 }
 
 const NO_OPTIONS: &[OptionSpec] = &[];
@@ -265,9 +293,17 @@ fn run(args: &[String]) -> Result<(), Failure> {
             }
         }
         "mcp" => {
+            let (roots, rest) = automation_roots("mcp", &rest)?;
             validate_options("mcp", &rest, MCP_OPTIONS)?;
             let author = arg_value(&rest, "--author");
-            let backend: Box<dyn wordcraft_mcp::Backend> = match arg_value(&rest, "--connect") {
+            let connect = arg_value(&rest, "--connect");
+            if roots.is_some() && connect.is_some() {
+                return Err(
+                    "mcp: --automation-read-root and --automation-write-root confine the headless server; a running app is not confined by them"
+                        .into(),
+                );
+            }
+            let backend: Box<dyn wordcraft_mcp::Backend> = match connect {
                 // The app's user name is the person's own setting; don't rewrite it from a flag.
                 Some(_) if author.is_some() => {
                     return Err("mcp: --author applies to the headless server; with --connect, run file.setAuthor".into());
@@ -281,6 +317,13 @@ fn run(args: &[String]) -> Result<(), Failure> {
                 }
                 None => {
                     let mut headless = wordcraft_mcp::Headless::default();
+                    if let Some(roots) = roots {
+                        // Every thread of this process, not only the server's: nothing reaches past the roots.
+                        wordcraft_engine::file_access::confine_process(roots.clone());
+                        let show = |root: Option<&std::path::Path>| root.map_or_else(|| "none".to_string(), |r| r.display().to_string());
+                        eprintln!("wordcraft-cli: files confined: read root {}, write root {}", show(roots.read_root()), show(roots.write_root()));
+                        headless = headless.with_automation_roots(Some(roots));
+                    }
                     if let Some(name) = author {
                         set_author(&mut headless.session, &name)?;
                     }
@@ -427,5 +470,59 @@ mod tests {
         assert!(run(&args(&["run", "--author", "Claude", "--cmd", "review.trackChanges={\"value\":true}"])).is_ok());
         // The app's user name is the person's own; a bridge flag must not rewrite it.
         assert!(run(&args(&["mcp", "--connect", "127.0.0.1:9", "--author", "Claude"])).is_err_and(|e| e.to_string().contains("--author")));
+    }
+
+    #[test]
+    fn automation_root_flags_are_taken_out_of_the_mcp_arguments() {
+        let base = std::env::temp_dir().join(format!("wc-cli-roots-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("in")).unwrap();
+        std::fs::create_dir_all(base.join("out")).unwrap();
+        let (read, write) = (base.join("in").to_string_lossy().into_owned(), base.join("out").to_string_lossy().into_owned());
+
+        let (roots, left) =
+            automation_roots("mcp", &args(&["--automation-read-root", &read, "--author", "Claude", &format!("--automation-write-root={write}")]))
+                .unwrap();
+        let roots = roots.unwrap();
+        assert_eq!(left, args(&["--author", "Claude"]));
+        assert!(roots.read_root().is_some() && roots.write_root().is_some());
+        assert!(validate_options("mcp", &left, MCP_OPTIONS).is_ok());
+
+        // A root left out grants none of its access.
+        let (roots, _) = automation_roots("mcp", &args(&["--automation-read-root", &read])).unwrap();
+        let roots = roots.unwrap();
+        assert!(roots.write_root().is_none());
+        assert!(
+            roots.check(&format!("{write}/x.docx"), wordcraft_engine::file_access::Access::Write).unwrap_err().contains("write authority is absent")
+        );
+
+        // No flags: nothing is confined and the arguments pass through.
+        let (roots, left) = automation_roots("mcp", &args(&["--connect", "127.0.0.1:9"])).unwrap();
+        assert!(roots.is_none());
+        assert_eq!(left, args(&["--connect", "127.0.0.1:9"]));
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn automation_root_flags_reject_bad_operands_and_missing_folders() {
+        for bad in [
+            args(&["--automation-read-root"]),
+            args(&["--automation-read-root", "--author"]),
+            args(&["--automation-write-root="]),
+            args(&["--automation-read-root", "a", "--automation-read-root=b"]),
+        ] {
+            assert!(automation_roots("mcp", &bad).is_err(), "{bad:?}");
+        }
+        let e = automation_roots("mcp", &args(&["--automation-read-root", "/definitely/not/a/folder"])).err().unwrap();
+        assert!(e.starts_with("mcp: cannot open the automation read root"), "{e}");
+        // Through the command line: an error, not a server that quietly runs unconfined.
+        assert!(run(&args(&["mcp", "--automation-write-root", "/definitely/not/a/folder"])).is_err());
+    }
+
+    #[test]
+    fn automation_roots_are_an_error_with_connect() {
+        let dir = std::env::temp_dir().to_string_lossy().into_owned();
+        let e = run(&args(&["mcp", "--connect", "127.0.0.1:9", "--automation-read-root", &dir])).unwrap_err().to_string();
+        assert!(e.contains("--automation-read-root") && e.contains("headless"), "{e}");
     }
 }

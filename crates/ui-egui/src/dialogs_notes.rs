@@ -150,8 +150,7 @@ pub fn note_options(app: &mut WordApp, ui: &mut Ui, f: &mut NoteForm) -> bool {
             cancel = ui.button(tl!("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
             apply = ui.button(tl!("Apply")).clicked();
             let label = if f.endnote { "Insert Endnote" } else { "Insert Footnote" };
-            insert = ui.add(egui::Button::new(egui::RichText::new(tl!(label)).color(egui::Color32::WHITE)).fill(crate::theme::APP_COLOR)).clicked()
-                || ui.input(|i| i.key_pressed(egui::Key::Enter));
+            insert = ui.add(crate::widgets::primary_button(ui, tl!(label))).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter));
         });
     });
     if insert || apply {

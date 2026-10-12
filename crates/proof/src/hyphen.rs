@@ -455,16 +455,37 @@ mod tests {
         assert!(hyphen_points("typography", &lim).is_empty());
     }
 
-    /// The fastest of three timings of `f`, after a warm-up.
-    fn fastest(f: impl Fn()) -> f64 {
+    /// The CPU time `f` takes on this thread, in seconds. On Linux it is the scheduler's count of the
+    /// time the thread actually ran, so the time it waits while other work on a busy machine has the
+    /// CPU is left out; elsewhere, wall-clock time.
+    fn cpu_cost(f: &mut impl FnMut()) -> f64 {
+        let ran = || {
+            let s = std::fs::read_to_string("/proc/thread-self/schedstat").ok()?;
+            s.split_whitespace().next()?.parse::<u64>().ok()
+        };
+        let (t, before) = (std::time::Instant::now(), ran());
         f();
-        (0..3)
-            .map(|_| {
-                let t = std::time::Instant::now();
-                f();
-                t.elapsed().as_secs_f64()
-            })
-            .fold(f64::INFINITY, f64::min)
+        match (before, ran()) {
+            (Some(a), Some(b)) => b.saturating_sub(a) as f64 * 1e-9,
+            _ => t.elapsed().as_secs_f64(),
+        }
+    }
+
+    /// How much more `big` costs than `small`, for `big` an input `scale` times the size of `small`'s:
+    /// (small, big, big / small), ~`scale` when linear and ~`scale`² when quadratic. Each is the
+    /// cheapest of several runs after a warm-up, the runs alternating so a busy spell slows both sizes
+    /// alike; `small` is timed `scale` times over per run, so both timings are long against the clock's
+    /// resolution.
+    fn cost_ratio(scale: usize, mut small: impl FnMut(), mut big: impl FnMut()) -> (f64, f64, f64) {
+        small();
+        big();
+        let mut small_scaled = || (0..scale).for_each(|_| small());
+        let (mut t1, mut tk) = (f64::INFINITY, f64::INFINITY);
+        for _ in 0..5 {
+            t1 = t1.min(cpu_cost(&mut small_scaled) / scale as f64);
+            tk = tk.min(cpu_cost(&mut big));
+        }
+        (t1, tk, tk / t1.max(1e-9))
     }
 
     /// `hyphen_points`' limit checks as first written (a rescan of the letter run per point): the
@@ -598,7 +619,7 @@ mod tests {
 
     #[test]
     fn hyphenating_a_long_word_is_linear() {
-        // A word of n letters against one of 4n: linear ~4x the time, the old rescans ~16x. One in
+        // A word of n letters against one of 8n: linear ~8x the cost, the old rescans ~64x. One in
         // the pattern alphabet, one outside it (the syllable heuristic).
         let pattern = |k: usize| "hyphenation".repeat(k);
         let heuristic = |k: usize| "smørrebrød".repeat(k);
@@ -607,17 +628,16 @@ mod tests {
         let ratios: Vec<(String, f64)> = [(pattern as fn(usize) -> String, 20), (heuristic, 40)]
             .into_iter()
             .map(|(word, repeat)| {
-                let (small, big) = (word(400), word(1600));
-                let time = |w: &str| fastest(|| (0..repeat).for_each(|_| drop(hyphen_points(w, &Limits::default()))));
-                let (t1, t4) = (time(&small), time(&big));
-                let ratio = t4 / t1.max(1e-9);
-                let what = format!("{}…: t(n) {t1:.4} s, t(4n) {t4:.4} s, ratio {ratio:.1}", word(1).chars().take(10).collect::<String>());
+                let (small, big) = (word(400), word(8 * 400));
+                let time = |w: &str| (0..repeat).for_each(|_| drop(hyphen_points(w, &Limits::default())));
+                let (t1, t8, ratio) = cost_ratio(8, || time(&small), || time(&big));
+                let what = format!("{}…: t(n) {t1:.4} s, t(8n) {t8:.4} s, ratio {ratio:.1}", word(1).chars().take(10).collect::<String>());
                 eprintln!("{what}");
                 (what, ratio)
             })
             .collect();
         for (what, ratio) in ratios {
-            assert!(ratio < 8.0, "4x the letters, not linear: {what}");
+            assert!(ratio < 24.0, "8x the letters, not linear: {what}");
         }
     }
 

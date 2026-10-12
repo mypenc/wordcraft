@@ -361,6 +361,30 @@ mod tests {
     }
 
     #[test]
+    fn east_asian_run_uses_one_face_covering_the_whole_run() {
+        let db = FontDb::with_font_dirs(Vec::new());
+        db.set_system_fallback(false);
+        let latin = db.face(DEFAULT_FAMILY, "Regular");
+        if CRAFT_FONTS.is_empty() {
+            // No bundled CJK font and no system fallback: nothing can draw the run.
+            assert!(db.fallback_for_east_asian(&['分', '类'], latin.id(), false, false).is_none());
+            return;
+        }
+        // JIS-covered ideographs alone would fall back to a Mincho and simplified-only ones to the
+        // SC sans: the run-level pick must cover every character in one face, or a run mixes
+        // serif and sans glyphs (the per-character fallback still applies when it returns None).
+        let run: Vec<char> = "分类监督学习".chars().collect();
+        let f = db.fallback_for_east_asian(&run, latin.id(), false, false).expect("a CJK face covers the run");
+        for c in &run {
+            assert!(f.covers(*c), "{f:?} covers {c}");
+        }
+        // Pure Japanese still gets the document serif (Mincho first).
+        let jp: Vec<char> = "日本語".chars().collect();
+        let f2 = db.fallback_for_east_asian(&jp, latin.id(), false, false).expect("a CJK face");
+        assert!(f2.family.contains("Mincho"), "{f2:?}");
+    }
+
+    #[test]
     fn works_without_craft_fonts() {
         // Always true without CRAFT_FONTS_DIR; with it, the bundled fonts must still all load.
         let db = FontDb::with_font_dirs(Vec::new());

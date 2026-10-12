@@ -278,6 +278,7 @@
 	Copy	Копіювати
 	Copy Formatting	Копіювати форматування
 	Corrections	Виправлення
+	Couldn't make WordCraft the default: {error}	Не вдалося зробити WordCraft типовою програмою: {error}
 	Count words in text boxes and notes	Рахувати слова в текстових полях і виносках
 	Cover Page	Титульна сторінка
 	Create	Створити
@@ -315,11 +316,15 @@
 	Drag a rectangle to draw a table, or a line across cells to split them. Esc stops.	Перетягніть прямокутник, щоб намалювати таблицю, або лінію через клітинки, щоб їх розділити. Esc завершує.
 	Draw Table	Намалювати таблицю
 	Edit Comment	Редагувати коментар
+	In Default apps, choose WordCraft for the document types you want it to open.	У програмах за замовчуванням виберіть WordCraft для типів документів, які він має відкривати.
 	Left Margin	Ліве поле
 	Indents and Spacing	Відступи й інтервали
 	Line breaking	Розрив рядків
+	Make WordCraft the default for Word documents…	Зробити WordCraft типовою програмою для документів Word…
 	More templates →	Більше шаблонів →
 	No templates match your search.	Немає шаблонів, що відповідають пошуку.
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	Відтепер файли .docx, .doc, .rtf, .odt і шаблони Word відкриватимуться у WordCraft.
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Відкриває Параметри › Програми за замовчуванням, де ви вибираєте WordCraft для .docx та інших типів документів.
 	Reopen	Відкрити знову
 	Right Margin	Праве поле
 	Distribute letters	Розподілити літери
@@ -329,6 +334,8 @@
 	Right (vertical)	Праворуч (вертикально)
 	Ruby text:	Текст рубі:
 	Search for templates	Пошук шаблонів
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	Щоб документи Word типово відкривалися у WordCraft: виберіть документ у Finder, оберіть Файл › Отримати інфо, виберіть WordCraft у розділі «Відкривати за допомогою» і натисніть «Змінити все».
+	WordCraft is now the default app for Word documents.	WordCraft тепер типова програма для документів Word.
 	development build	Збірка для розробки
 	Diagonal	Діагональ
 	Diamond	Ромб
@@ -1637,6 +1644,12 @@
 	Enlarge symbol	Збільшити символ
 	Enclosure	Обведення
 	Circle	Коло
+	Numerals:	Цифри:
+	Numerals	Цифри
+	Arabic	Арабські
+	Hindi	Гінді
+	Context	Контекст
+	System	Системні
 	Templates	Шаблони
 	Templates and Add-ins	Шаблони й надбудови
 	Attach Template	Приєднати шаблон
@@ -1690,6 +1703,7 @@
 	Middle	Посередині
 	Click the empty text box the text should continue in (Esc cancels)	Клацніть порожнє текстове поле, у якому має продовжитися текст (Esc — скасувати)
 	Not linked: click a text box	Не зв'язано: клацніть текстове поле
+	Show KeyTips (Alt or F10)	Показувати підказки клавіш (Alt або F10)
 	Location	Розташування
 	Endnotes	Кінцеві виноски
 	Below text	Під текстом
@@ -1702,6 +1716,10 @@
 	Continuous numbering	Наскрізна нумерація
 	Apply	Застосувати
 	Convert Notes	Перетворити примітки
+	Reading	Читання
+	Reading Column Width	Ширина стовпця для читання
+	Reading Line Spacing	Міжрядковий інтервал для читання
+	Reading Text Size	Розмір тексту для читання
 	English (United Kingdom)	Англійська (Велика Британія)
 	Polish	Польська
 	Do Not Check Spelling or Grammar	Не перевіряти правопис і граматику
@@ -1982,7 +2000,6 @@
 	Add line numbering	Додати нумерацію рядків
 	Add to Document	Додати до документа
 	Address labels	Адресні етикетки
-	Arabic	Арабська
 	Auto	Авто
 	Automatically hyphenate document	Автоматично переносити слова в документі
 	Chinese (Simplified)	Китайська (спрощена)

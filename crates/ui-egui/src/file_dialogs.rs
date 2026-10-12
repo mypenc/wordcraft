@@ -233,8 +233,13 @@ impl WordApp {
             }
             AfterPick::SaveAs(after) => {
                 let saved = picked.is_some_and(|path| {
-                    self.run("file.save", json!({"path": path})).is_ok_and(|v| v.get("saved").and_then(Value::as_bool) == Some(true))
+                    self.run("file.save", json!({"path": path}))
+                        .is_ok_and(|v| v.get("saved").and_then(Value::as_bool) == Some(true) || v.get("downloaded").is_some())
                 });
+                if saved {
+                    self.ui.backstage = false;
+                    self.canvas.want_focus = true;
+                }
                 match after {
                     AfterSave::Nothing => Ok(json!({"saved": saved})),
                     AfterSave::AutoSave => {

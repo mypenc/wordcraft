@@ -86,6 +86,16 @@ pub fn haptic(app: &AndroidApp) {
     with_activity(app, |env, activity| env.call_method(activity, "haptic", "()V", &[]).map(|_| ()));
 }
 
+/// Whether Android currently reports the on-screen keyboard as visible.
+pub fn soft_keyboard_visible(app: &AndroidApp) -> Option<bool> {
+    with_activity(app, |env, activity| env.call_method(activity, "softKeyboardVisible", "()Z", &[])?.z())
+}
+
+/// Hide the on-screen keyboard without dropping focus from the document.
+pub fn hide_soft_keyboard(app: &AndroidApp) {
+    with_activity(app, |env, activity| env.call_method(activity, "hideSoftKeyboard", "()V", &[]).map(|_| ()));
+}
+
 /// The system clipboard's text.
 pub fn clipboard_get(app: &AndroidApp) -> Option<String> {
     with_activity(app, |env, activity| {

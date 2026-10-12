@@ -12,6 +12,7 @@ use wordcraft_doc::resolve::{ResolvedChar, ResolvedPara};
 use wordcraft_doc::{Document, Paragraph};
 use wordcraft_fonts::FaceRef;
 
+use crate::NumeralMode;
 use crate::fields::{FIELD_SHADING, FieldCtx, field_code_text, field_text};
 
 /// A face at a size with the formatting needed to draw it.
@@ -334,13 +335,19 @@ pub struct ParaEnv<'a> {
     pub table: Option<&'a CellText>,
     /// Check spelling (and grammar, as the options say) for squiggles; `None` = no squiggles.
     pub proofing: Option<crate::ProofOptions>,
+    /// How digits look on screen (an unresolved `System` shows Western digits).
+    pub numeral: NumeralMode,
     /// Areas text must flow around (floating objects), relative to the paragraph: x from the
     /// column's left edge, y from the top of the first line.
     pub exclusions: &'a [Exclusion],
     /// Automatic equation numbers used before this paragraph.
     pub eq_number: u32,
+    pub read_line_spacing: Option<f32>,
     /// The section's document grid (`Grid::default()`: none).
     pub grid: Grid,
+    /// Shrink inline drawings wider than the line to fit it: in text boxes, which don't clip what
+    /// runs past their sides. Elsewhere such a drawing keeps its size and the page edge clips it.
+    pub fit_objects: bool,
 }
 
 /// The section's document grid as layout applies it (`w:docGrid`, ECMA-376 §17.6.5).
@@ -467,6 +474,64 @@ fn is_mark(c: char) -> bool {
     matches!(unicode_bidi::bidi_class(c), NSM | BN) && !c.is_control()
 }
 
+/// A digit Word's Numeral modes substitute: ASCII or Arabic-Indic (U+0660–U+0669).
+fn is_numeral_digit(c: char) -> bool {
+    c.is_ascii_digit() || ('\u{660}'..='\u{669}').contains(&c)
+}
+
+/// Characters skipped when looking for the text around a number: digits, spaces and the
+/// Arabic decimal/thousands separators (٫ ٬).
+fn is_number_inside(c: char) -> bool {
+    is_numeral_digit(c) || ('\u{6f0}'..='\u{6f9}').contains(&c) || c == ' ' || c == '\t' || c == '\u{66b}' || c == '\u{66c}'
+}
+
+/// Which digits of run `text` sit in right-to-left surroundings (Word › Numeral › Context), by
+/// byte offset. European numbers take an even bidi level, so a digit's own level says little;
+/// the nearest neighbour on either side that isn't part of the number (digits, spaces,
+/// separators) decides. One pass each way, so long runs of digits and spaces stay linear.
+/// Offsets past `levels` count as left to right.
+fn context_digit_dirs(text: &str, levels: &[u8], base: usize) -> Vec<bool> {
+    let odd = |o: usize| levels.get(base.saturating_add(o)).is_some_and(|l| l % 2 == 1);
+    let mut out = vec![false; text.len()];
+    let mut left_rtl = false;
+    for (o, c) in text.char_indices() {
+        if !is_number_inside(c) {
+            left_rtl = odd(o);
+        } else if is_numeral_digit(c)
+            && let Some(v) = out.get_mut(o)
+        {
+            *v = odd(o) || left_rtl;
+        }
+    }
+    let mut right_rtl = false;
+    for (o, c) in text.char_indices().rev() {
+        if !is_number_inside(c) {
+            right_rtl = odd(o);
+        } else if right_rtl
+            && is_numeral_digit(c)
+            && let Some(v) = out.get_mut(o)
+        {
+            *v = true;
+        }
+    }
+    out
+}
+
+/// Map a byte range of numeral-substituted display text back to the original text.
+///
+/// `map_starts[i]` is the display byte offset of the `i`th char and `orig_of[i]` its original
+/// byte offset (`orig_of` ends with the original length as a sentinel). Substitution is
+/// 1 char → 1 char, so both ends land on char boundaries; anything else falls back to the
+/// end of the original text instead of panicking or slicing mid-character.
+pub(crate) fn remap_range(map_starts: &[usize], orig_of: &[usize], orig_len: usize, ms: usize, me: usize) -> (usize, usize) {
+    let n = map_starts.len();
+    let i = map_starts.partition_point(|&b| b < ms).min(n);
+    let j = map_starts.partition_point(|&b| b < me).min(n);
+    let s = orig_of.get(i).copied().unwrap_or(orig_len);
+    let e = orig_of.get(j).copied().unwrap_or(orig_len);
+    (s.min(e), s.max(e))
+}
+
 /// Bidi embedding levels per byte of `text` (UAX #9 rules up to I2), or empty when the
 /// paragraph is left to right and has no right-to-left characters.
 pub fn bidi_levels(text: &str, rtl_para: bool) -> Vec<u8> {
@@ -517,6 +582,15 @@ fn east_asian(c: char) -> bool {
 }
 
 impl<'a> Builder<'a> {
+    /// Displayed form of `c` at run-relative byte `at` (Word › Numeral): one char in, one
+    /// char out. `rtl` is the shaping direction; in Context mode `context` (from
+    /// [`context_digit_dirs`], empty otherwise) gives each digit's surroundings, since European
+    /// numbers take an even bidi level.
+    fn numeral_char(&self, context: &[bool], at: usize, c: char, rtl: bool) -> char {
+        let dir = if !context.is_empty() && is_numeral_digit(c) { context.get(at).copied().unwrap_or(false) } else { rtl };
+        self.env.numeral.map(c, dir)
+    }
+
     /// Style index for a resolved char in `face` (caps-scaled `size` override for small caps).
     fn style(&mut self, rc: &Arc<ResolvedChar>, face_override: Option<FaceRef>, small: bool) -> u16 {
         let r = wordcraft_fonts::word::resolve(&rc.font, rc.bold, rc.italic);
@@ -595,30 +669,53 @@ impl<'a> Builder<'a> {
             .filter(|r| !r.substituted)
             .map(|r| r.face);
         let use_levels = para_text && !self.levels.is_empty();
+        let context = if self.env.numeral == NumeralMode::Context && use_levels { context_digit_dirs(text, &self.levels, base) } else { Vec::new() };
+        // One fallback face for the run's East Asian characters: the first face in fallback order
+        // covering every character the primary font lacks, so the run draws in a single CJK face
+        // instead of mixing faces per character (e.g. a bundled Japanese Mincho for JIS-covered
+        // ideographs beside a Simplified-Chinese sans for the rest). Whitespace and characters the
+        // primary covers don't constrain the choice. `None` keeps the per-character fallback.
+        let ea_face: Option<FaceRef> = {
+            let ea: Vec<char> = text
+                .chars()
+                .filter(|c| crate::kinsoku::is_east_asian(*c) && !primary.covers(*c) && !c.is_whitespace() && !c.is_control() && *c != SOFT_HYPHEN)
+                .collect();
+            if ea.is_empty() {
+                None
+            } else {
+                wordcraft_fonts::FontDb::global().fallback_for_east_asian(&ea, primary.id(), rc.bold, rc.italic).map(|f| FaceRef::of(&f))
+            }
+        };
         // Split by font coverage (fallback faces), small caps case, script formatting and direction.
         let mut seg_start = 0;
         let mut cur: Option<SegKey> = None;
         let mut segs: Vec<(usize, usize, SegKey)> = Vec::new();
         for (i, c) in text.char_indices() {
+            let rtl = use_levels && self.levels.get(base + i).is_some_and(|l| l % 2 == 1);
+            // Displayed form (Word › Numeral): one char in, one char out. Coverage and the
+            // fallback face are picked for the displayed char, so Hindi digits land in an
+            // Arabic-capable face and Western digits in a Latin one.
+            let dc = self.numeral_char(&context, i, c, rtl);
             let mark = is_mark(c);
             let complex = match cur {
                 Some(k) if mark => k.complex,
-                _ => rc_cs.is_some() && rc.uses_complex(c),
+                _ => rc_cs.is_some() && rc.uses_complex(dc),
             };
             let prim = if complex { primary_cs.unwrap_or(primary) } else { primary };
             let face = match cur {
                 Some(k) if mark => k.face,
                 _ if !complex && east_asian(c) && primary_ea.is_some_and(|f| f.covers(c)) => primary_ea,
-                _ if prim.covers(c) || c.is_whitespace() || c.is_control() || c == SOFT_HYPHEN => None,
+                _ if prim.covers(dc) || c.is_whitespace() || c.is_control() || c == SOFT_HYPHEN => None,
                 // Stay in the fallback face the word started in while it covers the letters.
-                Some(SegKey { face: Some(f), .. }) if f.covers(c) => Some(f),
+                Some(SegKey { face: Some(f), .. }) if f.covers(dc) => Some(f),
+                // The run's unified East Asian face, when one face covers the whole run.
+                _ if !complex && ea_face.is_some() && crate::kinsoku::is_east_asian(c) => ea_face,
                 _ => {
                     let (bold, italic) = if complex { (rc.bold_cs, rc.italic_cs) } else { (rc.bold, rc.italic) };
-                    wordcraft_fonts::FontDb::global().fallback_styled(c, prim.id(), bold, italic).map(|f| FaceRef::of(&f))
+                    wordcraft_fonts::FontDb::global().fallback_styled(dc, prim.id(), bold, italic).map(|f| FaceRef::of(&f))
                 }
             };
             let small = rc.small_caps && !rc.caps && c.is_lowercase();
-            let rtl = use_levels && self.levels.get(base + i).is_some_and(|l| l % 2 == 1);
             let k = SegKey { face, small, complex, rtl };
             match cur {
                 Some(p) if p.same(&k) => {}
@@ -644,21 +741,38 @@ impl<'a> Builder<'a> {
             let si = self.style(rc, key.face, small);
             let Some(st) = self.styles.get(si as usize).cloned() else { continue };
             let upper = rc.caps || small;
+            // Displayed text: numeral substitution is 1 char → 1 char, so codepoints stay
+            // aligned with the document and only byte offsets shift; `orig_of` maps each
+            // displayed char back to its original byte offset (+ a `sub.len()` sentinel).
+            let substituted = sub.char_indices().any(|(i, c)| self.numeral_char(&context, a + i, c, key.rtl) != c);
+            let mut mapped = String::new();
+            let mut map_starts: Vec<usize> = Vec::new();
+            let mut orig_of: Vec<usize> = Vec::new();
+            if substituted {
+                mapped = String::with_capacity(sub.len());
+                for (i, c) in sub.char_indices() {
+                    map_starts.push(mapped.len());
+                    orig_of.push(i);
+                    mapped.push(self.numeral_char(&context, a + i, c, key.rtl));
+                }
+                orig_of.push(sub.len());
+            }
+            let shape_text = if substituted { mapped.as_str() } else { sub };
             let map = |c: char| if upper { c.to_uppercase().next().unwrap_or(c) } else { c };
             let shaped = if use_levels {
-                wordcraft_fonts::shape_run(&st.face, sub, &[], map, key.rtl)
+                wordcraft_fonts::shape_run(&st.face, shape_text, &[], map, key.rtl)
             } else {
-                wordcraft_fonts::shape(&st.face, sub, &[], map)
+                wordcraft_fonts::shape(&st.face, shape_text, &[], map)
             };
             let k = st.size / st.face.upem.max(1.0) as f32;
             let hscale = rc.scale / 100.0;
             // Group glyphs by cluster byte offset; graphemes may span several shaper clusters.
             // Complex-script syllables the graphemes split (Myanmar vowel signs, stacked
             // consonants) stay one cluster: the caret never stops inside them.
-            let bounds: Vec<usize> = wordcraft_doc::cluster::cluster_starts(sub);
+            let bounds: Vec<usize> = wordcraft_doc::cluster::cluster_starts(shape_text);
             let mut gi = 0usize;
             for (bi, &gs) in bounds.iter().enumerate() {
-                let ge = bounds.get(bi + 1).copied().unwrap_or(sub.len());
+                let ge = bounds.get(bi + 1).copied().unwrap_or(shape_text.len());
                 let g0 = self.glyphs.len() as u32;
                 let mut adv = 0.0f32;
                 while let Some(g) = shaped.get(gi) {
@@ -670,7 +784,7 @@ impl<'a> Builder<'a> {
                     gi += 1;
                 }
                 let g1 = self.glyphs.len() as u32;
-                let s = sub.get(gs..ge).unwrap_or("");
+                let s = shape_text.get(gs..ge).unwrap_or("");
                 let ch = s.chars().next().unwrap_or(' ');
                 let kind = kind_override.unwrap_or(if ch == ' ' || ch == '\u{3000}' {
                     ClKind::Space
@@ -680,9 +794,11 @@ impl<'a> Builder<'a> {
                     ClKind::Text
                 });
                 let adv = if kind == ClKind::Marker { 0.0 } else { adv + rc.spacing };
+                // Clusters index the document text, never the displayed text.
+                let (cs, ce) = if substituted { remap_range(&map_starts, &orig_of, sub.len(), gs, ge) } else { (gs, ge) };
                 self.clusters.push(Cluster {
-                    start: base + a + gs,
-                    end: base + a + ge,
+                    start: base + a + cs,
+                    end: base + a + ce,
                     adv,
                     kind,
                     style: si,
@@ -954,6 +1070,9 @@ pub(crate) fn left_out(rc: &ResolvedChar, show_hidden: bool, hide_deleted: bool)
 pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     let doc = env.doc;
     let mut rp = doc.styles.resolve_para_in(&p.props, env.table.map(|t| &t.para));
+    if let Some(spacing) = env.read_line_spacing.filter(|s| s.is_finite() && (1.0..=2.0).contains(s)) {
+        rp.line_spacing = wordcraft_doc::props::LineSpacing::Multiple(spacing);
+    }
     let para_style = p.props.style.as_deref();
     let table_chr = env.table.map(|t| &t.chr);
     // Indents in characters are measured in the paragraph mark's font size.
@@ -1092,9 +1211,11 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
                             if let Some((w, h, float)) = o.frame()
                                 && float.wrap == wordcraft_doc::para::Wrap::Inline
                             {
+                                // A picture wider than the line keeps its size, as in Word: it runs past
+                                // the margin and the page edge clips it (see `ParaEnv::fit_objects`).
                                 let maxw = (env.width - rp.indent_left.max(0.0) - rp.indent_right.max(0.0)).max(18.0);
                                 let (w, h) = (w.clamp(1.0, 4000.0), h.clamp(1.0, 4000.0));
-                                let s = if w > maxw { maxw / w } else { 1.0 };
+                                let s = if env.fit_objects && w > maxw { maxw / w } else { 1.0 };
                                 // The line makes room for effects (shadows) around the picture too, and
                                 // for a rotated one's bounds, as Word does.
                                 let [el, et, er, eb] = float.effect_extent();

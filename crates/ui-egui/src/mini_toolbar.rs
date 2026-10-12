@@ -64,6 +64,10 @@ pub fn shown_id() -> egui::Id {
 
 /// Whether the bar may be shown for the current app state.
 pub fn visible(app: &WordApp) -> bool {
+    // Reading Mode permits text selection and copying, but never formatting controls.
+    if app.session.view.read_mode {
+        return false;
+    }
     // Never over a modal dialog or the Backstage.
     if app.dialog.is_some() || app.colors.is_some() || app.ui.backstage {
         return false;
@@ -229,6 +233,22 @@ mod tests {
 
     fn vp() -> Rect {
         Rect::from_min_size(pos2(100.0, 50.0), Vec2::new(1200.0, 700.0))
+    }
+
+    #[test]
+    fn reading_mode_hides_formatting_even_with_an_existing_selection() {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        app.run("text.insert", json!({"text": "Selectable text"})).unwrap();
+        app.run("select.all", json!({})).unwrap();
+        assert!(!app.session.sel.is_collapsed());
+        assert!(visible(&app), "selection shows the formatting bar in editing mode");
+
+        app.run("view.readMode", json!({})).unwrap();
+        assert!(!app.session.sel.is_collapsed(), "entering Reading Mode must preserve the selection");
+        assert!(!visible(&app), "formatting bar must not be accessible in Reading Mode");
+
+        app.run("view.printLayout", json!({})).unwrap();
+        assert!(visible(&app), "returning to editing restores the formatting bar");
     }
 
     #[test]

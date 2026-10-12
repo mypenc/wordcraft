@@ -45,6 +45,30 @@ fn long_paragraph_wraps_and_paginates() {
 }
 
 #[test]
+fn reading_layout_reflows_into_viewport_height_pages_without_changing_print_layout() {
+    let d = Document::from_text(&"A moderately long sentence that should wrap across reading columns. ".repeat(250));
+    let opts = LayoutOptions { view: ViewMode::Read, web_width: 230.0, read_height: 390.0, ..Default::default() };
+    let read = layout(&d, &mut LayoutCache::new(), &opts);
+    assert!(read.pages.len() > 5, "reading column count: {}", read.pages.len());
+    assert!(read.pages.iter().all(|p| p.w == 230.0 && p.h == 390.0));
+    assert!(read.pages.iter().all(|p| p.body.w < p.w && p.body.h < p.h));
+    assert_eq!(
+        lines_of(&read),
+        lines_of(&layout(&d, &mut LayoutCache::new(), &LayoutOptions { view: ViewMode::Web, web_width: 230.0, ..Default::default() }))
+    );
+    let print = lay(&d);
+    assert_eq!(print.pages[0].w, d.sections()[0].1.page_w);
+    assert_eq!(print.pages[0].h, d.sections()[0].1.page_h);
+    // Window height changes page breaks, not the text, and a malformed dimension stays bounded.
+    let short = layout(&d, &mut LayoutCache::new(), &LayoutOptions { read_height: 260.0, ..opts.clone() });
+    assert!(short.pages.len() > read.pages.len());
+    let spaced = layout(&d, &mut LayoutCache::new(), &LayoutOptions { read_line_spacing: Some(2.0), ..opts.clone() });
+    assert!(spaced.pages.len() > read.pages.len(), "reader-only line spacing repaginates text");
+    let invalid = layout(&d, &mut LayoutCache::new(), &LayoutOptions { web_width: f32::NAN, read_height: f32::INFINITY, ..opts });
+    assert!(invalid.pages.iter().all(|p| p.w.is_finite() && p.h.is_finite()));
+}
+
+#[test]
 fn hit_and_caret_agree() {
     let d = Document::from_text("Hello world, this is WordCraft.\nSecond paragraph here.");
     let l = lay(&d);
@@ -166,27 +190,55 @@ fn hidden_text_adds_no_line_break_opportunity_when_not_shown() {
     }
 }
 
-/// How much longer laying out `doc(4n)` takes than `doc(n)` (fastest of three each, after a
-/// warm-up): ~4 when linear, ~16 when quadratic, whatever the machine.
-/// How much bigger the second document is in the linear-time tests. At 8x a linear layout takes
-/// about 8x as long and a quadratic one about 64x, so a limit of 24x stays far from both, however
-/// busy the machine running the tests is.
+/// How much bigger the second document is in the linear-time tests. At 8x a linear layout costs
+/// about 8x as much and a quadratic one about 64x, so a limit of 24x stays far from both.
 const SCALE: usize = 8;
 
-fn layout_time_ratio(doc: impl Fn(usize) -> Document, n: usize, opts: &LayoutOptions) -> (f64, f64, f64) {
-    let fastest = |d: &Document| {
-        (0..3)
-            .map(|_| {
-                let t = std::time::Instant::now();
-                layout(d, &mut LayoutCache::new(), opts);
-                t.elapsed().as_secs_f64()
-            })
-            .fold(f64::INFINITY, f64::min)
+/// The CPU time `f` takes on this thread, in seconds. On Linux it is the scheduler's count of the
+/// time the thread actually ran, so the time it waits while other work on a busy machine has the
+/// CPU is left out; elsewhere, wall-clock time.
+fn cpu_cost(f: &mut impl FnMut()) -> f64 {
+    let ran = || {
+        let s = std::fs::read_to_string("/proc/thread-self/schedstat").ok()?;
+        s.split_whitespace().next()?.parse::<u64>().ok()
     };
-    let (small, big) = (doc(n), doc(SCALE * n));
-    layout(&small, &mut LayoutCache::new(), opts);
-    let (t1, tk) = (fastest(&small), fastest(&big));
+    let (t, before) = (std::time::Instant::now(), ran());
+    f();
+    match (before, ran()) {
+        (Some(a), Some(b)) => b.saturating_sub(a) as f64 * 1e-9,
+        _ => t.elapsed().as_secs_f64(),
+    }
+}
+
+/// How much more `big` costs than `small`, for `big` an input `scale` times the size of `small`'s:
+/// (small, big, big / small), ~`scale` when linear and ~`scale`² when quadratic. Each is the
+/// cheapest of several runs after a warm-up, the runs alternating so a busy spell slows both sizes
+/// alike; `small` is timed `scale` times over per run, so both timings are long against the clock's
+/// resolution.
+fn cost_ratio(scale: usize, mut small: impl FnMut(), mut big: impl FnMut()) -> (f64, f64, f64) {
+    small();
+    big();
+    let mut small_scaled = || (0..scale).for_each(|_| small());
+    let (mut t1, mut tk) = (f64::INFINITY, f64::INFINITY);
+    for _ in 0..5 {
+        t1 = t1.min(cpu_cost(&mut small_scaled) / scale as f64);
+        tk = tk.min(cpu_cost(&mut big));
+    }
     (t1, tk, tk / t1.max(1e-9))
+}
+
+/// [`cost_ratio`] of laying out `doc(SCALE * n)` against `doc(n)`.
+fn layout_time_ratio(doc: impl Fn(usize) -> Document, n: usize, opts: &LayoutOptions) -> (f64, f64, f64) {
+    let (small, big) = (doc(n), doc(SCALE * n));
+    cost_ratio(
+        SCALE,
+        || {
+            layout(&small, &mut LayoutCache::new(), opts);
+        },
+        || {
+            layout(&big, &mut LayoutCache::new(), opts);
+        },
+    )
 }
 
 #[test]
@@ -2795,10 +2847,10 @@ fn graphic_paths_drop_segments_that_cannot_be_drawn() {
 }
 
 #[test]
-fn oversized_graphic_draws_shrunk_with_its_items() {
+fn graphic_items_scale_with_their_frame() {
     use wordcraft_doc::graphic::{Graphic, GraphicItem, GraphicKind};
     use wordcraft_doc::props::Rgb;
-    // A 1000 x 500 pt chart is wider than the text: layout shrinks it, and its items with it.
+    // A chart drawn for 1000 x 500 pt in a 500 x 250 pt frame: its items and strokes scale by half.
     let items = vec![GraphicItem::Shape {
         rect: [0.0, 0.0, 1000.0, 500.0],
         kind: wordcraft_doc::para::ShapeKind::Rectangle,
@@ -2807,7 +2859,7 @@ fn oversized_graphic_draws_shrunk_with_its_items() {
         stroke_width: 4.0,
     }];
     let graphic = Graphic { kind: GraphicKind::Chart, items, w: 1000.0, h: 500.0, source: None, chart: None, smart_art: None };
-    let obj = InlineObject::Graphic { w: 1000.0, h: 500.0, alt: String::new(), float: Default::default(), graphic: Arc::new(graphic) };
+    let obj = InlineObject::Graphic { w: 500.0, h: 250.0, alt: String::new(), float: Default::default(), graphic: Arc::new(graphic) };
     let mut d = Document::from_text("Chart");
     d.insert_object(&Pos::body(0, 0), obj, &Default::default()).unwrap();
     let draws = flat(display::page_display(&d, &lay(&d).pages[0], &Default::default()));
@@ -2815,9 +2867,59 @@ fn oversized_graphic_draws_shrunk_with_its_items() {
         .iter()
         .find_map(|x| if let display::Draw::Shape { rect, stroke_width, .. } = x { Some((*rect, *stroke_width)) } else { None })
         .expect("a shape");
-    assert!(r.w < 1000.0, "{r:?}");
-    assert!((r.h / r.w - 0.5).abs() < 1e-3, "{r:?}");
-    assert!((stroke / r.w - 4.0 / 1000.0).abs() < 1e-5, "stroke {stroke} at width {}", r.w);
+    assert!((r.w - 500.0).abs() < 1e-3 && (r.h - 250.0).abs() < 1e-3, "{r:?}");
+    assert!((stroke - 2.0).abs() < 1e-5, "stroke {stroke}");
+}
+
+#[test]
+fn inline_picture_wider_than_a_text_box_is_fitted_to_it() {
+    // Text boxes don't clip what runs past their sides, so a 400 x 100 pt picture in a 144 pt box
+    // is fitted to the box's 129.6 pt inside its margins instead of spilling over the page.
+    let mut d = Document::from_text("Before");
+    let mut p = wordcraft_doc::Paragraph::with_text("", Default::default());
+    p.insert_object(0, picture(400.0, 100.0, Default::default()), &Default::default()).unwrap();
+    let id = d.add_part(wordcraft_doc::PartKind::TextBox, vec![wordcraft_doc::para_block(p)]);
+    let shape = InlineObject::Shape {
+        kind: wordcraft_doc::para::ShapeKind::TextBox,
+        w: 144.0,
+        h: 72.0,
+        fill: None,
+        stroke: None,
+        stroke_width: 0.75,
+        float: Default::default(),
+        story: Some(id),
+        freeform: None,
+        effects: Default::default(),
+        extra: Default::default(),
+    };
+    d.insert_object(&Pos::body(0, 0), shape, &Default::default()).unwrap();
+    let l = lay(&d);
+    let draws = flat(display::page_display(&d, &l.pages[0], &Default::default()));
+    let r = draws
+        .iter()
+        .find_map(|x| match x {
+            display::Draw::Shape { rect, kind: wordcraft_doc::para::ShapeKind::Rectangle, .. } => Some(*rect),
+            _ => None,
+        })
+        .expect("the picture");
+    assert!((r.w - 129.6).abs() < 0.1 && (r.h - 32.4).abs() < 0.1, "{r:?}");
+}
+
+#[test]
+fn inline_picture_wider_than_the_text_keeps_its_size() {
+    // A 1000 x 100 pt picture in 468 pt of text: Word draws it at its size, past the margin, and the
+    // page edge clips it; the line is as tall as the picture (docxide-pdf's case179).
+    let mut d = Document::from_text("");
+    if let Some(wordcraft_doc::Block::Para(p)) = d.body.get_mut(0).map(std::sync::Arc::make_mut) {
+        p.insert_object(0, picture(1000.0, 100.0, Default::default()), &Default::default()).unwrap();
+    }
+    let l = lay(&d);
+    let Some(Placed::Lines { para, .. }) = l.pages[0].items.iter().find(|i| matches!(i, Placed::Lines { .. })) else { panic!() };
+    let line = &para.lines[0];
+    assert!((line.baseline - line.top - 100.0).abs() < 0.01, "the picture keeps its height: {line:?}");
+    let draws = flat(display::page_display(&d, &l.pages[0], &Default::default()));
+    let r = draws.iter().find_map(|x| if let display::Draw::Shape { rect, .. } = x { Some(*rect) } else { None }).expect("the picture");
+    assert!((r.w - 1000.0).abs() < 0.01 && (r.h - 100.0).abs() < 0.01, "{r:?}");
 }
 
 /// The paragraph at `path` on page 0: its first line's x, its y and its line count.

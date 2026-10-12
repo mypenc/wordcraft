@@ -203,15 +203,7 @@ pub fn specs() -> Vec<CommandSpec> {
             let bytes = if let Some(d) = p::str(v, "data") {
                 super::insert::base64_decode(d).ok_or_else(|| CmdError::Params("bad base64".into()))?
             } else if let Some(path) = p::str(v, "path") {
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    std::fs::read(path).map_err(|e| CmdError::Failed(format!("{path}: {e}")))?
-                }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let _ = path;
-                    return Err(CmdError::Failed("paths aren't available on the web".into()));
-                }
+                crate::io::read_file(path).map_err(CmdError::Failed)?
             } else {
                 return Err(CmdError::Params("`path` or `data` required".into()));
             };

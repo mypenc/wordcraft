@@ -95,6 +95,19 @@ pub fn remove_word(w: &str) -> bool {
     removed
 }
 
+fn ignored_words() -> &'static RwLock<HashSet<String>> {
+    static I: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
+    I.get_or_init(|| RwLock::new(HashSet::new()))
+}
+
+/// Ignore a word everywhere until the app closes ("Ignore All"). Unlike [`add_word`] it isn't
+/// part of the user dictionary: it is never listed, saved or loaded, as in Word.
+pub fn ignore_word(w: &str) {
+    if ignored_words().write().unwrap_or_else(|e| e.into_inner()).insert(w.to_lowercase()) {
+        DICTIONARY_GENERATION.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
 /// A number that changes whenever a word is added to or removed from the user dictionary.
 pub fn dictionary_generation() -> u64 {
     DICTIONARY_GENERATION.load(Ordering::Relaxed)
@@ -110,6 +123,109 @@ pub fn user_dictionary() -> Vec<String> {
     let mut v: Vec<String> = user_words().read().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect();
     v.sort();
     v
+}
+
+/// Longest custom-dictionary word kept, in characters (mirrors `file.options` validation).
+pub const MAX_CUSTOM_WORD_CHARS: usize = 64;
+/// Most custom-dictionary words read from one file (caps a hostile file).
+const MAX_CUSTOM_WORDS: usize = 100_000;
+/// Largest custom-dictionary file read, in bytes (caps a hostile file).
+const MAX_CUSTOM_FILE_BYTES: u64 = 1_000_000;
+
+/// `w` as a custom-dictionary word: trimmed and lower-cased, or `None` when it isn't a single
+/// word of at most [`MAX_CUSTOM_WORD_CHARS`] characters (empty, spaces, control characters, or
+/// bytes that weren't UTF-8).
+/// Adding and loading both use it, so a word that can be added is never dropped on the next load.
+pub fn custom_word(w: &str) -> Option<String> {
+    let w = w.trim();
+    if w.is_empty()
+        || w.chars().count() > MAX_CUSTOM_WORD_CHARS
+        || w.chars().any(|c| c.is_whitespace() || c.is_control() || c == char::REPLACEMENT_CHARACTER)
+    {
+        return None;
+    }
+    Some(w.to_lowercase())
+}
+
+/// The valid words of the custom-dictionary file at `path`, reading at most
+/// [`MAX_CUSTOM_FILE_BYTES`] of it and keeping at most [`MAX_CUSTOM_WORDS`]. A missing or
+/// unreadable file reads as no words.
+fn read_dictionary_file(path: &std::path::Path) -> Vec<String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    let Ok(file) = std::fs::File::open(path) else { return Vec::new() };
+    // `take` bounds the read itself, so a huge file is never read whole.
+    if file.take(MAX_CUSTOM_FILE_BYTES).read_to_end(&mut bytes).is_err() {
+        return Vec::new();
+    }
+    // Lossy: a cut multi-byte tail becomes U+FFFD and is skipped by validation below,
+    // instead of discarding the whole file.
+    String::from_utf8_lossy(&bytes).lines().filter_map(custom_word).take(MAX_CUSTOM_WORDS).collect()
+}
+
+/// Read custom-dictionary words from a file into the user dictionary (one word per line;
+/// blank lines are skipped). A missing file reads as empty; a hostile file is capped,
+/// never a panic and never an error that stops startup. Returns the words added.
+pub fn load_user_dictionary(path: &std::path::Path) -> Vec<String> {
+    let words = read_dictionary_file(path);
+    let mut set = user_words().write().unwrap_or_else(|e| e.into_inner());
+    let mut added = Vec::new();
+    for w in words {
+        if set.len() >= MAX_CUSTOM_WORDS {
+            break;
+        }
+        if set.insert(w.clone()) {
+            added.push(w);
+        }
+    }
+    if !added.is_empty() {
+        DICTIONARY_GENERATION.fetch_add(1, Ordering::Relaxed);
+    }
+    added
+}
+
+/// Write the user dictionary to a file (one word per line, sorted), creating its folder.
+///
+/// Words another process (a second window, the MCP bridge) saved to the file since it was loaded
+/// are merged in first, so neither loses the other's words; `removed` (words just taken out) stay
+/// out. The file is replaced atomically: written beside it, then renamed over it. Errors (a
+/// read-only folder, a full disk) go back to the caller; the in-memory words are kept.
+pub fn save_user_dictionary(path: &std::path::Path, removed: &[String]) -> std::io::Result<()> {
+    let removed: HashSet<String> = removed.iter().map(|w| w.to_lowercase()).collect();
+    let on_disk = read_dictionary_file(path);
+    {
+        let mut set = user_words().write().unwrap_or_else(|e| e.into_inner());
+        let mut changed = false;
+        for w in on_disk {
+            if set.len() >= MAX_CUSTOM_WORDS {
+                break;
+            }
+            if !removed.contains(&w) && set.insert(w) {
+                changed = true;
+            }
+        }
+        for w in &removed {
+            changed |= set.remove(w);
+        }
+        if changed {
+            DICTIONARY_GENERATION.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    let mut out = String::new();
+    for w in user_dictionary() {
+        out.push_str(&w);
+        out.push('\n');
+    }
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir)?;
+    }
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "custom-dictionary.txt".into());
+    let tmp = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    let written = std::fs::write(&tmp, out).and_then(|()| std::fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    written
 }
 
 /// Common words the source list lacks (modern vocabulary, contractions).
@@ -134,7 +250,7 @@ fn known_core(w: &str) -> bool {
     if base_known(d, w) || COMMON.split(' ').any(|c| c == w) {
         return true;
     }
-    if user_words().read().unwrap_or_else(|e| e.into_inner()).contains(w) {
+    if user_words().read().unwrap_or_else(|e| e.into_inner()).contains(w) || ignored_words().read().unwrap_or_else(|e| e.into_inner()).contains(w) {
         return true;
     }
     // Inflections.
@@ -184,6 +300,19 @@ fn known_core(w: &str) -> bool {
         }
     }
     false
+}
+
+/// Is there a proofing dictionary for this BCP 47 language tag? `None` (and empty tags) mean the
+/// document default, which is en-US. Runs in a language without one are skipped (#100) instead
+/// of flagging every word against another language's dictionary; see [`ProofLang::from_tag`].
+pub fn has_dictionary(lang: Option<&str>) -> bool {
+    ProofLang::from_tag(lang) != ProofLang::Other
+}
+
+/// Is `word` spelled correctly in the run's proofing language? A language without a dictionary
+/// can't be checked, so every word counts as correct (no red underlines for it).
+pub fn is_correct_for(word: &str, lang: Option<&str>) -> bool {
+    is_correct_in(word, ProofLang::from_tag(lang))
 }
 
 /// Is `word` spelled correctly? Numbers, single letters, ALL-CAPS acronyms, URLs and words with
@@ -539,8 +668,12 @@ pub fn check_grammar(text: &str) -> Vec<Issue> {
             });
         }
         let tail = text.get(*b..).unwrap_or("");
-        let next_non_space = tail.trim_start_matches(['"', '”', ')', '\'']).chars().next();
-        after_end = matches!(next_non_space, Some('.' | '!' | '?')) && tail.trim_start_matches(['.', '!', '?', '"', '”', ')']).starts_with(' ');
+        let punctuation = tail.trim_start_matches(['"', '”', ')', '\'']);
+        // Two or more dots are an ellipsis, not a full stop ending a sentence.
+        // A Unicode ellipsis (U+2026) does not match sentence-ending punctuation either.
+        after_end = matches!(punctuation.chars().next(), Some('.' | '!' | '?'))
+            && !punctuation.starts_with("..")
+            && punctuation.trim_start_matches(['.', '!', '?', '"', '”', ')']).starts_with(' ');
     }
     v.sort_by_key(|i| i.start);
     v
@@ -656,10 +789,148 @@ mod tests {
     }
 
     #[test]
+    fn ellipses_do_not_start_sentences() {
+        for text in [
+            "I saw... a figure right outside.",
+            "I saw… a figure right outside.",
+            "I saw.... a figure right outside.",
+            "I saw... \"a figure\" right outside.",
+            "I saw… “a figure” right outside.",
+        ] {
+            let capitals: Vec<_> =
+                check_grammar(text).into_iter().filter(|issue| issue.message == "Capitalize the first word of a sentence").collect();
+            assert!(capitals.is_empty(), "{text}: {capitals:?}");
+        }
+
+        for text in ["I saw. a figure.", "I saw! a figure.", "I saw? a figure.", "I saw.\" a figure."] {
+            let capitals: Vec<_> =
+                check_grammar(text).into_iter().filter(|issue| issue.message == "Capitalize the first word of a sentence").collect();
+            assert_eq!(capitals.len(), 1, "{text}: {capitals:?}");
+            assert_eq!(capitals[0].suggestions, ["A"], "{text}");
+        }
+    }
+
+    #[test]
     fn user_dictionary_works() {
         assert!(!is_correct("zxqwordcrafty"));
         add_word("zxqwordcrafty");
         assert!(is_correct("zxqwordcrafty"));
+    }
+
+    /// #40: the user dictionary survives a save and a fresh load.
+    #[test]
+    fn user_dictionary_persists_through_a_file() {
+        let dir = std::env::temp_dir().join(format!("wc-dict-{}-{}", std::process::id(), "persist"));
+        let _ = std::fs::remove_dir_all(&dir);
+        // The folder is created on the first save.
+        let path = dir.join("sub/custom-dictionary.txt");
+        add_word("zxqpersistone");
+        add_word("zxqpersisttwo");
+        save_user_dictionary(&path, &[]).expect("save works");
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.lines().any(|w| w == "zxqpersistone") && saved.lines().any(|w| w == "zxqpersisttwo"), "{saved}");
+        // Written atomically: no temporary file is left beside it.
+        let names: Vec<_> = std::fs::read_dir(dir.join("sub")).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, ["custom-dictionary.txt"]);
+        remove_word("zxqpersistone");
+        assert!(!is_correct("zxqpersistone"));
+        load_user_dictionary(&path);
+        assert!(is_correct("zxqpersistone"), "loading brings the word back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #40: a hostile file is capped: invalid lines are skipped, and only the first megabyte is read.
+    #[test]
+    fn hostile_dictionary_files_are_capped() {
+        let dir = std::env::temp_dir().join(format!("wc-dict-{}-{}", std::process::id(), "hostile"));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("custom-dictionary.txt");
+        let mut hostile = vec![0xff, 0xfe, b'\n'];
+        hostile.extend(b"zxqhostileok\n  zxqhostiletrim  \nzxq hostile space\nzxq\x07bell\n");
+        hostile.extend("zxq".repeat(30).bytes()); // 90 characters: too long
+        hostile.push(b'\n');
+        // Pad past the 1 MB cap with blank lines; the word after it is never read.
+        hostile.resize(1_000_100, b'\n');
+        hostile.extend(b"zxqhostilepastcap\n");
+        std::fs::write(&path, &hostile).unwrap();
+        let added = load_user_dictionary(&path);
+        assert!(added.contains(&"zxqhostileok".to_string()) && added.contains(&"zxqhostiletrim".to_string()), "{added:?}");
+        assert!(!added.iter().any(|w| w.contains("space") || w.contains("bell") || w.chars().count() > MAX_CUSTOM_WORD_CHARS), "{added:?}");
+        assert!(!is_correct("zxqhostilepastcap"), "the file is read only up to the cap");
+        assert_eq!(read_dictionary_file(&path).len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #40: saving merges in words another process saved, and leaves out the ones just removed.
+    #[test]
+    fn saving_merges_with_the_file() {
+        let dir = std::env::temp_dir().join(format!("wc-dict-{}-{}", std::process::id(), "merge"));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("custom-dictionary.txt");
+        std::fs::write(&path, "zxqmergeother\nzxqmergegone\n").unwrap();
+        add_word("zxqmergemine");
+        save_user_dictionary(&path, &["zxqmergegone".to_string()]).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.lines().any(|w| w == "zxqmergeother"), "the other process's word is kept: {saved}");
+        assert!(saved.lines().any(|w| w == "zxqmergemine"), "{saved}");
+        assert!(!saved.lines().any(|w| w == "zxqmergegone"), "a removed word stays out: {saved}");
+        assert!(is_correct("zxqmergeother") && !is_correct("zxqmergegone"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Ignore All lasts for the session: the word is accepted but isn't in the dictionary.
+    #[test]
+    fn ignored_words_are_not_dictionary_words() {
+        assert!(!is_correct("zxqignoredword"));
+        ignore_word("ZxqIgnoredWord");
+        assert!(is_correct("zxqignoredword"));
+        assert!(!user_dictionary().contains(&"zxqignoredword".to_string()));
+    }
+
+    #[test]
+    fn custom_words_are_single_short_words() {
+        assert_eq!(custom_word("  Hello "), Some("hello".into()));
+        for bad in ["", "   ", "two words", "tab\tbed", "bell\u{7}", "bad\u{FFFD}", &"x".repeat(MAX_CUSTOM_WORD_CHARS + 1)] {
+            assert_eq!(custom_word(bad), None, "{bad:?}");
+        }
+        assert!(custom_word(&"é".repeat(MAX_CUSTOM_WORD_CHARS)).is_some(), "the cap counts characters, not bytes");
+    }
+
+    /// #40: a missing file loads as empty, never an error.
+    #[test]
+    fn missing_dictionary_file_loads_empty() {
+        let path = std::env::temp_dir().join(format!("wc-dict-{}-missing.txt", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        assert!(load_user_dictionary(&path).is_empty());
+    }
+
+    /// #100: runs are proofed when their language has a dictionary (the default language too)
+    /// and skipped otherwise.
+    #[test]
+    fn dictionary_lang_tags() {
+        for l in [None, Some(""), Some("  "), Some("en"), Some("en-US"), Some("en-GB"), Some("EN-us"), Some("en_US")] {
+            assert!(has_dictionary(l), "{l:?}");
+        }
+        for l in [Some("lt-LT"), Some("fr-FR"), Some("de"), Some("uk"), Some("es"), Some("-US"), Some("e")] {
+            assert!(!has_dictionary(l), "{l:?}");
+        }
+        // The gate follows the dictionaries, not English: every proofed language is proofed.
+        for d in ProofLang::PROOFED.map(ProofLang::code) {
+            assert!(has_dictionary(Some(d)), "{d}");
+            assert!(has_dictionary(Some(&format!("{}-XX", d.to_ascii_uppercase()))), "{d}");
+        }
+    }
+
+    /// #100: runs in a language without a dictionary are never flagged; English still is.
+    #[test]
+    fn non_english_words_are_not_flagged() {
+        for w in ["ąžuolas", "élève", "über", "labas", "bonjour"] {
+            assert!(is_correct_for(w, Some("lt-LT")), "{w}");
+            assert!(is_correct_for(w, Some("fr-FR")), "{w}");
+        }
+        assert!(!is_correct_for("helo", Some("en-US")), "English typos still flagged");
+        assert!(!is_correct_for("helo", None), "default language still proofed");
+        assert!(is_correct_for("hello", Some("en-US")));
     }
 
     /// File › Options › Proofing (#485): each "Ignore" choice turned off makes those words count.
@@ -731,6 +1002,8 @@ mod tests {
             let _ = check_spelling(&s);
             let _ = check_grammar(&s);
             let _ = suggest(&s, 3);
+            let _ = has_dictionary(Some(&s));
+            let _ = is_correct_for(&s, Some(&s));
             let _ = hyphen::hyphen_points(&s, &hyphen::Limits::default());
             for lang in [ProofLang::En, ProofLang::Pl, ProofLang::Other] {
                 let _ = check_spelling_in(&s, lang);

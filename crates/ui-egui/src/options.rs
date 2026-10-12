@@ -140,6 +140,7 @@ fn general(app: &mut WordApp, ui: &mut Ui) {
         let _ = app.run("view.darkMode", json!({"value": dark_page}));
     }
     ui.checkbox(&mut app.ui.show_discord, tl!("Show the community button in the title bar"));
+    default_app_button(app, ui);
     ui.add_space(8.0);
     section(ui, "Personalize");
     egui::Grid::new("options_user").num_columns(2).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
@@ -190,6 +191,7 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     if ui.checkbox(&mut ruler, tl!("Show rulers")).changed() {
         let _ = app.run("view.ruler", json!({"value": ruler}));
     }
+    numeral_picker(app, ui);
     ui.add_space(8.0);
     section(ui, "Printing");
     ui.checkbox(&mut app.ui.print_backgrounds, tl!("Print the page color"));
@@ -318,6 +320,10 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
         });
         ui.end_row();
     });
+    let mut keytips = app.ui.keytips_enabled;
+    if ui.checkbox(&mut keytips, tl!("Show KeyTips (Alt or F10)")).changed() {
+        let _ = app.run("ui.keytips", json!({"value": keytips}));
+    }
     ui.add_space(8.0);
     section(ui, "Animation");
     let mut caret = app.ui.caret_animation;
@@ -478,6 +484,47 @@ fn overlay<T: DeserializeOwned>(root: &mut Value, path: &mut Vec<String>, input:
             };
         }
     }
+}
+
+/// File ▸ Options ▸ General: make WordCraft the default app for Word documents (#295). Only where
+/// the host can (`Services::make_default_app`: Windows opens Default apps, Linux and BSD use
+/// `xdg-mime`); macOS shows how to do it in Finder, the web shows nothing.
+fn default_app_button(app: &mut WordApp, ui: &mut Ui) {
+    if app.services.make_default_app.is_some() {
+        let hint = if cfg!(target_os = "windows") {
+            tl!("Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.")
+        } else {
+            tl!("Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.")
+        };
+        if ui.button(tl!("Make WordCraft the default for Word documents…")).on_hover_text(hint).clicked() {
+            // Straight to the hook, not through `run`: only a click may change system defaults.
+            let _ = app.make_default_app();
+        }
+    } else if cfg!(target_os = "macos") {
+        ui.label(
+            egui::RichText::new(tl!("To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All."))
+                .small()
+                .weak(),
+        );
+    }
+}
+
+/// File ▸ Options ▸ Numerals: how digits look on screen (display only, like Word's
+/// File › Options › Advanced › Numeral).
+fn numeral_picker(app: &mut WordApp, ui: &mut Ui) {
+    use wordcraft_layout::NumeralMode;
+    ui.horizontal(|ui| {
+        ui.label(tl!("Numerals:"));
+        let mut sel = app.session.view.numeral;
+        egui::ComboBox::from_id_salt("numerals").selected_text(tl!(sel.label())).width(220.0).show_ui(ui, |ui| {
+            for m in [NumeralMode::Arabic, NumeralMode::Hindi, NumeralMode::Context, NumeralMode::System] {
+                ui.selectable_value(&mut sel, m, tl!(m.label()));
+            }
+        });
+        if sel != app.session.view.numeral {
+            let _ = app.run("view.numeral", json!({ "value": sel }));
+        }
+    });
 }
 
 #[cfg(test)]

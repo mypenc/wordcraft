@@ -2041,3 +2041,20 @@
 	Your system has animation effects turned off.	Efekty animace jsou v systému vypnuté.
 	Your system doesn't report an animation setting, so animation effects stay on.	Systém neuvádí žádné nastavení animací, proto efekty animace zůstávají zapnuté.
 	Do Not Check Spelling or Grammar	Nekontrolovat pravopis ani gramatiku
+	Couldn't make WordCraft the default: {error}	WordCraft se nepodařilo nastavit jako výchozí: {error}
+	In Default apps, choose WordCraft for the document types you want it to open.	Ve Výchozích aplikacích vyberte WordCraft pro typy dokumentů, které má otevírat.
+	Make WordCraft the default for Word documents…	Nastavit WordCraft jako výchozí pro dokumenty Word…
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	Soubory .docx, .doc, .rtf a .odt a šablony Wordu se od teď otevírají ve WordCraftu.
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Otevře Nastavení › Výchozí aplikace, kde zvolíte WordCraft pro .docx a další typy dokumentů.
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	Chcete-li dokumenty Word otevírat ve WordCraftu jako výchozí: vyberte jeden ve Finderu, zvolte Soubor › Informace, v části „Otevřít v aplikaci“ vyberte WordCraft a klikněte na „Změnit vše“.
+	WordCraft is now the default app for Word documents.	WordCraft je nyní výchozí aplikací pro dokumenty Word.
+	Numerals:	Číslice:
+	Numerals	Číslice
+	Hindi	Hindské
+	Context	Podle kontextu
+	System	Systémové
+	Show KeyTips (Alt or F10)	Zobrazit klávesové tipy (Alt nebo F10)
+	Reading	Čtení
+	Reading Column Width	Šířka sloupce pro čtení
+	Reading Line Spacing	Řádkování pro čtení
+	Reading Text Size	Velikost textu pro čtení

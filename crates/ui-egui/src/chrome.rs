@@ -27,19 +27,36 @@ fn qat_button(ui: &mut Ui, app: &mut WordApp, icon: &str, tip: &str, id: &str, e
 const QAT_MENU: [&str; 10] =
     ["file.new", "file.open", "file.save", "file.print", "edit.undo", "edit.redo", "edit.repeat", "review.spelling", "view.readMode", "insert.table"];
 
+/// Match the toolbar's enabled state for keyboard activation too.
+pub(crate) fn qat_enabled(app: &WordApp, id: &str) -> bool {
+    match id {
+        "edit.undo" => app.session.can_undo(),
+        "edit.redo" => app.session.can_redo(),
+        "file.save" => true,
+        _ => crate::widgets::enabled(app, id),
+    }
+}
+
 /// The Quick Access Toolbar (#379): the user's commands (Save, Undo, Redo until customized), each
 /// with a right-click menu, then the menu button that customizes it (#376).
 fn quick_access(ui: &mut Ui, app: &mut WordApp) {
     let ids: Vec<String> = app.session.ribbon.qat().into_iter().map(str::to_string).collect();
-    for id in &ids {
+    for (index, id) in ids.iter().enumerate() {
         let id = id.as_str();
-        let (tip, enabled) = match id {
-            "edit.undo" => (crate::i18n::prefixed("Undo", app.session.undo_label().unwrap_or("")), app.session.can_undo()),
-            "edit.redo" => (tl!("Redo").to_string(), app.session.can_redo()),
-            "file.save" => (tl!("Save").to_string(), true),
-            _ => (app.session.registry.get(id).map(|s| tl!(s.label).to_string()).unwrap_or_default(), crate::widgets::enabled(app, id)),
+        let tip = match id {
+            "edit.undo" => crate::i18n::prefixed("Undo", app.session.undo_label().unwrap_or("")),
+            "edit.redo" => tl!("Redo").to_string(),
+            "file.save" => tl!("Save").to_string(),
+            _ => app.session.registry.get(id).map(|s| tl!(s.label).to_string()).unwrap_or_default(),
         };
+        let enabled = qat_enabled(app, id);
         let resp = qat_button(ui, app, crate::widgets::command_icon(id), &tip, id, enabled);
+        if app.ui.keytips == crate::keytips::Phase::Tabs && ui.is_rect_visible(resp.rect) {
+            let label = crate::keytips::qat_label(index, ids.len());
+            if label.starts_with(&app.ui.keytip_prefix) {
+                app.keytip_rects.push((resp.rect, label));
+            }
+        }
         crate::widgets::command_menu(&resp, app, id);
     }
     let t = Tokens::get(ui.ctx());
@@ -166,25 +183,15 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
                     ui.add_space(8.0);
                     if app.ui.show_discord {
                         let (r, resp) = ui.allocate_exact_size(vec2(84.0, 22.0), Sense::click());
-                        ui.painter().rect_filled(
-                            r,
-                            11.0,
-                            if resp.hovered() { egui::Color32::from_rgb(0x47, 0x52, 0xC4) } else { egui::Color32::from_rgb(0x58, 0x65, 0xF2) },
-                        );
+                        ui.painter().rect_filled(r, 11.0, if resp.hovered() { t.accent_text } else { t.accent });
                         icons::paint(
                             ui.painter(),
                             Rect::from_center_size(pos2(r.min.x + 13.0, r.center().y), vec2(14.0, 14.0)),
                             "discord",
-                            egui::Color32::WHITE,
-                            egui::Color32::WHITE,
+                            t.on_accent,
+                            t.on_accent,
                         );
-                        ui.painter().text(
-                            pos2(r.min.x + 24.0, r.center().y),
-                            Align2::LEFT_CENTER,
-                            tl!("Discord"),
-                            medium(11.5),
-                            egui::Color32::WHITE,
-                        );
+                        ui.painter().text(pos2(r.min.x + 24.0, r.center().y), Align2::LEFT_CENTER, tl!("Discord"), medium(11.5), t.on_accent);
                         if resp.on_hover_text(tl!("Join the ArtCraft community on Discord")).clicked() {
                             let _ = app.run("ui.discord", json!({}));
                         }
@@ -314,28 +321,38 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.spacing_mut().item_spacing = vec2(4.0, 0.0);
-                    let z = (app.canvas.scale / crate::canvas::PX_PER_PT * 100.0).round();
+                    let reading = app.session.view.read_mode;
+                    let z = (if reading { app.session.view.read_zoom } else { app.canvas.scale / crate::canvas::PX_PER_PT } * 100.0).round();
                     let ztxt = format!("{z}%");
                     let zfont = TypeRung::Caption.regular();
                     let ztrack = TypeRung::Caption.tracking();
                     let zw = text_width(ui.painter(), &ztxt, &zfont, ztrack, t.text_dim);
                     let (zr, zresp) = ui.allocate_exact_size(vec2(zw + 1.0, TypeRung::Caption.line_height()), Sense::click());
                     paint_text(ui.painter(), pos2(zr.min.x, zr.min.y), Align2::LEFT_TOP, &ztxt, &zfont, ztrack, t.text_dim);
-                    if zresp.clicked() {
+                    if zresp.clicked() && !reading {
                         let _ = app.run("ui.dialog", json!({ "name": "zoom" }));
                     }
                     if small_icon(ui, "plus", tl!("Zoom In")) {
-                        let _ = app.run("view.zoomIn", json!({}));
+                        if reading {
+                            let _ = app.run("view.readTextSize", json!({"value": (z + 10.0).min(150.0)}));
+                        } else {
+                            let _ = app.run("view.zoomIn", json!({}));
+                        }
                     }
-                    // Zoom slider (10%–500%, 100% in the middle).
-                    let mut v = app.canvas.scale / crate::canvas::PX_PER_PT;
-                    let slider = egui::Slider::new(&mut v, 0.1..=5.0).logarithmic(true).show_value(false);
+                    // Reading zoom changes only reading presentation, never the normal view zoom.
+                    let mut v = if reading { app.session.view.read_zoom } else { app.canvas.scale / crate::canvas::PX_PER_PT };
+                    let slider = egui::Slider::new(&mut v, if reading { 0.75..=1.5 } else { 0.1..=5.0 }).logarithmic(!reading).show_value(false);
                     ui.spacing_mut().slider_width = 110.0;
                     if ui.add(slider).changed() {
-                        let _ = app.run("view.zoom", json!({"value": (v * 100.0).round()}));
+                        let command = if reading { "view.readTextSize" } else { "view.zoom" };
+                        let _ = app.run(command, json!({"value": (v * 100.0).round()}));
                     }
                     if small_icon(ui, "minus", tl!("Zoom Out")) {
-                        let _ = app.run("view.zoomOut", json!({}));
+                        if reading {
+                            let _ = app.run("view.readTextSize", json!({"value": (z - 10.0).max(75.0)}));
+                        } else {
+                            let _ = app.run("view.zoomOut", json!({}));
+                        }
                     }
                     ui.add_space(10.0);
                     let mode = app.session.view.mode;

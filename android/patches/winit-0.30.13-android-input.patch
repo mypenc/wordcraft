@@ -1,6 +1,6 @@
-diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_impl/android/mod.rs
---- winit-orig/src/platform_impl/android/mod.rs	2026-10-10 03:31:26.627224735 +0000
-+++ winit-new/src/platform_impl/android/mod.rs	2026-10-10 03:31:26.648250441 +0000
+diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
+--- a/src/platform_impl/android/mod.rs	2026-10-12 23:21:01.703995452 +0000
++++ b/src/platform_impl/android/mod.rs	2026-10-12 23:20:59.187212373 +0000
 @@ -6,7 +6,10 @@
  use std::sync::{mpsc, Arc, Mutex};
  use std::time::{Duration, Instant};
@@ -21,7 +21,7 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
  use crate::event_loop::{self, ActiveEventLoop as RootAEL, ControlFlow, DeviceEvents};
  use crate::platform::pump_events::PumpStatus;
  use crate::platform_impl::Fullscreen;
-@@ -143,6 +147,11 @@
+@@ -143,6 +147,15 @@
      cause: StartCause,
      ignore_volume_keys: bool,
      combining_accent: Option<char>,
@@ -30,20 +30,34 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
 +    modifiers: ModifiersState,
 +    // The soft keyboard's text as last seen, to turn its edits into key and IME events.
 +    ime_text: String,
++    // Selection offsets reported by Android for the last text state.
++    ime_selection: (usize, usize),
++    /// Backspace/Delete key presses already applied by real key events, not yet seen in the IME text.
++    key_deletes: usize,
  }
  
  #[derive(Debug, Clone, PartialEq)]
-@@ -192,6 +201,9 @@
+@@ -176,6 +189,7 @@
+                     app: android_app.clone(),
+                     control_flow: Cell::new(ControlFlow::default()),
+                     exit: Cell::new(false),
++                    ime_allowed: Cell::new(false),
+                     redraw_requester: RedrawRequester::new(
+                         &redraw_flag,
+                         android_app.create_waker(),
+@@ -192,6 +206,11 @@
              cause: StartCause::Init,
              ignore_volume_keys: attributes.ignore_volume_keys,
              combining_accent: None,
 +            mouse_buttons: [false; 5],
 +            modifiers: ModifiersState::empty(),
 +            ime_text: String::new(),
++            ime_selection: (0, 0),
++            key_deletes: 0,
          })
      }
  
-@@ -362,6 +374,150 @@
+@@ -362,6 +381,207 @@
          self.pending_redraw = pending_redraw;
      }
  
@@ -141,11 +155,13 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
 +    }
 +
 +    /// Soft-keyboard text (GameActivity's `TextEvent`): the IME reports the whole field, so
-+    /// send the difference from last time as Backspaces and a commit.
-+    fn handle_ime_text<F>(&mut self, android_app: &AndroidApp, text: &str, callback: &mut F)
++    /// send the difference from last time as deletion keys and a commit. Selection-only updates
++    /// are cursor moves (for example, Gboard's space-bar cursor gesture).
++    fn handle_ime_text<F>(&mut self, android_app: &AndroidApp, state: &TextInputState, callback: &mut F)
 +    where
 +        F: FnMut(event::Event<T>, &RootAEL),
 +    {
++        let text = &state.text;
 +        let old = std::mem::replace(&mut self.ime_text, text.to_owned());
 +        let old_chars: Vec<char> = old.chars().collect();
 +        let new_chars: Vec<char> = text.chars().collect();
@@ -156,17 +172,28 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
 +            .zip(new_chars[prefix..].iter().rev())
 +            .take_while(|(a, b)| a == b)
 +            .count();
-+        let removed = old_chars.len() - prefix - suffix;
-+        let added: String = new_chars[prefix..new_chars.len() - suffix].iter().collect();
++        let removed_total = old_chars.len() - prefix - suffix;
++        // A real Backspace/Delete key already removed some of these characters; don't remove them twice.
++        let already = removed_total.min(self.key_deletes);
++        self.key_deletes = 0;
++        let removed = removed_total - already;
++        // Enter arrives as a key event (text.newParagraph); a newline from the IME must not add a second one.
++        let added: String = new_chars[prefix..new_chars.len() - suffix].iter().filter(|c| **c != '\n' && **c != '\r').collect();
 +
++        let old_cursor = Self::utf16_char_offset(&old, self.ime_selection.1);
++        let (delete_key, delete_code) = if prefix < old_cursor {
++            (NamedKey::Backspace, KeyCode::Backspace)
++        } else {
++            (NamedKey::Delete, KeyCode::Delete)
++        };
 +        for _ in 0..removed {
 +            for state in [event::ElementState::Pressed, event::ElementState::Released] {
 +                self.dispatch_window_event(callback, event::WindowEvent::KeyboardInput {
 +                    device_id: event::DeviceId(DeviceId(0)),
 +                    event: event::KeyEvent {
 +                        state,
-+                        physical_key: PhysicalKey::Code(KeyCode::Backspace),
-+                        logical_key: Key::Named(NamedKey::Backspace),
++                        physical_key: PhysicalKey::Code(delete_code),
++                        logical_key: Key::Named(delete_key),
 +                        location: KeyLocation::Standard,
 +                        repeat: false,
 +                        text: None,
@@ -180,9 +207,39 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
 +            self.dispatch_window_event(callback, event::WindowEvent::Ime(event::Ime::Commit(added)));
 +        }
 +
-+        // The IME keeps the whole field; start over before it grows without bound.
-+        if self.ime_text.chars().count() > 128 {
++        let selection = (state.selection.start, state.selection.end);
++        if old.as_str() == text.as_str() && selection.0 == selection.1 && self.ime_selection.0 == self.ime_selection.1 {
++            let prior_cursor = Self::utf16_char_offset(text, self.ime_selection.1);
++            let current_cursor = Self::utf16_char_offset(text, selection.1);
++            let (key, code, count) = if current_cursor < prior_cursor {
++                (NamedKey::ArrowLeft, KeyCode::ArrowLeft, prior_cursor - current_cursor)
++            } else {
++                (NamedKey::ArrowRight, KeyCode::ArrowRight, current_cursor - prior_cursor)
++            };
++            for _ in 0..count.min(256) {
++                for state in [event::ElementState::Pressed, event::ElementState::Released] {
++                    self.dispatch_window_event(callback, event::WindowEvent::KeyboardInput {
++                        device_id: event::DeviceId(DeviceId(0)),
++                        event: event::KeyEvent {
++                            state,
++                            physical_key: PhysicalKey::Code(code),
++                            logical_key: Key::Named(key),
++                            location: KeyLocation::Standard,
++                            repeat: false,
++                            text: None,
++                            platform_specific: KeyEventExtra {},
++                        },
++                        is_synthetic: true,
++                    });
++                }
++            }
++        }
++        self.ime_selection = selection;
++
++        // Keep the IME's local buffer bounded without repeatedly resetting it during typing.
++        if self.ime_text.chars().count() > 4096 {
 +            self.ime_text.clear();
++            self.ime_selection = (0, 0);
 +            android_app.set_text_input_state(TextInputState {
 +                text: String::new(),
 +                selection: TextSpan { start: 0, end: 0 },
@@ -191,10 +248,24 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
 +        }
 +    }
 +
++    fn utf16_char_offset(text: &str, offset: usize) -> usize {
++        let mut units = 0;
++        let mut chars = 0;
++        for ch in text.chars() {
++            let next = units + ch.len_utf16();
++            if next > offset {
++                break;
++            }
++            units = next;
++            chars += 1;
++        }
++        chars
++    }
++
      fn handle_input_event<F>(
          &mut self,
          android_app: &AndroidApp,
-@@ -377,17 +533,25 @@
+@@ -377,17 +597,25 @@
                  let window_id = window::WindowId(WindowId);
                  let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
  
@@ -225,21 +296,42 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
                  if let Some(phase) = phase {
                      let pointers: Box<dyn Iterator<Item = android_activity::input::Pointer<'_>>> =
                          match phase {
-@@ -423,6 +587,7 @@
+@@ -423,6 +651,10 @@
                  }
              },
              InputEvent::KeyEvent(key) => {
 +                self.sync_modifiers(key.meta_state(), callback);
++                if key.action() == KeyAction::Down && matches!(key.key_code(), Keycode::Del | Keycode::ForwardDel) {
++                    self.key_deletes += 1;
++                }
                  match key.key_code() {
                      // Flag keys related to volume as unhandled. While winit does not have a way for
                      // applications to configure what keys to flag as handled,
-@@ -473,6 +638,9 @@
+@@ -473,6 +705,9 @@
                      },
                  }
              },
 +            InputEvent::TextEvent(state) => {
-+                self.handle_ime_text(android_app, &state.text, callback);
++                self.handle_ime_text(android_app, &state, callback);
 +            },
              _ => {
                  warn!("Unknown android_activity input event {event:?}")
              },
+@@ -656,6 +891,7 @@
+     pub(crate) app: AndroidApp,
+     control_flow: Cell<ControlFlow>,
+     exit: Cell<bool>,
++    ime_allowed: Cell<bool>,
+     redraw_requester: RedrawRequester,
+ }
+ 
+@@ -916,6 +1152,9 @@
+     pub fn set_ime_cursor_area(&self, _position: Position, _size: Size) {}
+ 
+     pub fn set_ime_allowed(&self, allowed: bool) {
++        if self.ime_allowed.replace(allowed) == allowed {
++            return;
++        }
+         if allowed {
+             self.app.show_soft_input(true);
+         } else {

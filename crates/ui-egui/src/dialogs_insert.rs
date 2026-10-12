@@ -86,7 +86,7 @@ pub(crate) fn buttons(ui: &mut Ui, ok: &str, cancel: &str, ok_enabled: bool) -> 
             if ui.button(tl!(cancel)).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 r.1 = true;
             }
-            let okb = ui.add_enabled(ok_enabled, egui::Button::new(egui::RichText::new(tl!(ok)).color(Color32::WHITE)).fill(crate::theme::APP_COLOR));
+            let okb = ui.add_enabled(ok_enabled, crate::widgets::primary_button(ui, tl!(ok)));
             if okb.clicked() || (ok_enabled && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
                 r.0 = true;
             }
@@ -623,7 +623,7 @@ impl SymbolForm {
         self.chars = face.chars().into_iter().map(|(c, _)| c).filter(|c| !c.is_control() && !(0xD800..=0xDFFF).contains(&(*c as u32))).collect();
         self.chars_of = Some(family);
         // Keep the selection when the new font has it; otherwise its first character.
-        if !self.selected.is_some_and(|c| self.chars.binary_search(&c).is_ok()) {
+        if self.selected.is_none_or(|c| self.chars.binary_search(&c).is_err()) {
             self.selected = self.chars.iter().copied().find(|c| *c > ' ').or(self.chars.first().copied());
         }
         self.sync_code();

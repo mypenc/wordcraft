@@ -2053,3 +2053,44 @@
 	{name} already exists. Choose Save again to replace it.	Plik {name} już istnieje. Wybierz ponownie Zapisz, aby go zastąpić.
 	{name} wasn't found.	Nie znaleziono: {name}.
 	“{text}” ({row}, {series}) isn't a number.	„{text}” ({row}, {series}) nie jest liczbą.
+	Couldn't make WordCraft the default: {error}	Nie udało się ustawić WordCraft jako domyślnego: {error}
+	In Default apps, choose WordCraft for the document types you want it to open.	W Aplikacjach domyślnych wybierz WordCraft dla typów dokumentów, które ma otwierać.
+	Make WordCraft the default for Word documents…	Ustaw WordCraft jako domyślny dla dokumentów Word…
+	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	Od teraz pliki .docx, .doc, .rtf i .odt oraz szablony Word otwierają się w WordCraft.
+	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Otwiera Ustawienia › Aplikacje domyślne, gdzie wybierasz WordCraft dla .docx i innych typów dokumentów.
+	To open Word documents with WordCraft by default: select one in Finder, choose File › Get Info, pick WordCraft under Open with, then click Change All.	Aby otwierać dokumenty Word domyślnie w WordCraft: zaznacz jeden w Finderze, wybierz Plik › Pokaż info, wybierz WordCraft w „Otwórz za pomocą”, a następnie kliknij „Zmień wszystkie”.
+	WordCraft is now the default app for Word documents.	WordCraft jest teraz domyślną aplikacją dla dokumentów Word.
+	Numerals:	Cyfry:
+	Numerals	Cyfry
+	Hindi	Hindi
+	Context	Kontekstowe
+	System	Systemowe
+	Book Title	Tytuł książki
+	Category	Kategoria
+	Contributors	Współtwórcy
+	Emphasis	Wyróżnienie
+	Endnote Reference	Odwołanie przypisu końcowego
+	Endnote Text	Tekst przypisu końcowego
+	Footnote Reference	Odwołanie przypisu dolnego
+	Footnote Text	Tekst przypisu dolnego
+	Hyperlink	Hiperłącze
+	Intense Emphasis	Wyróżnienie intensywne
+	Intense Quote	Cytat intensywny
+	Intense Reference	Odwołanie intensywne
+	Keywords	Słowa kluczowe
+	No Spacing	Bez odstępów
+	Quote	Cytat
+	Strong	Pogrubienie
+	Subject	Temat
+	Subtitle	Podtytuł
+	Subtle Emphasis	Wyróżnienie delikatne
+	Subtle Reference	Odwołanie delikatne
+	TOC Heading	Nagłówek spisu treści
+	TOC {n}	Spis treści {n}
+	List Paragraph	Akapit z listą
+	Models	Modele
+	Show KeyTips (Alt or F10)	Pokaż etykietki klawiszy (Alt lub F10)
+	Reading	Czytanie
+	Reading Column Width	Szerokość kolumny do czytania
+	Reading Line Spacing	Interlinia do czytania
+	Reading Text Size	Rozmiar tekstu do czytania

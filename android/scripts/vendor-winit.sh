@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fetch winit 0.30.13 (the version Cargo.lock pins) into android/vendor/winit and apply the
-# Android input patch: mouse hover/buttons/wheel, keyboard modifiers and soft-keyboard text.
+# Android input patch: mouse hover/buttons/wheel, keyboard modifiers, stable IME visibility, and
+# soft-keyboard text/cursor updates.
 # The stock Android backend drops all of those (`_ => None // TODO mouse events`).
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"

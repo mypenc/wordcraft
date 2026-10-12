@@ -177,6 +177,32 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
         return;
     }
     let events = ctx.input(|i| i.events.clone());
+    if app.session.view.read_mode {
+        // Read Mode is for navigation and selection, not typing into the document. The ribbon's
+        // Edit Document button or Escape returns to Print Layout before editing.
+        for e in &events {
+            match e {
+                egui::Event::Key { key: Key::Escape, pressed: true, .. } => {
+                    let _ = app.run("view.printLayout", json!({}));
+                    break;
+                }
+                egui::Event::Key { key: Key::PageDown | Key::ArrowRight, pressed: true, modifiers, .. } if modifiers.is_none() => {
+                    crate::canvas::turn_read_page(app, 1.0)
+                }
+                egui::Event::Key { key: Key::PageUp | Key::ArrowLeft, pressed: true, modifiers, .. } if modifiers.is_none() => {
+                    crate::canvas::turn_read_page(app, -1.0)
+                }
+                egui::Event::Copy => {
+                    let selected = app.session.selected_text();
+                    if !selected.is_empty() {
+                        ctx.copy_text(selected);
+                    }
+                }
+                _ => {}
+            }
+        }
+        return;
+    }
     for e in events {
         // An Alt shortcut (Alt+Shift+D, Alt+F7…) may also send its key's text; it isn't typed.
         match &e {

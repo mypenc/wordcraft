@@ -126,6 +126,43 @@ pub fn open_bytes_with(name: &str, bytes: &[u8], password: Option<&str>) -> Resu
     Ok((doc, false))
 }
 
+/// The narrowest text width of the document's sections, points: what a picture must fit.
+pub(crate) fn text_width(doc: &Document) -> f32 {
+    doc.sections().iter().map(|(_, sp)| sp.text_width()).fold(f32::INFINITY, f32::min).clamp(36.0, 4000.0)
+}
+
+/// Shrink inline pictures wider than `max_w` to it, keeping their proportions. Layout keeps a
+/// picture's size (as Word does), so formats whose pictures come at their pixel size (HTML,
+/// Markdown, ODT, RTF) are fitted when they are read, as Insert › Pictures does.
+pub(crate) fn fit_block_pictures(b: &mut wordcraft_doc::Block, max_w: f32) {
+    crate::cmd::paste::each_para(b, 0, &mut |p| {
+        let mut changed = false;
+        for o in &mut p.objects {
+            if let wordcraft_doc::InlineObject::Image { w, h, float, .. } = o
+                && float.wrap == wordcraft_doc::para::Wrap::Inline
+                && w.is_finite()
+                && *w > max_w
+            {
+                let k = max_w / *w;
+                *w = max_w;
+                *h = (*h * k).max(1.0);
+                changed = true;
+            }
+        }
+        if changed {
+            p.touch();
+        }
+    });
+}
+
+/// [`fit_block_pictures`] for a whole document read from a file, against its own text width.
+pub(crate) fn fit_pictures(doc: &mut Document) {
+    let max_w = text_width(doc);
+    for b in &mut doc.body {
+        fit_block_pictures(std::sync::Arc::make_mut(b), max_w);
+    }
+}
+
 /// A file whose extension names no format WordCraft knows (`.m3u`, `.log`, `.ini`, none…),
 /// opened by what it holds, as Word does: a Word document or RTF file by its signature, any
 /// other text through the plain-text import with encoding detection (#569). Anything else is
@@ -191,6 +228,7 @@ pub fn open_path(path: &std::path::Path) -> Result<Document, String> {
 /// [`open_path`] for a file that may be password-protected (see [`open_bytes_with`]).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn open_path_with(path: &std::path::Path, password: Option<&str>) -> Result<(Document, bool), String> {
+    crate::file_access::check_read(&path.to_string_lossy())?;
     let meta = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if meta.len() > 2 << 30 {
         return Err(format!("{}: file is larger than 2 GB", path.display()));
@@ -201,6 +239,7 @@ pub fn open_path_with(path: &std::path::Path, password: Option<&str>) -> Result<
         // Pictures referenced by a relative path load from beside the HTML file.
         let images = LocalImages::new(path.parent().unwrap_or(std::path::Path::new("")));
         let mut doc = wordcraft_formats::html::import_with(&wordcraft_formats::html::decode(&bytes), &|src| images.load(src));
+        fit_pictures(&mut doc);
         doc.ensure_nonempty();
         return Ok((doc, false));
     }
@@ -209,7 +248,8 @@ pub fn open_path_with(path: &std::path::Path, password: Option<&str>) -> Result<
 
 /// The pictures an HTML file names by a path relative to its folder.
 ///
-/// Only regular files inside the folder (after resolving `..` and symlinks) are read. URLs
+/// Only regular files inside the folder (after resolving `..` and symlinks) are read. The folder is
+/// the HTML file's own, which `open_path_with` has already checked against the automation read root. URLs
 /// (`http:`, `file:`…) and absolute paths are not followed. Each file is read at most once and
 /// at most `max_file` bytes of it; every reference, cached or not, counts against a budget for
 /// the whole document, so one large picture can't be multiplied by referencing it many times.
@@ -310,6 +350,46 @@ fn read_regular_file(path: &std::path::Path, limit: u64) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// The bytes of the file at `path`, for commands that take a path (pictures, mail-merge data).
+/// Every such read goes through here so the automation read root applies ([`crate::file_access`]).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_file(path: &str) -> Result<Vec<u8>, String> {
+    crate::file_access::check_read(path)?;
+    std::fs::read(path).map_err(|e| format!("{path}: {e}"))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn read_file(path: &str) -> Result<Vec<u8>, String> {
+    Err(format!("{path}: files are opened through the browser on the web"))
+}
+
+/// [`read_file`] for a file that must be a regular file of at most `max` bytes, checked before
+/// anything is read (a font named by the user, which could be any size).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_file_capped(path: &str, max: u64, what: &str) -> Result<Vec<u8>, String> {
+    crate::file_access::check_read(path)?;
+    let meta = std::fs::metadata(path).map_err(|e| format!("{path}: {e}"))?;
+    if !meta.is_file() {
+        return Err(format!("{path}: not a file"));
+    }
+    if meta.len() > max {
+        return Err(format!("{path}: the {what} is larger than {} MB", max >> 20));
+    }
+    std::fs::read(path).map_err(|e| format!("{path}: {e}"))
+}
+
+/// Write `bytes` to the file at `path`, inside the automation write root when there is one.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
+    crate::file_access::check_write(path)?;
+    std::fs::write(path, bytes).map_err(|e| format!("{path}: {e}"))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn write_file(path: &str, _bytes: &[u8]) -> Result<(), String> {
+    Err(format!("{path}: files are saved through the browser on the web"))
+}
+
 #[cfg(target_arch = "wasm32")]
 pub fn open_path_with(path: &std::path::Path, _password: Option<&str>) -> Result<(Document, bool), String> {
     Err(format!("{}: files are opened through the browser on the web", path.display()))
@@ -322,6 +402,7 @@ pub fn save_path(path: &std::path::Path, doc: &Document) -> Result<(), String> {
 /// [`save_path`], encrypted with `password` as [`save_bytes_with`] does.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_path_with(path: &std::path::Path, doc: &Document, password: Option<&str>, opts: &ExportOptions) -> Result<(), String> {
+    crate::file_access::check_write(&path.to_string_lossy())?;
     let bytes = save_bytes_with(&path.to_string_lossy(), doc, password, opts)?;
     safe_save::write(path, &bytes).map_err(|e| format!("{}: {e}", path.display()))
 }

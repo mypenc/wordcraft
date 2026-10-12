@@ -11,7 +11,7 @@ use wordcraft_engine::math_gallery::{BUILT_INS, STRUCTURES, SYMBOL_SETS, Templat
 
 use crate::WordApp;
 use crate::theme::{Tokens, regular, semibold};
-use crate::widgets::{CONTENT_H, group, small};
+use crate::widgets::{BIG_ICON_Y, BIG_LABEL_Y, CONTENT_H, LABEL_PITCH, group, small};
 
 /// What each structure button shows.
 fn button_picture(id: &str) -> &'static str {
@@ -56,15 +56,14 @@ fn math_menu_button(ui: &mut Ui, app: &mut WordApp, picture: &str, label: &str, 
     if resp.hovered() {
         ui.painter().rect_filled(r, 4.0, t.hover);
     }
-    let pic = Rect::from_center_size(pos2(r.center().x, r.min.y + 20.0), vec2(40.0, 34.0));
+    let pic = Rect::from_center_size(pos2(r.center().x, r.min.y + BIG_ICON_Y), vec2(40.0, 32.0));
     ui.painter().rect_filled(pic, 3.0, egui::Color32::WHITE);
     paint_math(app, ui, pic, &format!("btn:{picture}"), picture, None, false, 12.0);
     let lines: Vec<&str> = label.split('\n').collect();
-    let mut y = r.min.y + 43.0;
+    let mut y = r.min.y + BIG_LABEL_Y;
     for (i, l) in lines.iter().enumerate() {
-        let txt = if i + 1 == lines.len() { format!("{l} ▾") } else { (*l).to_string() };
-        ui.painter().text(pos2(r.center().x, y), Align2::CENTER_TOP, txt, regular(11.5), t.text);
-        y += 13.0;
+        crate::widgets::label_line(ui, r.center().x, y, l, regular(11.5), t.text, i + 1 == lines.len());
+        y += LABEL_PITCH;
     }
     let resp = resp.on_hover_text(label.replace('\n', " "));
     egui::Popup::menu(&resp).show(|ui| {
@@ -153,8 +152,8 @@ pub fn insert_button(ui: &mut Ui, app: &mut WordApp) {
     let label = tl!("Equation");
     let w = (ui.ctx().fonts_mut(|f| f.layout_no_wrap(label.to_string(), regular(11.5), t.text).size().x) + 22.0).max(48.0);
     let (r, _) = ui.allocate_exact_size(vec2(w, CONTENT_H), Sense::hover());
-    let top = Rect::from_min_max(r.min, pos2(r.max.x, r.min.y + 40.0));
-    let bottom = Rect::from_min_max(pos2(r.min.x, r.min.y + 40.0), r.max);
+    let top = Rect::from_min_max(r.min, pos2(r.max.x, r.min.y + BIG_LABEL_Y - 2.0));
+    let bottom = Rect::from_min_max(pos2(r.min.x, r.min.y + BIG_LABEL_Y - 2.0), r.max);
     let rt = ui.interact(top, ui.id().with("eq_insert_top"), Sense::click());
     let rb = ui.interact(bottom, ui.id().with("eq_insert_bottom"), Sense::click());
     for (rr, resp) in [(top, &rt), (bottom, &rb)] {
@@ -162,8 +161,14 @@ pub fn insert_button(ui: &mut Ui, app: &mut WordApp) {
             ui.painter().rect_filled(rr, 4.0, t.hover);
         }
     }
-    crate::icons::paint(ui.painter(), Rect::from_center_size(pos2(r.center().x, r.min.y + 20.0), vec2(32.0, 32.0)), "equation", t.icon, t.accent);
-    ui.painter().text(pos2(r.center().x, r.min.y + 43.0), Align2::CENTER_TOP, format!("{label} ▾"), regular(11.5), t.text);
+    crate::icons::paint(
+        ui.painter(),
+        Rect::from_center_size(pos2(r.center().x, r.min.y + BIG_ICON_Y), vec2(32.0, 32.0)),
+        "equation",
+        t.icon,
+        t.accent,
+    );
+    crate::widgets::label_line(ui, r.center().x, r.min.y + BIG_LABEL_Y, label, regular(11.5), t.text, true);
     if rt.on_hover_text(tl!("Insert a new equation (Alt+=)")).clicked() {
         let _ = app.run("insert.equation", json!({}));
         app.canvas.want_focus = true;
@@ -273,20 +278,29 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 !latex,
             );
             small(ui, app, "formula", Some("LaTeX"), "Type equations in LaTeX", "equation.inputFormat", json!({"format": "latex"}), latex);
-            crate::widgets::menu_button(ui, app, "replace", Some("Convert"), "Convert between built-up and linear form", false, |ui, app| {
-                for (label, to, all) in [
-                    ("Current - Professional", "professional", false),
-                    ("Current - Linear", "linear", false),
-                    ("All - Professional", "professional", true),
-                    ("All - Linear", "linear", true),
-                ] {
-                    if ui.button(tl!(label)).clicked() {
-                        let _ = app.run("equation.convert", json!({"to": to, "all": all}));
-                        app.canvas.want_focus = true;
-                        ui.close();
+            crate::widgets::menu_button(
+                ui,
+                app,
+                "replace",
+                Some("Convert"),
+                "Convert between built-up and linear form",
+                false,
+                "equation.convert",
+                |ui, app| {
+                    for (label, to, all) in [
+                        ("Current - Professional", "professional", false),
+                        ("Current - Linear", "linear", false),
+                        ("All - Professional", "professional", true),
+                        ("All - Linear", "linear", true),
+                    ] {
+                        if ui.button(tl!(label)).clicked() {
+                            let _ = app.run("equation.convert", json!({"to": to, "all": all}));
+                            app.canvas.want_focus = true;
+                            ui.close();
+                        }
                     }
-                }
-            });
+                },
+            );
         });
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = vec2(1.0, 0.0);
@@ -340,14 +354,23 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         });
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = vec2(1.0, 0.0);
-            crate::widgets::menu_button(ui, app, "justify", Some("Justification"), "Justification of a display equation", false, |ui, app| {
-                for (label, jc) in [("Left", "left"), ("Right", "right"), ("Centered", "center"), ("Centered as Group", "centerGroup")] {
-                    if ui.button(tl!(label)).clicked() {
-                        let _ = app.run("equation.justify", json!({"jc": jc}));
-                        ui.close();
+            crate::widgets::menu_button(
+                ui,
+                app,
+                "justify",
+                Some("Justification"),
+                "Justification of a display equation",
+                false,
+                "equation.justify",
+                |ui, app| {
+                    for (label, jc) in [("Left", "left"), ("Right", "right"), ("Centered", "center"), ("Centered as Group", "centerGroup")] {
+                        if ui.button(tl!(label)).clicked() {
+                            let _ = app.run("equation.justify", json!({"jc": jc}));
+                            ui.close();
+                        }
                     }
-                }
-            });
+                },
+            );
             if ui.button(tl!("Close Equation")).on_hover_text(tl!("Leave the equation (Esc)")).clicked() {
                 let _ = app.run("equation.exit", json!({}));
                 app.canvas.want_focus = true;
