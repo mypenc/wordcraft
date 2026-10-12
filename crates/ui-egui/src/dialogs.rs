@@ -1216,7 +1216,7 @@ pub fn table_grid_picker(ui: &mut Ui, app: &mut WordApp) {
     egui::Grid::new("tgp").spacing(vec2(2.0, 2.0)).show(ui, |ui| {
         for r in 1..=8 {
             for c in 1..=10 {
-                let (rect, resp) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
+                let (rect, resp) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click_and_drag());
                 let on = r <= hover.0 && c <= hover.1;
                 ui.painter().rect(
                     rect,
@@ -1225,7 +1225,7 @@ pub fn table_grid_picker(ui: &mut Ui, app: &mut WordApp) {
                     egui::Stroke::new(1.0, if on { t.accent } else { t.border_strong }),
                     egui::StrokeKind::Inside,
                 );
-                if resp.hovered() {
+                if resp.hovered() || resp.dragged() {
                     new_hover = (r, c);
                 }
                 if resp.clicked() {

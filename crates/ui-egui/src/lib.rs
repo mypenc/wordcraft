@@ -1332,6 +1332,18 @@ impl WordApp {
         crate::keytips::logic(self, &ctx);
         if self.ui.backstage {
             backstage::show(self, ui);
+        } else if self.session.view.focus_mode {
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |ui| {
+                canvas::show(self, ui);
+            });
+            egui::Area::new(egui::Id::new("focus_mode_exit"))
+                .order(egui::Order::Foreground)
+                .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, 12.0))
+                .show(&ctx, |ui| {
+                    if ui.add(egui::Button::new(tl!("Focus")).selected(true)).clicked() {
+                        let _ = self.run("view.focus", json!({ "value": false }));
+                    }
+                });
         } else {
             chrome::title_bar(self, ui);
             ribbon::show(self, ui);

@@ -239,6 +239,7 @@ impl Touch {
         egui::Area::new(egui::Id::new("effectcraft_touch_bar"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -10.0))
+            .movable(true)
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {

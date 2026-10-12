@@ -43,7 +43,7 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
          })
      }
  
-@@ -362,6 +374,142 @@
+@@ -362,6 +374,150 @@
          self.pending_redraw = pending_redraw;
      }
  
@@ -147,9 +147,17 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
 +        F: FnMut(event::Event<T>, &RootAEL),
 +    {
 +        let old = std::mem::replace(&mut self.ime_text, text.to_owned());
-+        let common = old.chars().zip(text.chars()).take_while(|(a, b)| a == b).count();
-+        let removed = old.chars().count() - common;
-+        let added: String = text.chars().skip(common).collect();
++        let old_chars: Vec<char> = old.chars().collect();
++        let new_chars: Vec<char> = text.chars().collect();
++        let prefix = old_chars.iter().zip(&new_chars).take_while(|(a, b)| a == b).count();
++        let suffix = old_chars[prefix..]
++            .iter()
++            .rev()
++            .zip(new_chars[prefix..].iter().rev())
++            .take_while(|(a, b)| a == b)
++            .count();
++        let removed = old_chars.len() - prefix - suffix;
++        let added: String = new_chars[prefix..new_chars.len() - suffix].iter().collect();
 +
 +        for _ in 0..removed {
 +            for state in [event::ElementState::Pressed, event::ElementState::Released] {
@@ -186,7 +194,7 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
      fn handle_input_event<F>(
          &mut self,
          android_app: &AndroidApp,
-@@ -377,17 +525,25 @@
+@@ -377,17 +533,25 @@
                  let window_id = window::WindowId(WindowId);
                  let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
  
@@ -217,7 +225,7 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
                  if let Some(phase) = phase {
                      let pointers: Box<dyn Iterator<Item = android_activity::input::Pointer<'_>>> =
                          match phase {
-@@ -423,6 +579,7 @@
+@@ -423,6 +587,7 @@
                  }
              },
              InputEvent::KeyEvent(key) => {
@@ -225,7 +233,7 @@ diff -ruN winit-orig/src/platform_impl/android/mod.rs winit-new/src/platform_imp
                  match key.key_code() {
                      // Flag keys related to volume as unhandled. While winit does not have a way for
                      // applications to configure what keys to flag as handled,
-@@ -473,6 +630,9 @@
+@@ -473,6 +638,9 @@
                      },
                  }
              },
