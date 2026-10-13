@@ -186,6 +186,12 @@ pub struct UiState {
     /// Animation effects (smooth scrolling, fades): on, off, or follow the system's setting, which
     /// is the default. An unknown saved value reads as the default.
     pub animations: theme::Animations,
+    /// Help ▸ Touch Bar, as the user left it; `None` follows the platform (on for Android).
+    pub touch_bar: Option<bool>,
+    /// Help ▸ Block Keyboard: keep the on-screen keyboard from opening.
+    pub block_keyboard: bool,
+    /// Help ▸ Full Screen: hide the status bar and the notch area.
+    pub fullscreen: bool,
     /// The dark-mode switch `ui.json` held before `theme` (#115): read once to migrate, never written.
     #[serde(rename = "dark", skip_serializing)]
     pub(crate) legacy_dark: Option<bool>,
@@ -275,6 +281,9 @@ impl Default for UiState {
             theme: theme::Appearance::default(),
             interface_size: theme::InterfaceSize::default(),
             animations: theme::Animations::default(),
+            touch_bar: None,
+            block_keyboard: false,
+            fullscreen: false,
             legacy_dark: None,
             nav_tab: "headings".into(),
             show_discord: true,
@@ -559,6 +568,9 @@ impl WordApp {
         ui.keyboard = self.session.keymap.clone();
         ui.ribbon = self.session.ribbon.clone();
         ui.ink_pens = self.session.view.draw.pens.clone();
+        ui.touch_bar = Some(self.touch.bar_visible);
+        ui.block_keyboard = self.touch.block_keyboard;
+        ui.fullscreen = self.touch.fullscreen;
         ui
     }
 
@@ -566,6 +578,11 @@ impl WordApp {
     pub fn apply_prefs(&mut self, ui: UiState) {
         self.ui = ui;
         self.ui.backstage = false;
+        if let Some(on) = self.ui.touch_bar {
+            self.touch.bar_visible = on;
+        }
+        self.touch.block_keyboard = self.ui.block_keyboard;
+        self.touch.fullscreen = self.ui.fullscreen;
         // A `ui.json` from before the theme setting: its dark-mode switch picks Dark or Light.
         if let Some(dark) = self.ui.legacy_dark.take() {
             self.ui.theme = if dark { theme::Appearance::Dark } else { theme::Appearance::Light };
@@ -3848,6 +3865,23 @@ mod tests {
         assert!(a.run("ui.interfaceSize", json!({"percent": "huge"})).is_err());
         assert!(a.run("ui.interfaceSize", json!({"percent": null})).is_err());
         assert_eq!(a.ui.interface_size.percent(), 200, "a rejected value keeps the setting");
+    }
+
+    /// The Help toggles (Touch Bar, Block Keyboard, Full Screen) are kept between runs.
+    #[test]
+    fn touch_toggles_survive_a_restart() {
+        let mut a = app();
+        a.run("ui.blockKeyboard", json!({"value": true})).unwrap();
+        a.run("ui.fullscreen", json!({"value": true})).unwrap();
+        a.run("ui.touchBar", json!({"value": false})).unwrap();
+        let saved = serde_json::to_string(&a.prefs()).unwrap();
+        let mut b = app();
+        b.apply_prefs(UiState::from_json(saved.as_bytes()).unwrap());
+        assert!(b.touch.block_keyboard && b.touch.fullscreen && !b.touch.bar_visible);
+        // An older ui.json without them leaves the platform defaults alone.
+        let mut c = app();
+        c.apply_prefs(UiState::from_json(b"{\"tab\": \"Insert\"}").unwrap());
+        assert!(!c.touch.block_keyboard && !c.touch.fullscreen);
     }
 
     /// Help ▸ Block Keyboard toggles, and reads back, without a value.

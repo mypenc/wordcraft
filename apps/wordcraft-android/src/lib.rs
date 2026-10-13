@@ -77,6 +77,8 @@ fn android_main(app: AndroidApp) {
                 fullscreen_applied: false,
                 folder_poll: 0,
                 last_backup: Instant::now(),
+                last_prefs_check: Instant::now(),
+                saved_prefs: Vec::new(),
             }))
         }),
     );
@@ -135,6 +137,7 @@ fn services(host: &AndroidApp) -> Services {
 // next start and reopens with the changes marked unsaved.
 
 const BACKUP_EVERY: Duration = Duration::from_secs(15);
+const PREFS_EVERY: Duration = Duration::from_secs(3);
 
 fn backup_file() -> Option<std::path::PathBuf> {
     Some(prefs_path()?.parent()?.join("recovery").join("backup.docx"))
@@ -161,6 +164,28 @@ fn recover_backup(app: &mut WordApp) {
 }
 
 impl AndroidHost {
+    /// Settings are written soon after they change, not only on a clean exit, so a crash or a
+    /// killed app keeps them (the Help toggles, interface size, theme, recent files…).
+    fn save_prefs_if_changed(&mut self) {
+        if self.last_prefs_check.elapsed() < PREFS_EVERY {
+            return;
+        }
+        self.last_prefs_check = Instant::now();
+        let Some(path) = prefs_path() else { return };
+        let Ok(bytes) = serde_json::to_vec_pretty(&self.app.prefs()) else { return };
+        if bytes == self.saved_prefs {
+            return;
+        }
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        // Write beside the file and rename, so a crash mid-write never leaves half a settings file.
+        let tmp = path.with_extension("json.tmp");
+        if std::fs::write(&tmp, &bytes).is_ok() && std::fs::rename(&tmp, &path).is_ok() {
+            self.saved_prefs = bytes;
+        }
+    }
+
     fn backup_if_due(&mut self) {
         if self.last_backup.elapsed() < BACKUP_EVERY {
             return;
@@ -232,6 +257,9 @@ struct AndroidHost {
     folder_poll: u32,
     /// When the crash-recovery copy was last written.
     last_backup: Instant,
+    /// When preferences were last checked for changes, and the text last written.
+    last_prefs_check: Instant,
+    saved_prefs: Vec<u8>,
 }
 
 impl eframe::App for AndroidHost {
@@ -248,6 +276,7 @@ impl eframe::App for AndroidHost {
         }
         self.app.logic(ctx);
         self.backup_if_due();
+        self.save_prefs_if_changed();
         // The window's back/close request: with unsaved changes, ask first.
         let closing = ctx.input(|i| i.viewport().close_requested());
         if closing && !self.app.close_requested() {
