@@ -252,7 +252,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 +                        text: None,
 +                        platform_specific: KeyEventExtra {},
 +                    },
-+                    is_synthetic: true,
++                    is_synthetic: false,
 +                });
 +            }
 +        }
@@ -272,7 +272,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 +                        text: None,
 +                        platform_specific: KeyEventExtra {},
 +                    },
-+                    is_synthetic: true,
++                    is_synthetic: false,
 +                });
 +            }
 +        }
@@ -299,7 +299,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 +                            text: None,
 +                            platform_specific: KeyEventExtra {},
 +                        },
-+                        is_synthetic: true,
++                        is_synthetic: false,
 +                    });
 +                }
 +            }
