@@ -266,7 +266,7 @@ impl Recognizer {
 
     /// Call every frame (and at `deadline`): fires the long press.
     pub fn tick(&mut self, t: f64) -> Vec<Out> {
-        if let Mode::Pending { origin, t0 } = self.mode {
+        if let Mode::Pending { origin, t0, .. } = self.mode {
             if t - t0 >= self.cfg.long_press {
                 self.mode = Mode::Spent;
                 return vec![Out::Move(origin), Out::Haptic, Out::Press(Btn::Secondary, origin), Out::Release(Btn::Secondary, origin)];
