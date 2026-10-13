@@ -1803,3 +1803,106 @@ fn alternate_font_name_keeps_later_entries() {
         assert_eq!(fonts, [Some("Arial".to_string()), Some("Courier New".to_string())], "alt {alt:?}");
     }
 }
+
+/// PChgTabsPapxOperand bytes: cb, removed stops, added stops with their TBDs.
+fn tabs_papx(del: &[i16], add: &[(i16, u8)]) -> Vec<u8> {
+    let mut v = vec![0u8, del.len() as u8];
+    for d in del {
+        v.extend_from_slice(&d.to_le_bytes());
+    }
+    v.push(add.len() as u8);
+    for (x, _) in add {
+        v.extend_from_slice(&x.to_le_bytes());
+    }
+    v.extend(add.iter().map(|(_, tbd)| *tbd));
+    v[0] = (v.len() - 1) as u8;
+    v
+}
+
+/// Custom tab stops ([MS-DOC] sprmPChgTabsPapx, sprmPChgTabs) were skipped, so tab-aligned text
+/// (centred titles, right-aligned dates, dot leaders in forms) lost its alignment. Stops added by
+/// a style and by the paragraph, stops it removes, and the TBD's alignment and leader are read.
+#[test]
+fn tab_stops_read_from_styles_and_paragraphs() {
+    use wordcraft_doc::props::{TabAlign, TabLeader};
+    // Normal: centre at 3.25" (4680 tw), right at 6.5" (9360 tw) with a dot leader (tlc 1).
+    let normal = grpprl(&[(0xC60D, &tabs_papx(&[], &[(4680, 1), (9360, 2 | 1 << 3)]))]);
+    // The paragraph drops the centre stop and adds a left stop at 0.5" and a bar at 1".
+    let direct = grpprl(&[(0xC60D, &tabs_papx(&[4680], &[(720, 0), (1440, 4)]))]);
+    // The second paragraph uses the older sprmPChgTabs: removals carry a "close" distance.
+    let mut old = vec![0u8, 1];
+    old.extend_from_slice(&9360i16.to_le_bytes());
+    old.extend_from_slice(&25i16.to_le_bytes());
+    old.push(1);
+    old.extend_from_slice(&2880i16.to_le_bytes());
+    old.push(3 | 5 << 3); // decimal, middle dot
+    old[0] = (old.len() - 1) as u8;
+    let spec = RichSpec {
+        text: "\tA\tB\r\tC\r",
+        styles: vec![(1, 0x0FFF, "Normal", normal, Vec::new())],
+        fonts: vec!["Calibri"],
+        chpx_runs: vec![(0, Vec::new())],
+        papx_entries: vec![(0, 0, direct), (5, 0, grpprl(&[(0xC615, &old)]))],
+    };
+    let doc = read(&rich_doc(&spec)).expect("opens");
+    let tabs = |i: usize| {
+        let p = doc.body.get(i).and_then(|b| b.as_para()).expect("para");
+        doc.styles.resolve_para(&p.props).tabs.iter().map(|t| (t.pos, t.align, t.leader)).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        tabs(0),
+        [(36.0, TabAlign::Left, TabLeader::None), (72.0, TabAlign::Bar, TabLeader::None), (468.0, TabAlign::Right, TabLeader::Dot)],
+        "the style's stops, less the removed one, plus the paragraph's"
+    );
+    assert_eq!(tabs(1), [(144.0, TabAlign::Decimal, TabLeader::MiddleDot), (234.0, TabAlign::Center, TabLeader::None)], "sprmPChgTabs");
+    assert_eq!(doc.styles.styles.iter().find(|s| s.name == "Normal").and_then(|s| s.para.tabs.as_ref()).map(Vec::len), Some(2));
+}
+
+/// Hostile tab operands (counts past the end, more than 64 stops, cb 255) never panic and
+/// never swallow the sprms after them.
+#[test]
+fn hostile_tab_operands_are_safe() {
+    for operand in [vec![2u8, 200, 9], vec![0], vec![255, 1, 0x10, 0x00], vec![255, 3], vec![5, 0, 70, 0, 1, 2]] {
+        let papx = grpprl(&[(0xC615, &operand), (0x2403, &[1])]);
+        let spec = RichSpec {
+            text: "x\r",
+            styles: vec![(1, 0x0FFF, "Normal", Vec::new(), Vec::new())],
+            fonts: vec!["Calibri"],
+            chpx_runs: vec![(0, Vec::new())],
+            papx_entries: vec![(0, 0, papx)],
+        };
+        let _ = read(&rich_doc(&spec));
+    }
+    let mut iter = crate::sprm::iter(&[0x15, 0xC6, 3, 0, 0, 0, 0x03, 0x24, 1]);
+    assert_eq!(iter.next().map(|p| (p.op, p.operand.len())), Some((0xC615, 4)), "cb is one byte: the operand is cb + 1 bytes");
+    assert_eq!(iter.next().map(|p| p.op), Some(0x2403), "the next sprm is still read");
+}
+
+/// A section mark (0x0C) at a section's end is the section's last paragraph mark, not a page
+/// break inside a paragraph: the section's properties (here continuous) land on that paragraph.
+/// Before, every section of such a file was lost and each section mark became a page break.
+#[test]
+fn section_marks_end_paragraphs() {
+    use wordcraft_doc::section::SectionStart;
+    let spec = StructSpec {
+        text: "first\u{C}second\r",
+        header_stories: vec![],
+        sections: vec![(6, grpprl(&[(0x3009, &[0x00])])), (13, Vec::new())],
+        chpx_runs: vec![(0, Vec::new())],
+        papx_entries: vec![(0, 0, Vec::new()), (6, 0, Vec::new())],
+        plf_lst: Vec::new(),
+        plf_lfo: Vec::new(),
+        note_stories: vec![],
+        endnote_stories: vec![],
+        extra_pairs: Vec::new(),
+        data_stream: Vec::new(),
+    };
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    assert_eq!(body_texts(&doc), ["first", "second"]);
+    let p0 = doc.body.first().and_then(|b| b.as_para()).expect("para");
+    assert_eq!(p0.section.as_ref().map(|s| s.start), Some(SectionStart::Continuous), "the section ends at its mark");
+    // A page break inside a section stays a page break.
+    let spec = StructSpec { text: "a\u{C}b\r", sections: vec![(4, Vec::new())], papx_entries: vec![(0, 0, Vec::new())], ..spec };
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    assert_eq!(body_texts(&doc), ["a\u{C}b"]);
+}

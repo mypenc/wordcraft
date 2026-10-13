@@ -49,9 +49,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("select.sentence", "Select Sentence", "Navigation", select_sentence).pure(),
         CommandSpec::new("select.paragraph", "Select Paragraph", "Navigation", select_paragraph).pure(),
         CommandSpec::new("select.dragUnit", "Extend Selection by Units", "Navigation", drag_unit)
-            .params(r#"{"unit": "word|sentence|paragraph", "start": Pos, "end": Pos, "pos": Pos}"#)
+            .params(r#"{"unit": "word|sentence|line|paragraph|document", "start": Pos, "end": Pos, "pos": Pos}"#)
             .pure(),
-        CommandSpec::new("select.line", "Select Line", "Navigation", select_line).pure(),
+        CommandSpec::new("select.line", "Select Line", "Navigation", select_line).params(r#"{"pos"?: Pos}"#).pure(),
         CommandSpec::new("select.text", "Select Text", "Navigation", select_text).params(r#"{"text": string, "occurrence"?: n}"#).pure(),
         CommandSpec::new("select.collapse", "Collapse Selection", "Navigation", |s, v| {
             let to_end = p::bool(v, "end").unwrap_or(false);
@@ -293,12 +293,15 @@ fn select_range(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// A unit a selection grows by: what a double-click (word), Ctrl/⌘+click (sentence) or
-/// triple-click (paragraph) selects, and what dragging after it extends by.
+/// triple-click (paragraph) selects, and what dragging after it extends by. A click in the
+/// selection bar (the left margin) selects a line; triple-click there the whole document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Unit {
     Word,
     Sentence,
+    Line,
     Paragraph,
+    Document,
 }
 
 impl Unit {
@@ -306,26 +309,36 @@ impl Unit {
         match s {
             "word" => Some(Unit::Word),
             "sentence" => Some(Unit::Sentence),
+            "line" => Some(Unit::Line),
             "paragraph" => Some(Unit::Paragraph),
+            "document" => Some(Unit::Document),
             _ => None,
         }
     }
 }
 
-/// The word, sentence or paragraph around `at`, as (start, end). A paragraph includes its mark
-/// (it ends at the start of the next paragraph in the same container, when there is one).
-pub fn unit_range(s: &Session, at: &Pos, unit: Unit) -> (Pos, Pos) {
+/// The word, sentence, line, paragraph or story around `at`, as (start, end). A paragraph
+/// includes its mark (it ends at the start of the next paragraph in the same container, when
+/// there is one), and so does its last line.
+pub fn unit_range(s: &mut Session, at: &Pos, unit: Unit) -> (Pos, Pos) {
     let Some(p) = s.doc.para_at(at) else { return (at.clone(), at.clone()) };
+    let len = p.len();
+    let mark_end = |s: &Session| match s.doc.next_para(at.story, &at.path) {
+        Some(q) if q.parent() == at.path.parent() => Pos { story: at.story, path: q, off: 0 },
+        _ => Pos { off: len, ..at.clone() },
+    };
     let (a, b) = match unit {
         Unit::Word => p.word_at(at.off),
         Unit::Sentence => p.sentence_at(at.off),
-        Unit::Paragraph => {
-            let start = Pos { off: 0, ..at.clone() };
-            let end = match s.doc.next_para(at.story, &at.path) {
-                Some(q) if q.parent() == at.path.parent() => Pos { story: at.story, path: q, off: 0 },
-                _ => Pos { off: p.len(), ..at.clone() },
+        Unit::Paragraph => return (Pos { off: 0, ..at.clone() }, mark_end(s)),
+        Unit::Document => return (s.doc.start_of(at.story), s.doc.end_of(at.story)),
+        Unit::Line => {
+            let hint = s.page_hint;
+            return match s.layout().line_span(at, hint) {
+                Some((a, _, true)) => (a, mark_end(s)),
+                Some((a, b, false)) => (a, b),
+                None => (at.clone(), at.clone()),
             };
-            return (start, end);
         }
     };
     (Pos { off: a, ..at.clone() }, Pos { off: b, ..at.clone() })
@@ -352,12 +365,23 @@ fn select_paragraph(s: &mut Session, _: &Value) -> CmdResult {
     select_unit(s, Unit::Paragraph)
 }
 
+/// A click in the selection bar (#856): the whole line at `pos` (default: the caret's), its
+/// trailing spaces and, on a paragraph's last line, the paragraph mark.
+fn select_line(s: &mut Session, v: &Value) -> CmdResult {
+    if let Some(pos) = v.get("pos").and_then(parse_pos) {
+        s.sel = Selection::caret(s.doc.clamp(&pos));
+    }
+    select_unit(s, Unit::Line)
+}
+
 /// Drag after a double-click (words), triple-click (paragraphs) or Ctrl/⌘+click (sentences):
 /// the selection keeps the unit first selected (`start`..`end`) and grows by whole units to
 /// the one under `pos`. Dragging forward anchors at the unit's start; dragging back before it
 /// anchors at its end, as in Word.
 fn drag_unit(s: &mut Session, v: &Value) -> CmdResult {
-    let unit = p::str(v, "unit").and_then(Unit::parse).ok_or_else(|| CmdError::Params("`unit` must be word, sentence or paragraph".into()))?;
+    let unit = p::str(v, "unit")
+        .and_then(Unit::parse)
+        .ok_or_else(|| CmdError::Params("`unit` must be word, sentence, line, paragraph or document".into()))?;
     let get = |k: &str| v.get(k).and_then(parse_pos).ok_or_else(|| CmdError::Params(format!("bad `{k}`")));
     let (at, start, end) = (s.doc.clamp(&get("pos")?), s.doc.clamp(&get("start")?), s.doc.clamp(&get("end")?));
     let (start, end) = if start <= end { (start, end) } else { (end, start) };
@@ -366,17 +390,15 @@ fn drag_unit(s: &mut Session, v: &Value) -> CmdResult {
         return sel_result(s);
     }
     let (us, ue) = unit_range(s, &at, unit);
-    s.sel = if at >= start { Selection { focus: ue.max(end.clone()), anchor: start } } else { Selection { focus: us.min(start), anchor: end } };
+    s.sel = if unit == Unit::Document {
+        Selection { anchor: us, focus: ue }
+    } else if at >= start {
+        Selection { focus: ue.max(end.clone()), anchor: start }
+    } else {
+        Selection { focus: us.min(start), anchor: end }
+    };
     s.goal_x = None;
     s.pending = None;
-    sel_result(s)
-}
-
-fn select_line(s: &mut Session, _: &Value) -> CmdResult {
-    let l = s.layout();
-    if let Some((a, b)) = l.line_bounds(&s.sel.focus, s.page_hint) {
-        s.sel = Selection { anchor: a, focus: b };
-    }
     sel_result(s)
 }
 

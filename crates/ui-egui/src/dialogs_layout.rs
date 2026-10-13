@@ -14,6 +14,7 @@ use wordcraft_doc::section::LineNumberRestart;
 use wordcraft_engine::cmd::mailings::{ENVELOPE_SIZES, LABEL_PRODUCTS};
 
 use crate::WordApp;
+use crate::options::MeasureExt;
 use crate::theme::semibold;
 
 #[derive(Clone, Debug, Serialize)]
@@ -174,11 +175,7 @@ fn line_numbers_ui(app: &mut WordApp, ui: &mut Ui, f: &mut LineNumbersForm) -> b
                 ui.checkbox(&mut f.auto_distance, tl!("Auto"));
                 ui.add_enabled(
                     !f.auto_distance,
-                    egui::DragValue::new(&mut f.distance)
-                        .speed(0.01)
-                        .range(0.0..=22.0 * 72.0 / unit().pt_per_unit())
-                        .suffix(unit().suffix())
-                        .max_decimals(2),
+                    egui::DragValue::new(&mut f.distance).speed(0.01).range(0.0..=22.0 * 72.0 / unit().pt_per_unit()).measure(unit()).max_decimals(2),
                 );
             });
             ui.end_row();
@@ -233,7 +230,7 @@ fn hyphenation_ui(app: &mut WordApp, ui: &mut Ui, f: &mut HyphenationForm) -> bo
     ui.checkbox(&mut f.caps, tl!("Hyphenate words in CAPS"));
     egui::Grid::new("hyph").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
         ui.label(tl!("Hyphenation zone:"));
-        ui.add(egui::DragValue::new(&mut f.zone).speed(0.01).range(0.0..=22.0 * 72.0 / unit().pt_per_unit()).suffix(unit().suffix()).max_decimals(2));
+        ui.add(egui::DragValue::new(&mut f.zone).speed(0.01).range(0.0..=22.0 * 72.0 / unit().pt_per_unit()).measure(unit()).max_decimals(2));
         ui.end_row();
         ui.label(tl!("Limit consecutive hyphens to:"));
         let no_limit = tl!("No limit").to_string();

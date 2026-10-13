@@ -20,17 +20,58 @@ thread_local! {
     // The unit dialogs and the ribbon show lengths in: File › Options › Advanced, copied from the
     // session each frame so dialog code without the app can read it.
     static UNIT: Cell<Unit> = const { Cell::new(Unit::Inches) };
+    // The region's decimal separator (#838).
+    static DECIMAL: Cell<char> = const { Cell::new('.') };
 }
 
-/// The unit lengths are shown in (File › Options › Advanced › Measurement units).
+/// The unit lengths are shown in (File › Options › Advanced › Measurement units, else the
+/// region's).
 pub fn unit() -> Unit {
     UNIT.get()
 }
 
+/// The decimal separator lengths are written with (the region's: `,` in Poland).
+pub fn decimal() -> char {
+    DECIMAL.get()
+}
+
+/// `pt` in [`unit`], written the region's way (`2,54 cm`).
+pub fn length(pt: f32) -> String {
+    unit().format_with(pt, decimal())
+}
+
 /// Copy the session's settings the UI reads without the app.
 pub(crate) fn sync(app: &WordApp) {
-    UNIT.set(app.session.prefs.units);
+    UNIT.set(app.session.units());
+    DECIMAL.set(app.session.region().decimal());
 }
+
+/// A length field: the unit's suffix, and numbers written and read with the region's decimal
+/// separator (`2,54 cm`). Typing either separator works, and so does another unit (`1 in` in a
+/// centimetre field).
+pub trait MeasureExt {
+    fn measure(self, unit: Unit) -> Self;
+}
+
+impl MeasureExt for egui::DragValue<'_> {
+    fn measure(self, unit: Unit) -> Self {
+        let sep = decimal();
+        self.suffix(unit.suffix())
+            .custom_formatter(move |n, decimals| {
+                let s = egui::emath::format_with_decimals_in_range(n, decimals);
+                if sep == '.' { s } else { s.replace('.', &sep.to_string()) }
+            })
+            .custom_parser(move |text| {
+                let text: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+                wordcraft_geom::parse_measure(&text, unit).map(|pt| f64::from(pt / unit.pt_per_unit()))
+            })
+    }
+}
+
+/// Regions offered in File › Options › Advanced › Region (any locale tag works through
+/// `file.options`): Letter and A4 countries, decimal point and decimal comma.
+const REGIONS: [&str; 16] =
+    ["en-US", "en-CA", "en-GB", "en-AU", "en-IN", "es-MX", "es-ES", "pt-BR", "fr-FR", "de-DE", "it-IT", "pl-PL", "ru-RU", "ja-JP", "zh-CN", "ko-KR"];
 
 /// The units offered, with their names.
 pub const UNITS: [(Unit, &str); 5] = [
@@ -141,6 +182,18 @@ fn general(app: &mut WordApp, ui: &mut Ui) {
     }
     ui.checkbox(&mut app.ui.show_discord, tl!("Show the community button in the title bar"));
     default_app_button(app, ui);
+    ui.add_space(8.0);
+    section(ui, "Start-up");
+    let mut start = app.ui.start_screen;
+    if ui
+        .checkbox(&mut start, tl!("Show the Start screen when WordCraft starts"))
+        .on_hover_text(tl!(
+            "On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document."
+        ))
+        .changed()
+    {
+        let _ = app.run("ui.startScreen", json!({"value": start}));
+    }
     ui.add_space(8.0);
     section(ui, "Personalize");
     egui::Grid::new("options_user").num_columns(2).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
@@ -310,11 +363,37 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
         }
         ui.end_row();
         ui.label(tl!("Measurement units:"));
-        let name = UNITS.iter().find(|(u, _)| *u == pr.units).map_or("Inches", |(_, n)| n);
-        egui::ComboBox::from_id_salt("options_units").selected_text(tl!(name)).width(160.0).show_ui(ui, |ui| {
+        // The user's choice, else the region's (#838): Automatic follows the region.
+        let units = app.session.units();
+        let auto = app.session.prefs.units.is_none();
+        let name = UNITS.iter().find(|(u, _)| *u == units).map_or("Inches", |(_, n)| n);
+        let shown = if auto { format!("{} ({})", tl!("Automatic"), tl!(name)) } else { tl!(name).to_string() };
+        egui::ComboBox::from_id_salt("options_units").selected_text(shown).width(200.0).show_ui(ui, |ui| {
+            if ui.selectable_label(auto, tl!("Automatic")).clicked() {
+                set(app, json!({"units": "auto"}));
+            }
             for (u, label) in UNITS {
-                if ui.selectable_label(pr.units == u, tl!(label)).clicked() {
+                if ui.selectable_label(!auto && units == u, tl!(label)).clicked() {
                     set(app, json!({"units": u}));
+                }
+            }
+        });
+        ui.end_row();
+        // The region new documents, units and the decimal separator follow; Automatic is the
+        // system's (#838).
+        ui.label(tl!("Region:"));
+        let chosen = app.session.prefs.region.clone();
+        let system = &app.session.system_region;
+        let system_tag = if system.territory.is_empty() { system.language.clone() } else { format!("{}-{}", system.language, system.territory) };
+        let automatic = crate::i18n::fmt(tl!("Automatic ({region})"), &[("region", system_tag.as_str())]);
+        let shown = chosen.clone().unwrap_or_else(|| automatic.clone());
+        egui::ComboBox::from_id_salt("options_region").selected_text(shown).width(200.0).show_ui(ui, |ui| {
+            if ui.selectable_label(chosen.is_none(), automatic.as_str()).clicked() {
+                set(app, json!({"region": "auto"}));
+            }
+            for tag in REGIONS {
+                if ui.selectable_label(chosen.as_deref() == Some(tag), tag).clicked() {
+                    set(app, json!({"region": tag}));
                 }
             }
         });
@@ -533,6 +612,8 @@ mod tests {
     use serde_json::json;
     use wordcraft_geom::Unit;
 
+    use super::{decimal, length, unit};
+
     use crate::theme::Appearance;
     use crate::{Services, UiState, WordApp};
 
@@ -556,21 +637,42 @@ mod tests {
         let mut b = app();
         b.apply_prefs(UiState::from_json(&saved).unwrap());
         assert_eq!(b.session.prefs, a.session.prefs);
-        assert_eq!(b.session.prefs.units, Unit::Centimeters);
+        assert_eq!(b.session.prefs.units, Some(Unit::Centimeters));
         assert_eq!(b.session.initials, "VK");
         assert_eq!((b.ui.recent_count, b.ui.print_backgrounds), (30, true));
         assert!(wordcraft_engine::proof::user_dictionary().contains(&"zqxoptionsword".to_string()));
 
         let junk = br#"{"theme": "dark", "recentCount": "lots", "printBackgrounds": 7, "optionsPane": ["x"], "dark": true,
-            "editing": {"units": "furlongs", "typingReplacesSelection": false, "marks": {"tabs": "yes", "spaces": true}}}"#;
+            "editing": {"measurementUnits": "furlongs", "typingReplacesSelection": false, "marks": {"tabs": "yes", "spaces": true}}}"#;
         let ui = UiState::from_json(junk).unwrap();
         assert_eq!(ui.theme, Appearance::Dark);
         assert_eq!((ui.recent_count, ui.print_backgrounds, ui.options_pane.as_str()), (12, false, "general"));
         assert_eq!(ui.legacy_dark, Some(true));
-        assert_eq!(ui.editing.units, Unit::Inches);
+        assert_eq!(ui.editing.units, None);
         assert!(!ui.editing.typing_replaces_selection);
         assert!(ui.editing.marks.spaces && !ui.editing.marks.tabs);
         assert!(UiState::from_json(b"[1, 2]").is_none() && UiState::from_json(b"not json").is_none());
+    }
+
+    /// Settings saved before #838 kept the unit under `editing.units` (default inches): a unit
+    /// the user chose carries over to `measurementUnits`; inches, junk or a newer value don't.
+    #[test]
+    fn a_unit_chosen_before_regions_survives_the_rename() {
+        let editing = |json: &str| UiState::from_json(format!(r#"{{"editing": {json}}}"#).as_bytes()).unwrap().editing.units;
+        assert_eq!(editing(r#"{"units": "centimeters"}"#), Some(Unit::Centimeters));
+        assert_eq!(editing(r#"{"units": "picas", "overtype": true}"#), Some(Unit::Picas));
+        assert_eq!(editing(r#"{"units": "inches"}"#), None);
+        assert_eq!(editing(r#"{"units": "furlongs"}"#), None);
+        assert_eq!(editing(r#"{"units": 7}"#), None);
+        assert_eq!(editing(r#"{"units": "millimeters", "measurementUnits": "points"}"#), Some(Unit::Points));
+        assert_eq!(editing(r#"{"units": "millimeters", "measurementUnits": null}"#), None);
+        assert_eq!(editing("{}"), None);
+        let mut a = app();
+        a.apply_prefs(UiState::from_json(br#"{"editing": {"units": "millimeters"}}"#).unwrap());
+        assert_eq!(a.session.units(), Unit::Millimeters);
+        // Saved again, it's under the new key.
+        let saved = serde_json::to_value(a.prefs()).unwrap();
+        assert_eq!(saved["editing"]["measurementUnits"], "millimeters");
     }
 
     /// `file.options` opens the page at a pane; the pane list switches panes, and their
@@ -636,6 +738,29 @@ mod tests {
         assert!(h.query_by_label("Your system has animation effects turned off.").is_none(), "only said while the system is followed");
     }
 
+    /// File › Options › General › Start-up (#766): the checkbox is the `ui.startScreen` setting.
+    #[test]
+    fn general_start_up_turns_the_start_screen_off_and_on() {
+        let mut a = app();
+        a.run("file.options", json!({"pane": "general"})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        assert!(h.query_by_label("Start-up").is_some(), "the section is there");
+        h.get_by_label("Show the Start screen when WordCraft starts").click();
+        h.run_steps(4);
+        assert!(!h.state().ui.start_screen, "the checkbox turns it off");
+        h.get_by_label("Show the Start screen when WordCraft starts").click();
+        h.run_steps(4);
+        assert!(h.state().ui.start_screen, "and on again");
+    }
+
     /// File › Options › Advanced › Animation: the checkbox is the `ui.caretAnimation` setting,
     /// and the section is translated.
     #[test]
@@ -661,5 +786,38 @@ mod tests {
         h.state_mut().run("ui.language", json!({"value": "es"})).unwrap();
         h.run_steps(4);
         assert!(h.query_by_label("Animación").is_some() && h.query_by_label("Animation").is_none());
+    }
+
+    /// #838: in a Polish region the Page Setup margins read `2,54 cm` (the region's unit and
+    /// decimal comma), a typed `3,5` or `1 in` is understood, and the Options page shows the
+    /// region's unit until the user picks another.
+    #[test]
+    fn length_fields_follow_the_region() {
+        let mut a = app();
+        a.run("file.options", json!({"region": "pl-PL"})).unwrap();
+        a.run("file.new", json!({})).unwrap();
+        assert_eq!(wordcraft_geom::paper_name(a.session.doc.last_section.page_w, a.session.doc.last_section.page_h), Some("A4"));
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(2);
+        // The dialog reads the unit when it opens, after a frame has picked up the region.
+        h.state_mut().run("ui.dialog", json!({"name": "pageSetup"})).unwrap();
+        h.run_steps(4);
+        assert_eq!((unit(), decimal()), (Unit::Centimeters, ','));
+        assert_eq!(length(72.0), "2,54 cm");
+        assert_eq!(h.query_all_by_value("2,54 cm").count(), 4, "four margins in centimetres with a decimal comma");
+
+        h.state_mut().run("file.options", json!({"units": "inches"})).unwrap();
+        h.run_steps(4);
+        assert_eq!(length(108.0), "1,5\"", "the user's unit, still the region's decimal comma");
+        h.state_mut().run("file.options", json!({"units": "auto", "region": "en-US"})).unwrap();
+        h.run_steps(4);
+        assert_eq!(length(72.0), "1\"");
     }
 }

@@ -9,6 +9,7 @@ use wordcraft_doc::props::{Border, BorderStyle, Borders, Rgb, TabAlign, TabLeade
 
 use crate::WordApp;
 use crate::dialogs::{buttons, color_menu};
+use crate::options::MeasureExt;
 use crate::theme::{Tokens, semibold};
 
 /// Stops closer than this (points) are the same stop.
@@ -123,13 +124,13 @@ pub fn tabs(app: &mut WordApp, ui: &mut Ui, f: &mut TabsForm) -> bool {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.label(tl!("Tab stop position:"));
-            ui.add(egui::DragValue::new(&mut f.pos).speed(0.05).range(-22.0 * 72.0 / k..=22.0 * 72.0 / k).suffix(u.suffix()).max_decimals(2));
+            ui.add(egui::DragValue::new(&mut f.pos).speed(0.05).range(-22.0 * 72.0 / k..=22.0 * 72.0 / k).measure(u).max_decimals(2));
             let mut pick = None;
             egui::Frame::new().stroke(Stroke::new(1.0, Tokens::get(ui.ctx()).input_border)).inner_margin(4.0).show(ui, |ui| {
                 ui.set_min_size(vec2(150.0, 96.0));
                 egui::ScrollArea::vertical().max_height(96.0).show(ui, |ui| {
                     for (i, t) in f.stops.iter().enumerate() {
-                        if ui.selectable_label(f.selected == Some(i), u.format(t.pos)).clicked() {
+                        if ui.selectable_label(f.selected == Some(i), u.format_with(t.pos, crate::options::decimal())).clicked() {
                             pick = Some(i);
                         }
                     }
@@ -147,10 +148,18 @@ pub fn tabs(app: &mut WordApp, ui: &mut Ui, f: &mut TabsForm) -> bool {
         ui.add_space(12.0);
         ui.vertical(|ui| {
             ui.label(tl!("Default tab stops:"));
-            ui.add(egui::DragValue::new(&mut f.default_tab).speed(0.05).range(1.0 / k..=1584.0 / k).suffix(u.suffix()).max_decimals(2));
+            ui.add(egui::DragValue::new(&mut f.default_tab).speed(0.05).range(1.0 / k..=1584.0 / k).measure(u).max_decimals(2));
             ui.add_space(8.0);
             ui.label(tl!("Tab stops to be cleared:"));
-            let list = if f.clear_all { tl!("All").to_string() } else { f.cleared.iter().map(|p| u.format(*p)).collect::<Vec<_>>().join(", ") };
+            let list = if f.clear_all {
+                tl!("All").to_string()
+            } else {
+                {
+                    // `1,5 cm; 3 cm` where the comma is the decimal separator.
+                    let sep = if crate::options::decimal() == ',' { "; " } else { ", " };
+                    f.cleared.iter().map(|p| u.format_with(*p, crate::options::decimal())).collect::<Vec<_>>().join(sep)
+                }
+            };
             ui.label(egui::RichText::new(list).weak());
         });
     });

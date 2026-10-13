@@ -336,9 +336,11 @@ impl AutoCorrectForm {
         let o = &self.options;
         json!({
             "replaceText": o.replace_text,
+            "twoInitialCaps": o.two_initial_caps,
             "capSentences": o.cap_sentences,
             "capCells": o.cap_cells,
             "capDays": o.cap_days,
+            "capsLock": o.caps_lock,
             "smartQuotes": o.smart_quotes,
             "fractions": o.fractions,
             "ordinals": o.ordinals,
@@ -410,6 +412,7 @@ fn autocorrect_ui(app: &mut WordApp, ui: &mut Ui, f: &mut AutoCorrectForm) -> bo
 
 fn autocorrect_tab(app: &mut WordApp, ui: &mut Ui, f: &mut AutoCorrectForm) {
     let o = &mut f.options;
+    ui.checkbox(&mut o.two_initial_caps, tl!("Correct TWo INitial CApitals"));
     ui.checkbox(&mut o.cap_sentences, tl!("Capitalize first letter of sentences"));
     ui.horizontal(|ui| {
         ui.add_space(18.0);
@@ -423,6 +426,7 @@ fn autocorrect_tab(app: &mut WordApp, ui: &mut Ui, f: &mut AutoCorrectForm) {
     let o = &mut f.options;
     ui.checkbox(&mut o.cap_cells, tl!("Capitalize first letter of table cells"));
     ui.checkbox(&mut o.cap_days, tl!("Capitalize names of days"));
+    ui.checkbox(&mut o.caps_lock, tl!("Correct accidental usage of cAPS LOCK key"));
     ui.checkbox(&mut o.replace_text, tl!("Replace text as you type"));
     egui::Grid::new("ac_boxes").num_columns(2).spacing(vec2(8.0, 2.0)).show(ui, |ui| {
         ui.label(tl!("Replace:"));

@@ -8,9 +8,15 @@ const FAMILY: &str = "Sysfont Sans3";
 
 /// A bundled Source Sans 3 file renamed [`FAMILY`] (as long as the original name).
 fn renamed(file: &str) -> Vec<u8> {
+    renamed_to(file, FAMILY)
+}
+
+/// A bundled Source Sans 3 file renamed `family` (13 characters, as long as the original name).
+fn renamed_to(file: &str, family: &str) -> Vec<u8> {
+    assert_eq!(family.len(), "Source Sans 3".len());
     let mut data = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/fonts").join(file)).unwrap();
     let utf16 = |s: &str| s.encode_utf16().flat_map(u16::to_be_bytes).collect::<Vec<u8>>();
-    for (from, to) in [(utf16("Source Sans 3"), utf16(FAMILY)), (b"Source Sans 3".to_vec(), FAMILY.as_bytes().to_vec())] {
+    for (from, to) in [(utf16("Source Sans 3"), utf16(family)), (b"Source Sans 3".to_vec(), family.as_bytes().to_vec())] {
         let mut i = 0;
         while let Some(at) = data[i..].windows(from.len()).position(|w| w == from) {
             data[i + at..i + at + to.len()].copy_from_slice(&to);
@@ -269,8 +275,10 @@ fn fallback_reads_each_installed_font_file_once_however_many_characters_miss() {
     let latin = db.face(FALLBACK_FAMILY, "Regular");
     let found = db.fallback_for('\u{30000}', latin.id()).expect("the installed font maps it");
     assert_eq!((found.family.as_str(), found.style.as_str()), (FAMILY, "Regular"));
-    // 2,000 distinct characters nothing maps: the index answers, no file is read again.
-    for cp in 0x30001..0x30001 + 2000 {
+    // 2,000 distinct characters nothing maps (Supplementary Private Use Area-A: no font here,
+    // bundled or craft-fonts, maps it; CJK Extension G after U+30000 is partly in Noto Sans CJK
+    // SC): the index answers, no file is read again.
+    for cp in 0xF_0001..0xF_0001 + 2000 {
         let c = char::from_u32(cp).unwrap();
         assert!(db.fallback_for(c, latin.id()).is_none());
     }
@@ -402,4 +410,49 @@ fn east_asian_fonts_are_listed_for_the_asian_text_font_box() {
     // Loaded, it is still listed once.
     assert!(db.face("Songti Test", "Regular").is_east_asian());
     assert_eq!(listed(&db), 1);
+}
+
+/// #848: browsing the font list drew each family's name in its own face, loading every family
+/// shown for good (tens of megabytes per trip through the Font box). Preview faces are read for
+/// the preview alone: however many families are previewed, the database keeps no font data, and
+/// each preview face is freed when dropped.
+#[test]
+fn font_list_previews_load_nothing_for_good() {
+    let dir = std::env::temp_dir().join(format!("dc-sysfonts-{}-previews", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let families: Vec<String> = (0..40).map(|i| format!("Preview Fam{i:02}")).collect();
+    for (i, f) in families.iter().enumerate() {
+        std::fs::write(dir.join(format!("p{i}-Regular.ttf")), renamed_to("SourceSans3-Regular.ttf", f)).unwrap();
+        std::fs::write(dir.join(format!("p{i}-Bold.ttf")), renamed_to("SourceSans3-Bold.ttf", f)).unwrap();
+    }
+    let db = FontDb::with_font_dirs(vec![dir.clone()]);
+    let (faces, bytes) = (db.read_faces().len(), db.loaded_font_bytes());
+    // Every family previewed many times over, as reopening the list does.
+    for _ in 0..5 {
+        for f in &families {
+            let face = db.preview_face(f).expect("installed family previews");
+            assert_eq!(face.family, *f);
+            assert_eq!(face.style, "Regular", "the preview shows the Regular face");
+            assert!(face.covers('P'));
+            assert_eq!(Arc::strong_count(&face), 1, "nothing else keeps the preview face (or its data)");
+        }
+    }
+    assert_eq!(db.read_faces().len(), faces, "previews load no faces");
+    assert_eq!(db.loaded_font_bytes(), bytes, "previews keep no font data");
+    assert!(db.preview_face("No Such Family").is_none());
+
+    // Using a font loads it once; previewing it again shares the loaded face.
+    assert_eq!(db.face(&families[0], "Regular").family, families[0]);
+    let used = db.loaded_font_bytes();
+    assert!(used > bytes, "a used family's data is counted");
+    let shared = db.preview_face(&families[0]).unwrap();
+    assert!(Arc::strong_count(&shared) > 1, "a loaded family's preview is the shared face");
+    for _ in 0..3 {
+        for f in &families[1..] {
+            drop(db.preview_face(f));
+        }
+    }
+    assert_eq!(db.loaded_font_bytes(), used, "memory stays bounded across previews");
+    let _ = std::fs::remove_dir_all(&dir);
 }

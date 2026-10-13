@@ -416,6 +416,7 @@
 	Insert Above	Oberhalb einfügen
 	Insert Below	Unterhalb einfügen
 	Insert Caption	Beschriftung einfügen
+	Insert Caption…	Beschriftung einfügen…
 	Insert Citation	Zitat einfügen
 	Insert Endnote	Endnote einfügen
 	Insert Footnote	Fußnote einfügen
@@ -791,6 +792,7 @@
 	Table of Contents	Inhaltsverzeichnis
 	Table of\nContents	Inhalts-\nverzeichnis
 	Table Properties	Tabelleneigenschaften
+	Table Properties…	Tabelleneigenschaften…
 	Table Row Height	Tabellenzeilenhöhe
 	Table Style Options	Tabellenformat-Optionen
 	Table Styles	Tabellenformate
@@ -840,6 +842,10 @@
 	Underline Words Only	Nur Wörter unterstreichen
 	Undo	Rückgängig
 	Undo {action}	{action} rückgängig
+	Undo Actions	Mehrere Aktionen rückgängig
+	Undo History	Rückgängig-Verlauf
+	Undo 1 Action	1 Aktion rückgängig
+	Undo {n} Actions	{n} Aktionen rückgängig
 	Ungroup	Gruppierung aufheben
 	Up	Nach oben
 	Update Field	Feld aktualisieren
@@ -1003,6 +1009,8 @@
 	Keeps the fonts and formatting of the copied text.	Behält die Schriftarten und Formatierung des kopierten Textes bei.
 	Reads the clipboard's rich text and keeps its formatting.	Liest den Rich Text der Zwischenablage und behält dessen Formatierung bei.
 	Reads the clipboard's web content and keeps its formatting.	Liest den Webinhalt der Zwischenablage und behält dessen Formatierung bei.
+	Picture	Bild
+	Pastes the clipboard's picture.	Fügt das Bild aus der Zwischenablage ein.
 	Drops all formatting and pastes plain text.	Verwirft jegliche Formatierung und fügt reinen Text ein.
 	Advanced Find	Erweiterte Suche
 	Advanced Find…	Erweiterte Suche…
@@ -1455,6 +1463,11 @@
 	First row of data contains column headers	Erste Datenzeile enthält Spaltenüberschriften
 	Deleted	Gelöscht
 	Resize Table by Dragging	Tabellengröße durch Ziehen ändern
+	Select Column	Spalte auswählen
+	Select Table Cells by Clicking	Tabellenzellen per Klick auswählen
+	Insert Row or Column by Clicking	Zeile oder Spalte per Klick einfügen
+	Move Table by Dragging	Tabelle durch Ziehen verschieben
+	AutoFit Column by Double-Clicking	Spalte per Doppelklick automatisch anpassen
 	Print Markup	Markups drucken
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Kommentare neben jeder Seite und nachverfolgte Änderungen in PDFs, Ausdrucken und Bildern; eine Kommentarliste am Ende von Webseiten, Markdown und Text.
 	1. Formatting restrictions	1. Formatierungseinschränkungen
@@ -2035,6 +2048,9 @@
 	Your system has animation effects turned off.	Auf Ihrem System sind Animationseffekte deaktiviert.
 	Your system doesn't report an animation setting, so animation effects stay on.	Ihr System meldet keine Animationseinstellung, daher bleiben Animationseffekte aktiviert.
 	Do Not Check Spelling or Grammar	Rechtschreibung und Grammatik nicht prüfen
+	Start-up	Programmstart
+	Show the Start screen when WordCraft starts	Startbildschirm beim Start von WordCraft anzeigen
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Ein: WordCraft öffnet sich auf Datei › Start mit einem leeren Dokument, den Vorlagen und Ihren zuletzt verwendeten Dokumenten. Aus: Es öffnet ein leeres Dokument.
 	Couldn't make WordCraft the default: {error}	WordCraft konnte nicht als Standard festgelegt werden: {error}
 	In Default apps, choose WordCraft for the document types you want it to open.	Wählen Sie unter „Standard-Apps“ WordCraft für die Dokumenttypen, die es öffnen soll.
 	Make WordCraft the default for Word documents…	WordCraft als Standard für Word-Dokumente festlegen…
@@ -2052,3 +2068,9 @@
 	Reading Column Width	Spaltenbreite beim Lesen
 	Reading Line Spacing	Zeilenabstand beim Lesen
 	Reading Text Size	Textgröße beim Lesen
+	Correct TWo INitial CApitals	ZWei GRoßbuchstaben am WOrtanfang korrigieren
+	Correct accidental usage of cAPS LOCK key	Unbeabsichtigtes Verwenden der fESTSTELLTASTE korrigieren
+	Region:	Region:
+	Automatic ({region})	Automatisch ({region})
+	Search	Suchen
+	Title Bar	Titelleiste

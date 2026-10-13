@@ -2451,3 +2451,25 @@
 	Reading Column Width	Olvasási oszlopszélesség
 	Reading Line Spacing	Olvasási sorköz
 	Reading Text Size	Olvasási szövegméret
+	Undo Actions	Több művelet visszavonása
+	Undo History	Visszavonási előzmények
+	Undo 1 Action	1 művelet visszavonása
+	Undo {n} Actions	{n} művelet visszavonása
+	Start-up	Indítás
+	Show the Start screen when WordCraft starts	Kezdőképernyő megjelenítése a WordCraft indításakor
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Be: a WordCraft a Fájl › Kezdőlap oldalon nyílik meg, üres dokumentummal, a sablonokkal és a legutóbbi dokumentumokkal. Ki: üres dokumentumot nyit meg.
+	Correct TWo INitial CApitals	KÉt KEzdő NAgybetű javítása
+	Correct accidental usage of cAPS LOCK key	A cAPS LOCK billentyű véletlen használatának javítása
+	Region:	Régió:
+	Automatic ({region})	Automatikus ({region})
+	Picture	Kép
+	Pastes the clipboard's picture.	Beilleszti a vágólapon lévő képet.
+	Select Column	Oszlop kijelölése
+	Select Table Cells by Clicking	Táblázatcellák kijelölése kattintással
+	Insert Row or Column by Clicking	Sor vagy oszlop beszúrása kattintással
+	Move Table by Dragging	Táblázat áthelyezése húzással
+	AutoFit Column by Double-Clicking	Oszlop automatikus igazítása dupla kattintással
+	Insert Caption…	Felirat beszúrása…
+	Table Properties…	Táblázat tulajdonságai…
+	Search	Keresés
+	Title Bar	Címsor

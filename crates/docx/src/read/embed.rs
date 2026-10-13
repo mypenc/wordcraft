@@ -6,7 +6,8 @@
 //! reaches through relationships (chart, embedded workbook, colours and style; diagram data, layout,
 //! quick style, colours and drawing; OLE embedding and its picture…) as opaque bytes in
 //! `Document::passthrough`, with their content types and relationships in an
-//! [`EmbeddedManifest`](crate::package::EmbeddedManifest).
+//! [`EmbeddedManifest`](crate::package::EmbeddedManifest). The font table and the fonts it embeds
+//! are kept the same way.
 
 use std::sync::Arc;
 
@@ -73,7 +74,7 @@ impl Reader<'_> {
 
     /// Keep part `root` and every part it reaches through its relationships. False when `root`
     /// itself can't be kept.
-    fn keep_part_tree(&mut self, root: &str) -> bool {
+    pub(super) fn keep_part_tree(&mut self, root: &str) -> bool {
         if self.embedded.parts.contains_key(root) {
             return true;
         }

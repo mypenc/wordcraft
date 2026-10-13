@@ -1,7 +1,7 @@
 //! Sprms → model properties, and style-chain resolution.
 
 use wordcraft_doc::Rgb;
-use wordcraft_doc::props::{Align, CharProps, Highlight, LineSpacing, ParaProps, TextColor, Underline, VertAlign};
+use wordcraft_doc::props::{Align, CharProps, Highlight, LineSpacing, ParaProps, TabAlign, TabLeader, TabStop, TextColor, Underline, VertAlign};
 use wordcraft_doc::styles::{Style, StyleKind, StyleSheet};
 
 use crate::sprm::{self, Prl, Toggle};
@@ -187,11 +187,63 @@ pub(crate) fn apply_char(p: &mut CharProps, prl: &Prl, base: &CharProps, fonts: 
     }
 }
 
+/// Custom tab stops from `sprmPChgTabsPapx` / `sprmPChgTabs` ([MS-DOC] PChgTabsPapxOperand,
+/// PChgTabsOperand): the stops removed become `Clear` stops (they hide inherited ones) and the
+/// stops added carry their alignment and leader (TBD: jc in bits 0–2, tlc in bits 3–5).
+fn change_tabs(p: &mut ParaProps, prl: &Prl) {
+    let op = prl.operand;
+    let i16_at = |i: usize| op.get(i..i + 2).map(|b| f32::from(i16::from_le_bytes([b[0], b[1]])) / 20.0);
+    // Both operands start with cb; sprmPChgTabs's removals also carry a "close" distance each.
+    let close = prl.op == sprm::P_CHG_TABS;
+    let mut at = 1;
+    let Some(&del) = op.get(at) else { return };
+    let del = usize::from(del.min(64));
+    at += 1;
+    let mut removed = Vec::with_capacity(del);
+    for k in 0..del {
+        if let Some(x) = i16_at(at + 2 * k) {
+            removed.push(x);
+        }
+    }
+    at += 2 * del * if close { 2 } else { 1 };
+    let Some(&add) = op.get(at) else { return };
+    let add = usize::from(add.min(64));
+    at += 1;
+    let mut tabs = p.tabs.take().unwrap_or_default();
+    // Removed within 25 twips (1.25 pt), as the format says.
+    tabs.retain(|t| !removed.iter().any(|x| (t.pos - x).abs() <= 1.25));
+    for x in removed {
+        tabs.push(TabStop { pos: x, align: TabAlign::Clear, leader: TabLeader::None });
+    }
+    for k in 0..add {
+        let (Some(pos), Some(&tbd)) = (i16_at(at + 2 * k), op.get(at + 2 * add + k)) else { break };
+        let align = match tbd & 7 {
+            1 => TabAlign::Center,
+            2 => TabAlign::Right,
+            3 => TabAlign::Decimal,
+            4 => TabAlign::Bar,
+            _ => TabAlign::Left,
+        };
+        let leader = match (tbd >> 3) & 7 {
+            1 => TabLeader::Dot,
+            2 => TabLeader::Hyphen,
+            3 | 4 => TabLeader::Underscore,
+            5 => TabLeader::MiddleDot,
+            _ => TabLeader::None,
+        };
+        tabs.retain(|t| (t.pos - pos).abs() > 0.05);
+        tabs.push(TabStop { pos, align, leader });
+    }
+    tabs.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+    p.tabs = Some(tabs);
+}
+
 /// Apply a paragraph-property sprm.
 pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
     let tw = |v: i32| (v as f32 / 20.0).clamp(-1000.0, 1000.0);
     let s16 = |prl: &Prl| -> Option<i16> { u16_of(prl).map(|v| v as i16) };
     match prl.op {
+        sprm::P_CHG_TABS | sprm::P_CHG_TABS_PAPX => change_tabs(p, prl),
         P_JC | P_JC80 => {
             p.align = match prl.operand.first().copied().unwrap_or(0) {
                 1 => Some(Align::Center),

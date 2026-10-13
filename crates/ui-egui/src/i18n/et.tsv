@@ -353,6 +353,7 @@
 	Insert Above	Lisa üles
 	Insert Below	Lisa alla
 	Insert Caption	Lisa pealdis
+	Insert Caption…	Lisa pealdis…
 	Insert Citation	Lisa viide
 	Insert Endnote	Lisa lõpumärkus
 	Insert Footnote	Lisa allmärkus
@@ -595,6 +596,8 @@
 	Read\nMode	Lugemis-\nrežiim
 	Reads the clipboard's rich text and keeps its formatting.	Loeb lõikelaualt vormindatud teksti ja säilitab vorminduse.
 	Reads the clipboard's web content and keeps its formatting.	Loeb lõikelaualt veebisisu ja säilitab vorminduse.
+	Picture	Pilt
+	Pastes the clipboard's picture.	Kleebib lõikelaual oleva pildi.
 	Reading Highlight	Otsingutulemuste esiletõst
 	Recent	Hiljutised
 	Recent documents to show:	Kuvatavad hiljutised dokumendid:
@@ -661,6 +664,7 @@
 	Save as Template	Salvesta mallina
 	Save documents	Dokumentide salvestamine
 	Saved	Salvestatud
+	Search	Otsi
 	Search Commands	Otsi käske
 	Search commands and help	Otsi käske ja abi
 	Search document	Otsi dokumendist
@@ -776,6 +780,7 @@
 	Table Design	Tabeli kujundus
 	Table Layout	Tabeli paigutus
 	Table Properties	Tabeli atribuudid
+	Table Properties…	Tabeli atribuudid…
 	Table Row Height	Tabeli reakõrgus
 	Table Style Options	Tabelistiili valikud
 	Table Styles	Tabelistiilid
@@ -810,6 +815,7 @@
 	Tight	Tihe
 	TOC Heading	Sisukorra pealkiri
 	TOC {n}	Sisukord {n}
+	Title Bar	Tiitliriba
 	Top Border	Ülemine ääris
 	Top of Page	Lehe ülaserv
 	Top:	Ülal:
@@ -829,6 +835,10 @@
 	Underline Words Only	Jooni alla ainult sõnad
 	Undo	Võta tagasi
 	Undo {action}	Võta tagasi: {action}
+	Undo Actions	Võta toimingud tagasi
+	Undo History	Tagasivõtmise ajalugu
+	Undo 1 Action	Võta tagasi 1 toiming
+	Undo {n} Actions	Võta tagasi {n} toimingut
 	Unformatted Text	Vormindamata tekst
 	Up	Üles
 	Update Field	Uuenda välja
@@ -1447,6 +1457,8 @@
 	Border lines	Äärisjooned
 	Capitalize first letter of sentences	Lausete esitäht suureks
 	Capitalize first letter of table cells	Tabelilahtrite esitäht suureks
+	Correct TWo INitial CApitals	Paranda KAks SUurt algustähte
+	Correct accidental usage of cAPS LOCK key	Paranda kogemata sisse jäänud cAPS LOCK
 	Capitalize names of days	Nädalapäevade nimed suure algustähega
 	Case changes	Tähesuuruse muutused
 	Character level	Märgi tasandil
@@ -2087,3 +2099,13 @@
 	Your system has animation effects turned on.	Süsteemis on animatsiooniefektid sisse lülitatud.
 	Your system has animation effects turned off.	Süsteemis on animatsiooniefektid välja lülitatud.
 	Your system doesn't report an animation setting, so animation effects stay on.	Süsteem ei teata animatsiooniseadet, seega jäävad animatsiooniefektid sisse.
+	Select Column	Vali veerg
+	Select Table Cells by Clicking	Tabelilahtrite valimine klõpsates
+	Insert Row or Column by Clicking	Rea või veeru lisamine klõpsates
+	Move Table by Dragging	Tabeli teisaldamine lohistades
+	AutoFit Column by Double-Clicking	Veeru automaatne sobitus topeltklõpsuga
+	Region:	Piirkond:
+	Automatic ({region})	Automaatne ({region})
+	Start-up	Käivitamine
+	Show the Start screen when WordCraft starts	Näita WordCrafti käivitamisel avakuva
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Sees: WordCraft avaneb vaates Fail › Avaleht, kus on tühi dokument, mallid ja hiljutised dokumendid. Väljas: avaneb tühi dokument.

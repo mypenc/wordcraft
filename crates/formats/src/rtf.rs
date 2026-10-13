@@ -9,7 +9,9 @@
 //!
 //! Import: a tolerant reader for groups and destinations (unknown `\*` destinations, headers,
 //! footers, notes and objects are skipped), `\par \line \tab \page`, `\uN` with `\ucN`
-//! fallback skipping, `\'hh` (Windows-1252), the formatting words above, stylesheet-based
+//! fallback skipping, `\'hh` and 8-bit text in the document's code page (`\ansicpg`) or the
+//! current font's (`\fcharset`, `\cpg`: Cyrillic, Central European, Greek…; Windows-1252 when
+//! none is named), the formatting words above, stylesheet-based
 //! headings and `\outlinelevel`, lists through `\ls`/`\ilvl`, fields, bookmarks, pictures and
 //! tables. Group nesting and picture sizes are capped.
 
@@ -18,7 +20,6 @@ use std::collections::HashMap;
 use wordcraft_doc::{Align, Document, Rgb};
 
 use crate::model::{self, Cell, FBlock, FTable, Flow, Fmt, Inline, Kind, ListInfo, Meta, Para, make_img};
-use crate::txt::cp1252;
 
 /// Deepest group nesting we track; deeper groups share the innermost state.
 const MAX_GROUPS: usize = 512;
@@ -481,6 +482,37 @@ enum Dest {
     Bookmark,
 }
 
+/// Which header or footer a `\header…`/`\footer…` group is: footer or header, and the pages
+/// (`\headerf` first, `\headerl` left = even, `\header`/`\headerr` the others).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct HeaderFooter {
+    footer: bool,
+    pages: HfPages,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum HfPages {
+    Default,
+    First,
+    Even,
+}
+
+/// The reader's output so far, set aside while a header or footer is read.
+#[derive(Default)]
+struct Output {
+    body: Vec<FBlock>,
+    para: Para,
+    para_has: bool,
+    table: Vec<Vec<Cell>>,
+    row: Vec<Cell>,
+    cell: Vec<FBlock>,
+    defs: Vec<CellDef>,
+    def_cur: CellDef,
+    row_header: bool,
+    rule_pending: bool,
+    table_rights: Vec<Vec<i32>>,
+}
+
 #[derive(Clone, Debug)]
 struct St {
     dest: Dest,
@@ -496,6 +528,21 @@ struct St {
     outline: Option<u8>,
     pagebb: bool,
     field: Option<usize>,
+    /// The code page of the current font's charset (`\fcharset`), when it names one.
+    cp: Option<u16>,
+    /// Space before/after (`\sb`, `\sa`), line spacing (`\sl`, `\slmult`) and indents
+    /// (`\li`, `\ri`, `\fi`), twips.
+    /// The paragraph's borders (`\brdrt`, `\brdrb`, `\brdrl`, `\brdrr`) and the side being
+    /// described.
+    borders: wordcraft_doc::props::Borders,
+    border_side: Option<char>,
+    sb: Option<i32>,
+    sa: Option<i32>,
+    sl: i32,
+    slmult: bool,
+    li: Option<i32>,
+    ri: Option<i32>,
+    fi: Option<i32>,
 }
 
 impl Default for St {
@@ -513,6 +560,16 @@ impl Default for St {
             outline: None,
             pagebb: false,
             field: None,
+            cp: None,
+            borders: Default::default(),
+            border_side: None,
+            sb: None,
+            sa: None,
+            sl: 0,
+            slmult: false,
+            li: None,
+            ri: None,
+            fi: None,
         }
     }
 }
@@ -523,6 +580,63 @@ struct CellDef {
     hmerge: u8,
     shading: Option<Rgb>,
     right: i32,
+    /// The borders the cell names (`\clbrdrt` … `\clbrdrr`, each with its line style, `\brdrw`
+    /// width and `\brdrcf` colour).
+    borders: wordcraft_doc::props::Borders,
+}
+
+/// Page size and margins in twips (`\paperw`, `\margl`… and their `…sxn` section forms).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct PageGeom {
+    w: Option<i32>,
+    h: Option<i32>,
+    left: Option<i32>,
+    right: Option<i32>,
+    top: Option<i32>,
+    bottom: Option<i32>,
+    header: Option<i32>,
+    footer: Option<i32>,
+    landscape: bool,
+}
+
+impl PageGeom {
+    /// The section properties these give, Word's defaults where the file names none.
+    fn section(&self) -> wordcraft_doc::SectionProps {
+        let mut s = wordcraft_doc::SectionProps::default();
+        // Twips to points, ignoring nonsense (zero, negative, or beyond Word's 22").
+        let pt = |v: Option<i32>, lo: f32, hi: f32| v.map(|t| t as f32 / 20.0).filter(|v| v.is_finite() && (lo..=hi).contains(v));
+        if let Some(w) = pt(self.w, 72.0, 1584.0) {
+            s.page_w = w;
+        }
+        if let Some(h) = pt(self.h, 72.0, 1584.0) {
+            s.page_h = h;
+        }
+        if self.landscape && s.page_w < s.page_h {
+            std::mem::swap(&mut s.page_w, &mut s.page_h);
+        }
+        s.landscape = s.page_w > s.page_h;
+        for (v, f) in [
+            (self.left, &mut s.margin_left),
+            (self.right, &mut s.margin_right),
+            (self.top, &mut s.margin_top),
+            (self.bottom, &mut s.margin_bottom),
+            (self.header, &mut s.header),
+            (self.footer, &mut s.footer),
+        ] {
+            if let Some(v) = pt(v, 0.0, 720.0) {
+                *f = v;
+            }
+        }
+        // Margins that leave no room for text fall back to Word's.
+        let d = wordcraft_doc::SectionProps::default();
+        if s.page_w - s.margin_left - s.margin_right < 72.0 {
+            (s.margin_left, s.margin_right) = (d.margin_left, d.margin_right);
+        }
+        if s.page_h - s.margin_top - s.margin_bottom < 72.0 {
+            (s.margin_top, s.margin_bottom) = (d.margin_top, d.margin_bottom);
+        }
+        s
+    }
 }
 
 #[derive(Default)]
@@ -533,6 +647,26 @@ struct Reader {
     fonts: HashMap<i32, String>,
     font_cur: i32,
     font_name: String,
+    /// Code pages of the fonts whose charset names one (`\fcharset204` → 1251).
+    font_cps: HashMap<i32, u16>,
+    font_cp_cur: Option<u16>,
+    /// The document's code page (`\ansicpg`); 0 until it names one (Windows-1252 then).
+    ansicpg: u16,
+    /// The default font (`\deff`), whose charset applies before any `\f`.
+    deff: i32,
+    page: PageGeom,
+    /// The header or footer being read: the group depth it started at, which one, and the
+    /// body's output, put back when the group closes.
+    hf: Option<(usize, HeaderFooter, Box<Output>)>,
+    /// Headers and footers read, in order.
+    hf_parts: Vec<(HeaderFooter, Vec<FBlock>)>,
+    /// `\titlepg`: the first page has its own header and footer.
+    title_page: bool,
+    /// The cell border side being described (`\clbrdrt`, `l`, `b`, `r`): its line style, width
+    /// and colour follow.
+    cell_side: Option<char>,
+    /// Each table row's cell right edges (`\cellx`, twips), for the table's column grid.
+    table_rights: Vec<Vec<i32>>,
     colors: Vec<Option<Rgb>>,
     color_cur: (u8, u8, u8, bool),
     styles: HashMap<i32, String>,
@@ -579,6 +713,60 @@ struct Reader {
 impl Reader {
     fn depth(&self) -> usize {
         self.stack.len()
+    }
+
+    /// Set the output aside (a header or footer starts) or put it back (it ended), returning the
+    /// other one.
+    fn swap_output(&mut self, mut o: Output) -> Output {
+        std::mem::swap(&mut o.body, &mut self.body);
+        std::mem::swap(&mut o.para, &mut self.para);
+        std::mem::swap(&mut o.para_has, &mut self.para_has);
+        std::mem::swap(&mut o.table, &mut self.table);
+        std::mem::swap(&mut o.row, &mut self.row);
+        std::mem::swap(&mut o.cell, &mut self.cell);
+        std::mem::swap(&mut o.defs, &mut self.defs);
+        std::mem::swap(&mut o.def_cur, &mut self.def_cur);
+        std::mem::swap(&mut o.row_header, &mut self.row_header);
+        std::mem::swap(&mut o.rule_pending, &mut self.rule_pending);
+        std::mem::swap(&mut o.table_rights, &mut self.table_rights);
+        o
+    }
+
+    /// The border of the cell side being described, else of the paragraph side.
+    fn cell_border_slot(&mut self) -> Option<&mut Option<wordcraft_doc::props::Border>> {
+        let (b, side) = match self.cell_side {
+            Some(c) => (&mut self.def_cur.borders, c),
+            None => (&mut self.st.borders, self.st.border_side?),
+        };
+        match side {
+            't' => Some(&mut b.top),
+            'l' => Some(&mut b.left),
+            'b' => Some(&mut b.bottom),
+            'r' => Some(&mut b.right),
+            _ => None,
+        }
+    }
+
+    /// A header or footer group starts: read it into an output of its own.
+    fn start_header_footer(&mut self, which: HeaderFooter) {
+        let body = self.swap_output(Output::default());
+        self.hf = Some((self.depth(), which, Box::new(body)));
+        self.st.intbl = false;
+    }
+
+    /// The header or footer group closed: keep what it held and go back to the body.
+    fn end_header_footer(&mut self) {
+        let Some((_, which, body)) = self.hf.take() else { return };
+        if self.para_has || !self.para.inlines.is_empty() {
+            self.end_para(false);
+        }
+        self.close_table();
+        let part = self.swap_output(*body);
+        // A document names each one once; a repeat (another section's) replaces it.
+        self.hf_parts.retain(|(w, _)| *w != which);
+        if self.hf_parts.len() < 16 {
+            self.hf_parts.push((which, part.body));
+        }
     }
 
     fn open(&mut self) {
@@ -631,13 +819,26 @@ impl Reader {
             }
         }
         self.st = prev;
+        if self.hf.as_ref().is_some_and(|(d, _, _)| self.depth() < *d) {
+            self.end_header_footer();
+        }
     }
 
     fn commit_font(&mut self) {
         let name = std::mem::take(&mut self.font_name).trim().trim_end_matches(';').trim().to_string();
         if !name.is_empty() && self.fonts.len() < 4096 {
             self.fonts.insert(self.font_cur, name);
+            if let Some(cp) = self.font_cp_cur.take() {
+                self.font_cps.insert(self.font_cur, cp);
+            }
         }
+    }
+
+    /// A byte of 8-bit text (`\'hh` or raw) as a char, in the current font's code page, else the
+    /// default font's, else the document's.
+    fn byte_char(&self, b: u8) -> char {
+        let cp = self.st.cp.or_else(|| self.font_cps.get(&self.deff).copied()).unwrap_or(if self.ansicpg == 0 { 1252 } else { self.ansicpg });
+        wordcraft_doc::encoding::windows_byte(cp, b)
     }
 
     fn commit_style(&mut self) {
@@ -779,6 +980,8 @@ impl Reader {
         self.rule_pending = false;
         p.align = self.st.align;
         p.page_break = self.st.pagebb;
+        p.spacing = self.spacing();
+        p.borders = self.st.borders.any_visible().then_some(self.st.borders);
         if let Some(ls) = self.st.ls {
             let list = self.overrides.get(&ls).and_then(|id| self.lists.get(id));
             let lv = self.st.ilvl.min(8);
@@ -816,6 +1019,32 @@ impl Reader {
         }
     }
 
+    /// The current paragraph's spacing and indents in points.
+    fn spacing(&self) -> model::Spacing {
+        use wordcraft_doc::props::LineSpacing;
+        let pt = |v: i32| (v as f32 / 20.0).clamp(-1584.0, 1584.0);
+        let gap = |v: Option<i32>| v.map(|v| pt(v).max(0.0));
+        let sl = self.st.sl;
+        let line = if sl == 0 {
+            None
+        } else if sl < 0 {
+            Some(LineSpacing::Exactly(pt(sl.saturating_neg()).max(1.0)))
+        } else if self.st.slmult {
+            // \sl240\slmult1 is single spacing.
+            Some(LineSpacing::Multiple((sl as f32 / 240.0).clamp(0.06, 132.0)))
+        } else {
+            Some(LineSpacing::AtLeast(pt(sl)))
+        };
+        model::Spacing {
+            before: gap(self.st.sb),
+            after: gap(self.st.sa),
+            line,
+            left: self.st.li.map(pt),
+            right: self.st.ri.map(pt),
+            first: self.st.fi.map(pt),
+        }
+    }
+
     fn end_cell(&mut self) {
         self.end_para(true);
         let blocks = std::mem::take(&mut self.cell);
@@ -831,9 +1060,19 @@ impl Reader {
         let mut cells = std::mem::take(&mut self.row);
         let defs = self.defs.clone();
         let mut out: Vec<Cell> = Vec::new();
+        let mut rights: Vec<i32> = Vec::new();
         for (i, mut c) in cells.drain(..).enumerate() {
             let d = defs.get(i).cloned().unwrap_or_default();
+            // A merged-in cell widens the cell it joins.
+            if d.hmerge == 2
+                && let Some(last) = rights.last_mut()
+            {
+                *last = d.right;
+            } else {
+                rights.push(d.right);
+            }
             c.shading = d.shading;
+            c.borders = d.borders.any_visible().then_some(d.borders);
             c.header = self.row_header;
             match d.vmerge {
                 1 => c.rowspan = 2,
@@ -849,7 +1088,9 @@ impl Reader {
             out.push(c);
         }
         if !out.is_empty() && self.table.len() < wordcraft_doc::table::MAX_ROWS {
+            rights.truncate(out.len());
             self.table.push(out);
+            self.table_rights.push(rights);
         }
     }
 
@@ -862,8 +1103,11 @@ impl Reader {
             self.end_row();
         }
         if !self.table.is_empty() {
-            let rows = std::mem::take(&mut self.table);
-            self.body.push(FBlock::Table(FTable { rows, widths: Vec::new(), borderless: false }));
+            let mut rows = std::mem::take(&mut self.table);
+            let rights = std::mem::take(&mut self.table_rights);
+            let widths = column_grid(&mut rows, &rights);
+            // Word draws only the borders the cells name: no grid style, each cell its own.
+            self.body.push(FBlock::Table(FTable { rows, widths, borderless: true }));
         }
     }
 
@@ -903,6 +1147,18 @@ impl Reader {
             "shppict" => return,
             "pict" => Some(Dest::Pict),
             "bkmkstart" => Some(Dest::Bookmark),
+            "header" | "footer" | "headerl" | "headerr" | "headerf" | "footerl" | "footerr" | "footerf"
+                if self.hf.is_none() && self.st.dest == Dest::Body && !self.st.intbl =>
+            {
+                let footer = w.starts_with("footer");
+                let pages = match w.strip_prefix(if footer { "footer" } else { "header" }) {
+                    Some("f") => HfPages::First,
+                    Some("l") => HfPages::Even,
+                    _ => HfPages::Default,
+                };
+                self.start_header_footer(HeaderFooter { footer, pages });
+                return;
+            }
             "header" | "footer" | "headerl" | "headerr" | "headerf" | "footerl" | "footerr" | "footerf" | "footnote" | "annotation" | "pntext"
             | "listtext" | "object" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst"
             | "do" | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
@@ -962,9 +1218,16 @@ impl Reader {
                 return;
             }
             Dest::FontTbl => {
-                if w == "f" {
-                    self.font_cur = pv;
-                    self.font_name.clear();
+                match w {
+                    "f" => {
+                        self.font_cur = pv;
+                        self.font_name.clear();
+                        self.font_cp_cur = None;
+                    }
+                    "fcharset" => self.font_cp_cur = wordcraft_doc::encoding::charset_code_page(pv),
+                    // A font's explicit code page (`\cpg1251`) wins over its charset.
+                    "cpg" if pv > 0 && wordcraft_doc::encoding::SINGLE_BYTE_CODE_PAGES.contains(&(pv as u16)) => self.font_cp_cur = Some(pv as u16),
+                    _ => {}
                 }
                 return;
             }
@@ -1115,7 +1378,14 @@ impl Reader {
                 self.st.fmt.sub = false;
             }
             "fs" => self.st.fmt.size = if pv > 0 { Some((pv as f32 / 2.0).clamp(1.0, 1638.0)) } else { None },
+            "ansicpg" => {
+                if pv > 0 && wordcraft_doc::encoding::SINGLE_BYTE_CODE_PAGES.contains(&(pv as u16)) {
+                    self.ansicpg = pv as u16;
+                }
+            }
+            "deff" => self.deff = pv,
             "f" => {
+                self.st.cp = self.font_cps.get(&pv).copied();
                 let name = self.fonts.get(&pv).cloned();
                 match name {
                     Some(n) if model::is_mono(&n) => {
@@ -1142,7 +1412,12 @@ impl Reader {
             "intbl" => self.st.intbl = true,
             "ls" => self.st.ls = Some(pv),
             "ilvl" => self.st.ilvl = pv.clamp(0, 8) as u8,
-            "brdrb" => self.rule_pending = true,
+            "brdrb" | "brdrt" | "brdrl" | "brdrr" if self.cell_side.is_none() => {
+                if w == "brdrb" {
+                    self.rule_pending = true;
+                }
+                self.st.border_side = w.chars().last();
+            }
             "trowd" => {
                 self.defs.clear();
                 self.def_cur = CellDef::default();
@@ -1154,7 +1429,63 @@ impl Reader {
             "clmgf" => self.def_cur.hmerge = 1,
             "clmrg" => self.def_cur.hmerge = 2,
             "clcbpat" => self.def_cur.shading = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "sb" => self.st.sb = Some(pv),
+            "sa" => self.st.sa = Some(pv),
+            "sl" => self.st.sl = pv,
+            "slmult" => self.st.slmult = on,
+            "li" | "lin" => self.st.li = Some(pv),
+            "ri" | "rin" => self.st.ri = Some(pv),
+            "fi" => self.st.fi = Some(pv),
+            "clbrdrt" => self.cell_side = Some('t'),
+            "clbrdrl" => self.cell_side = Some('l'),
+            "clbrdrb" => self.cell_side = Some('b'),
+            "clbrdrr" => self.cell_side = Some('r'),
+            "brdrs" | "brdrth" | "brdrsh" | "brdrdb" | "brdrdot" | "brdrdash" | "brdrdashsm" | "brdrdashd" | "brdrdashdd" | "brdrhair"
+            | "brdrtriple" | "brdrthtnsg" | "brdrtnthsg" | "brdrthtnmg" | "brdrtnthmg" | "brdrwavy" | "brdrwavydb" | "brdrnone" | "brdrnil"
+            | "brdrtbl"
+                if self.cell_side.is_some() || self.st.border_side.is_some() =>
+            {
+                use wordcraft_doc::props::{Border, BorderStyle};
+                let style = match w {
+                    "brdrnone" | "brdrnil" | "brdrtbl" => BorderStyle::None,
+                    "brdrth" => BorderStyle::Thick,
+                    "brdrdb" | "brdrthtnsg" | "brdrtnthsg" | "brdrthtnmg" | "brdrtnthmg" | "brdrwavydb" => BorderStyle::Double,
+                    "brdrdot" => BorderStyle::Dotted,
+                    "brdrdash" | "brdrdashsm" => BorderStyle::Dashed,
+                    "brdrdashd" | "brdrdashdd" => BorderStyle::DotDash,
+                    "brdrtriple" => BorderStyle::Triple,
+                    "brdrwavy" => BorderStyle::Wave,
+                    _ => BorderStyle::Single,
+                };
+                let b = (style != BorderStyle::None).then_some(Border { style, ..Border::single(0.5) });
+                if let Some(slot) = self.cell_border_slot() {
+                    *slot = b;
+                }
+            }
+            "brdrw" if self.cell_side.is_some() || self.st.border_side.is_some() => {
+                let width = (pv as f32 / 20.0).clamp(0.25, 6.0);
+                if let Some(Some(b)) = self.cell_border_slot() {
+                    b.width = width;
+                }
+            }
+            "brdrcf" if self.cell_side.is_some() || self.st.border_side.is_some() => {
+                let color = self.colors.get(pv.max(0) as usize).copied().flatten();
+                if let Some(Some(b)) = self.cell_border_slot() {
+                    b.color = color;
+                }
+            }
+            "titlepg" => self.title_page = on,
+            "paperw" | "pgwsxn" => self.page.w = Some(pv),
+            "paperh" | "pghsxn" => self.page.h = Some(pv),
+            "margl" | "marglsxn" => self.page.left = Some(pv),
+            "margr" | "margrsxn" => self.page.right = Some(pv),
+            "margt" | "margtsxn" => self.page.top = Some(pv),
+            "margb" | "margbsxn" => self.page.bottom = Some(pv),
+            "headery" => self.page.header = Some(pv),
+            "footery" => self.page.footer = Some(pv),
+            "landscape" | "lndscpsxn" => self.page.landscape = on,
             "cellx" => {
+                self.cell_side = None;
                 let mut d = std::mem::take(&mut self.def_cur);
                 d.right = pv;
                 if self.defs.len() < 63 {
@@ -1206,6 +1537,25 @@ fn hyperlink(instr: &str) -> Option<String> {
 
 /// Parse RTF bytes into the flow model.
 pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
+    parse_with_page(bytes).map(|(f, _, _)| f)
+}
+
+/// The flow, the page, and the default font (`\deff`, font 0 when the file names none), which
+/// is the font of all text that doesn't select one.
+fn parse_with_page(bytes: &[u8]) -> Result<(Flow, PageGeom, Option<String>), String> {
+    parse_full(bytes).map(|r| (r.flow, r.page, r.default_font))
+}
+
+/// Everything an import takes from an RTF file.
+struct Parsed {
+    flow: Flow,
+    page: PageGeom,
+    default_font: Option<String>,
+    headers_footers: Vec<(HeaderFooter, Vec<FBlock>)>,
+    title_page: bool,
+}
+
+fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
     let start = bytes.iter().position(|b| !b.is_ascii_whitespace()).unwrap_or(0);
     if !bytes.get(start..).is_some_and(|b| b.starts_with(b"{\\rtf")) {
         return Err("not an RTF document (it doesn't start with {\\rtf)".into());
@@ -1300,7 +1650,8 @@ pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
                                 if r.st.dest == Dest::Pict {
                                     r.text(&format!("{v:02x}"));
                                 } else {
-                                    r.ch(cp1252(v));
+                                    let c = r.byte_char(v);
+                                    r.ch(c);
                                 }
                                 i += 4;
                             }
@@ -1350,7 +1701,8 @@ pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
                     }
                 } else {
                     for b in chunk {
-                        r.ch(cp1252(*b));
+                        let c = r.byte_char(*b);
+                        r.ch(c);
                     }
                 }
                 i = j;
@@ -1358,6 +1710,8 @@ pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
             }
         }
     }
+    // A header or footer left open by a truncated file ends here.
+    r.end_header_footer();
     if r.para_has || !r.para.inlines.is_empty() {
         r.end_para(false);
     }
@@ -1371,12 +1725,72 @@ pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
     if blocks.is_empty() {
         blocks.push(FBlock::Para(Para::default()));
     }
-    Ok(Flow { blocks, meta: r.meta })
+    let default_font = r.fonts.get(&r.deff).filter(|n| !model::is_mono(n)).cloned();
+    Ok(Parsed { flow: Flow { blocks, meta: r.meta }, page: r.page, default_font, headers_footers: r.hf_parts, title_page: r.title_page })
+}
+
+/// The column grid of a table from its rows' cell right edges: every distinct edge starts a grid
+/// column, and each cell spans the grid columns between its left and right edges, as Word lays
+/// out RTF rows whose cells don't line up. Returns the widths in points, or none (equal columns)
+/// when the edges don't make a grid.
+fn column_grid(rows: &mut [Vec<Cell>], rights: &[Vec<i32>]) -> Vec<f32> {
+    let mut edges: Vec<i32> = rights.iter().flatten().copied().filter(|&x| x > 0).collect();
+    edges.sort_unstable();
+    edges.dedup();
+    let ok = rights.len() == rows.len()
+        && rows
+            .iter()
+            .zip(rights)
+            .all(|(r, x)| r.len() == x.len() && x.windows(2).all(|w| w.first() < w.get(1)) && x.first().is_some_and(|&v| v > 0))
+        && !edges.is_empty()
+        && edges.len() <= 63;
+    if !ok {
+        return Vec::new();
+    }
+    for (row, x) in rows.iter_mut().zip(rights) {
+        let mut left = 0;
+        for (c, &right) in row.iter_mut().zip(x) {
+            let span = edges.iter().filter(|&&e| e > left && e <= right).count().max(1);
+            c.colspan = span as u32;
+            left = right;
+        }
+    }
+    let mut prev = 0;
+    edges
+        .iter()
+        .map(|&e| {
+            let w = (e - prev) as f32 / 20.0;
+            prev = e;
+            w
+        })
+        .collect()
 }
 
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
-    Ok(model::to_doc(&parse(bytes)?))
+    let Parsed { flow, page, default_font, headers_footers, title_page } = parse_full(bytes)?;
+    let mut doc = model::to_doc_in(&flow, page.section());
+    for (which, blocks) in &headers_footers {
+        let blocks = model::part_blocks(&mut doc, blocks);
+        let id = doc.add_part(if which.footer { wordcraft_doc::PartKind::Footer } else { wordcraft_doc::PartKind::Header }, blocks);
+        let set = if which.footer { &mut doc.last_section.footers } else { &mut doc.last_section.headers };
+        match which.pages {
+            HfPages::Default => set.default = Some(id),
+            HfPages::First => set.first = Some(id),
+            HfPages::Even => set.even = Some(id),
+        }
+    }
+    doc.last_section.title_page = title_page;
+    // RTF's paragraph defaults are single spacing and no space around paragraphs; what a file
+    // wants beyond that it states on each paragraph.
+    let dp = &mut doc.styles.default_para;
+    dp.space_before = Some(0.0);
+    dp.space_after = Some(0.0);
+    dp.line_spacing = Some(wordcraft_doc::props::LineSpacing::Multiple(1.0));
+    if default_font.is_some() {
+        doc.styles.default_chr.font = default_font;
+    }
+    Ok(doc)
 }
 
 #[cfg(test)]
@@ -1418,6 +1832,193 @@ mod tests {
         assert!(p.inlines.iter().any(|i| matches!(i, Inline::Text(t, f) if t == "red" && f.color == Some(Rgb(255, 0, 0)))));
         let FBlock::Para(l) = &f.blocks[2] else { panic!() };
         assert!(matches!(&l.inlines[0], Inline::Text(_, f) if f.link.as_deref() == Some("http://a.b")));
+    }
+
+    #[test]
+    fn paragraph_borders() {
+        // A heading with a grey rule under it, as hh.ru résumés write their section titles.
+        let rtf = br"{\rtf1\ansi{\colortbl;\red0\green0\blue0;\red216\green216\blue216;}
+\pard\brdrb\brdrs\brdrw10\brdrcf2 Section\par
+\pard Body\par
+\pard\brdrt\brdrdb\brdrl\brdrs\brdrr\brdrs Boxed\par
+\pard\brdrb\brdrs\par}";
+        let f = parse(rtf).unwrap();
+        let paras: Vec<&Para> = f.blocks.iter().filter_map(|b| if let FBlock::Para(p) = b { Some(p) } else { None }).collect();
+        let b = paras[0].borders.unwrap();
+        let bottom = b.bottom.unwrap();
+        assert_eq!((bottom.width, bottom.color), (0.5, Some(Rgb(216, 216, 216))));
+        assert!(b.top.is_none());
+        assert_eq!(paras[0].kind, Kind::Normal);
+        // \pard resets them.
+        assert!(paras[1].borders.is_none());
+        let b = paras[2].borders.unwrap();
+        assert_eq!(b.top.map(|x| x.style), Some(wordcraft_doc::props::BorderStyle::Double));
+        assert!(b.left.is_some() && b.right.is_some() && b.bottom.is_none());
+        // An empty paragraph with only a bottom border is still a rule.
+        assert_eq!(paras[3].kind, Kind::Rule);
+        // The document's paragraph carries them.
+        let d = import(rtf).unwrap();
+        let first = d.body.iter().find_map(|b| if let wordcraft_doc::Block::Para(p) = &**b { Some(p) } else { None }).unwrap();
+        assert!(first.props.borders.and_then(|b| b.bottom).is_some());
+    }
+
+    #[test]
+    fn headers_and_footers() {
+        let rtf = br"{\rtf1\ansi\titlepg
+{\header \pard\qr Running head\par}
+{\headerf \pard First head {\b bold}\par}
+{\footer \pard Page \chpgn\par}
+\pard Body text\par
+\trowd\cellx2000\pard\intbl cell\cell\row
+\pard after\par}";
+        let d = import(rtf).unwrap();
+        let s = &d.last_section;
+        assert!(s.title_page);
+        let text = |id: Option<u32>| {
+            let p = id.and_then(|id| d.parts.get(&id)).unwrap();
+            p.blocks
+                .iter()
+                .filter_map(|b| if let wordcraft_doc::Block::Para(p) = &**b { Some(p.text.clone()) } else { None })
+                .collect::<Vec<_>>()
+                .join("|")
+        };
+        assert_eq!(text(s.headers.default), "Running head");
+        assert_eq!(text(s.headers.first), "First head bold");
+        assert!(text(s.footers.default).starts_with("Page"));
+        assert!(s.footers.first.is_none() && s.headers.even.is_none());
+        // The body keeps only its own text, and its table survives the header groups.
+        let f = parse(rtf).unwrap();
+        let t = texts(&f);
+        assert_eq!(t, ["Normal:Body text", "table1x1:cell", "Normal:after"]);
+        // Without \titlepg there is no separate first page.
+        let d = import(br"{\rtf1\ansi{\headerf x\par} y\par}").unwrap();
+        assert!(!d.last_section.title_page && d.last_section.headers.first.is_some());
+        // An unterminated header still ends, and the body text after it isn't lost.
+        assert!(import(br"{\rtf1\ansi{\header x").is_ok());
+    }
+
+    #[test]
+    fn paragraph_spacing_and_indents() {
+        use wordcraft_doc::props::LineSpacing;
+        let rtf = br"{\rtf1\ansi
+\pard\sb120\sa150\sl360\slmult1\li720\ri360\fi-360 a\par
+\pard\sl-280 b\par
+\pard\sl300\slmult0 c\par
+\pard d\par}";
+        let f = parse(rtf).unwrap();
+        let sp: Vec<model::Spacing> = f.blocks.iter().filter_map(|b| if let FBlock::Para(p) = b { Some(p.spacing) } else { None }).collect();
+        assert_eq!(sp[0].before, Some(6.0));
+        assert_eq!(sp[0].after, Some(7.5));
+        assert_eq!(sp[0].line, Some(LineSpacing::Multiple(1.5)));
+        assert_eq!((sp[0].left, sp[0].right, sp[0].first), (Some(36.0), Some(18.0), Some(-18.0)));
+        assert_eq!(sp[1].line, Some(LineSpacing::Exactly(14.0)));
+        assert_eq!(sp[2].line, Some(LineSpacing::AtLeast(15.0)));
+        // \pard resets them.
+        assert_eq!(sp[3], model::Spacing::default());
+        // The document's defaults are RTF's: single, no space after; the paragraph's own win.
+        let d = import(rtf).unwrap();
+        assert_eq!(d.styles.default_para.space_after, Some(0.0));
+        assert_eq!(d.styles.default_para.line_spacing, Some(LineSpacing::Multiple(1.0)));
+        let first = d.body.iter().find_map(|b| if let wordcraft_doc::Block::Para(p) = &**b { Some(p) } else { None }).unwrap();
+        assert_eq!(first.props.space_after, Some(7.5));
+        assert_eq!(first.props.indent_first, Some(-18.0));
+    }
+
+    #[test]
+    fn default_font_is_deff_or_font_zero() {
+        // Text that never selects a font is in the default font: \deff, else font 0.
+        let d = import(br"{\rtf1\ansi{\fonttbl{\f0\fnil Times New Roman Cyr;}{\f1 Arial;}}\plain x\par}").unwrap();
+        assert_eq!(d.styles.default_chr.font.as_deref(), Some("Times New Roman Cyr"));
+        let d = import(br"{\rtf1\ansi\deff1{\fonttbl{\f0 Times New Roman;}{\f1 Arial;}} x\par}").unwrap();
+        assert_eq!(d.styles.default_chr.font.as_deref(), Some("Arial"));
+        // No font table: our default stays.
+        let d = import(br"{\rtf1\ansi x\par}").unwrap();
+        assert_eq!(d.styles.default_chr.font, wordcraft_doc::StyleSheet::builtin().default_chr.font);
+    }
+
+    #[test]
+    fn page_size_and_margins() {
+        let d = import(br"{\rtf1\ansi\paperw11906\paperh16838\margl1134\margr850\margt1134\margb1134 x\par}").unwrap();
+        let s = &d.last_section;
+        assert!((s.page_w - 595.3).abs() < 0.1 && (s.page_h - 841.9).abs() < 0.1, "{} x {}", s.page_w, s.page_h);
+        assert!((s.margin_left - 56.7).abs() < 0.1 && (s.margin_right - 42.5).abs() < 0.1);
+        assert!(!s.landscape);
+        let d = import(br"{\rtf1\ansi\paperw11906\paperh16838\landscape x\par}").unwrap();
+        assert!(d.last_section.landscape && d.last_section.page_w > d.last_section.page_h);
+        // Nonsense keeps Word's defaults.
+        let d = import(br"{\rtf1\ansi\paperw0\margl99999 x\par}").unwrap();
+        assert_eq!(d.last_section, wordcraft_doc::SectionProps::default());
+    }
+
+    #[test]
+    fn table_grid_from_cell_edges_and_borders() {
+        // Rows whose cells don't line up share one grid: edges 2000, 3000, 9000.
+        let rtf = br"{\rtf1\ansi
+\trowd\cellx2000\cellx9000 \pard\intbl a\cell b\cell\row
+\trowd\cellx3000\cellx9000 \pard\intbl c\cell d\cell\row
+\pard after\par}";
+        let f = parse(rtf).unwrap();
+        let FBlock::Table(t) = &f.blocks[0] else { panic!() };
+        assert_eq!(t.widths, [100.0, 50.0, 300.0]);
+        assert_eq!(t.rows[0].iter().map(|c| c.colspan).collect::<Vec<_>>(), [1, 2]);
+        assert_eq!(t.rows[1].iter().map(|c| c.colspan).collect::<Vec<_>>(), [2, 1]);
+        assert_eq!(t.cols(), 3);
+        // RTF tables have no grid style: each cell draws the borders it names, nothing else.
+        assert!(t.borderless);
+        assert!(t.rows.iter().flatten().all(|c| c.borders.is_none()));
+        // A rule under a cell (a letterhead's line): the bottom side only, its width and colour.
+        let f =
+            parse(br"{\rtf1\ansi{\colortbl;\red174\green174\blue174;}\trowd\clbrdrb\brdrs\brdrw15\brdrcf1\cellx2000\pard\intbl a\cell\row}").unwrap();
+        let FBlock::Table(t) = &f.blocks[0] else { panic!() };
+        let b = t.rows[0][0].borders.unwrap();
+        assert!(b.top.is_none() && b.left.is_none() && b.right.is_none());
+        let bottom = b.bottom.unwrap();
+        assert_eq!((bottom.style, bottom.width, bottom.color), (wordcraft_doc::props::BorderStyle::Single, 0.75, Some(Rgb(174, 174, 174))));
+        // Every side, in different styles, per cell.
+        let f = parse(br"{\rtf1\ansi\trowd\clbrdrt\brdrdb\clbrdrl\brdrs\brdrw10\clbrdrb\brdrdot\clbrdrr\brdrth\cellx2000\cellx4000\pard\intbl a\cell b\cell\row}").unwrap();
+        let FBlock::Table(t) = &f.blocks[0] else { panic!() };
+        let b = t.rows[0][0].borders.unwrap();
+        use wordcraft_doc::props::BorderStyle as S;
+        assert_eq!(
+            [b.top.map(|x| x.style), b.left.map(|x| x.style), b.bottom.map(|x| x.style), b.right.map(|x| x.style)],
+            [Some(S::Double), Some(S::Single), Some(S::Dotted), Some(S::Thick)]
+        );
+        assert_eq!(b.left.map(|x| x.width), Some(0.5));
+        assert!(t.rows[0][1].borders.is_none(), "the second cell names no borders");
+        // A border side set to none isn't a border.
+        let f = parse(br"{\rtf1\ansi\trowd\clbrdrl\brdrnone\cellx2000\pard\intbl a\cell\row}").unwrap();
+        let FBlock::Table(t) = &f.blocks[0] else { panic!() };
+        assert!(t.rows[0][0].borders.is_none());
+        // The document's cells carry them.
+        let d = import(br"{\rtf1\ansi\trowd\clbrdrb\brdrs\cellx2000\pard\intbl a\cell\row}").unwrap();
+        let t = d.body.iter().find_map(|b| if let wordcraft_doc::Block::Table(t) = &**b { Some(t) } else { None }).unwrap();
+        assert!(t.props.style.is_none());
+        assert!(t.rows[0].cells[0].props.borders.and_then(|b| b.bottom).is_some());
+        // The table sizes to the document's page, not Letter.
+        let d = import(br"{\rtf1\ansi\paperw11906\margl1134\margr1134\trowd\cellx4818\cellx9638\pard\intbl a\cell b\cell\row}").unwrap();
+        let t = d.body.iter().find_map(|b| if let wordcraft_doc::Block::Table(t) = &**b { Some(t) } else { None }).unwrap();
+        assert_eq!(t.grid, [240.9, 241.0]);
+    }
+
+    #[test]
+    fn code_pages_from_ansicpg_and_font_charsets() {
+        // The document's code page: Russian RTF as accounting systems write it.
+        let f = parse(br"{\rtf1\ansi\ansicpg1251\deff0{\fonttbl{\f0 Times New Roman;}}\f0 \'cf\'f0\'e8\'e2\'e5\'f2, \'b8\'eb\'ea\'e0 \'b9 5\par}")
+            .unwrap();
+        assert_eq!(texts(&f), ["Normal:Привет, ёлка № 5"]);
+        // Font charsets switch inside a Windows-1252 document: Western, Cyrillic, Central
+        // European, then back to the first font.
+        let f = parse(
+            br"{\rtf1\ansi\ansicpg1252\deff0{\fonttbl{\f0 Arial;}{\f1\fcharset204 Arial CYR;}{\f2\fcharset238 Arial CE;}}\f0 caf\'e9 {\f1 \'c4\'e0} \f2 \'a3\'f3d\'9f \f0 na\'efve\par}",
+        )
+        .unwrap();
+        assert_eq!(texts(&f), ["Normal:café Да Łódź naïve"]);
+        // The default font's charset applies before any \f; an explicit \cpg wins over \fcharset.
+        let f = parse(br"{\rtf1\ansi\deff1{\fonttbl{\f1\fcharset204 Times;}{\f2\fcharset0\cpg1253 Greek;}}\'cc\'e8\'f0 \f2 \'c1\'e2\par}").unwrap();
+        assert_eq!(texts(&f), ["Normal:Мир Αβ"]);
+        // Raw 8-bit text (not escaped) follows the same code page.
+        let f = parse(b"{\\rtf1\\ansi\\ansicpg1251 \xc4\xee\xec\\par}").unwrap();
+        assert_eq!(texts(&f), ["Normal:Дом"]);
     }
 
     #[test]

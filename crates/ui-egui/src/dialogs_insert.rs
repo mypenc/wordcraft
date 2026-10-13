@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::WordApp;
+use crate::options::MeasureExt;
 use crate::theme::{Tokens, regular, semibold};
 
 #[derive(Clone, Debug, Serialize)]
@@ -396,13 +397,12 @@ fn columns_ui(app: &mut WordApp, ui: &mut Ui, f: &mut ColumnsForm) -> bool {
                         let editable = i == 0 || !f.equal;
                         ui.label(format!("{}:", i + 1));
                         if let Some(c) = f.cols.get_mut(i) {
-                            let w =
-                                egui::DragValue::new(&mut c.0).speed(0.01).range(ColumnsForm::min_w()..=max).suffix(unit.suffix()).max_decimals(2);
+                            let w = egui::DragValue::new(&mut c.0).speed(0.01).range(ColumnsForm::min_w()..=max).measure(unit).max_decimals(2);
                             if ui.add_enabled(editable, w).changed() {
                                 changed = Some(i);
                             }
                             if i + 1 < n {
-                                let s = egui::DragValue::new(&mut c.1).speed(0.01).range(0.0..=max).suffix(unit.suffix()).max_decimals(2);
+                                let s = egui::DragValue::new(&mut c.1).speed(0.01).range(0.0..=max).measure(unit).max_decimals(2);
                                 if ui.add_enabled(editable, s).changed() {
                                     changed = Some(i);
                                 }

@@ -821,6 +821,7 @@ fn bookmark_destination_is_the_page_of_its_start() {
         tags: Vec::new(),
         tag_index: HashMap::new(),
         links: Vec::new(),
+        bookmarks: std::cell::OnceCell::new(),
     };
     let (page, x, y) = ex.bookmark("target").unwrap();
     assert_eq!(page, 1, "the bookmark is on the second page");
@@ -863,4 +864,41 @@ fn comments_print_in_balloons_beside_scaled_pages() {
         let bytes = export(&d2, &PdfOptions { tagged, comments: true, ..Default::default() }).unwrap();
         assert!(squash(&extract_text(&bytes).concat()).contains("On the heading"));
     }
+}
+
+/// A long document whose every paragraph links to a bookmark (a linked table of contents, cross
+/// references) exports in time proportional to its length: each link looked its bookmark up by
+/// walking the whole document, so NIH's 67-page protocol template took 10.6 s (0.9 s now).
+#[test]
+fn internal_links_export_in_linear_time() {
+    let doc = |n: usize| {
+        let mut d = Document::new();
+        d.body = (0..n)
+            .map(|i| {
+                // Eight links a paragraph, like a dense table of contents or cross-references.
+                let mut p = wordcraft_doc::Paragraph::new();
+                for k in 0..8 {
+                    let link = CharProps { link: Some(format!("#mark{}", (i * 7 + k) % n)), ..CharProps::default() };
+                    p.insert_text(p.len(), &format!("see {k} "), &link).unwrap();
+                }
+                p.insert_object(0, InlineObject::BookmarkStart { name: format!("mark{i}") }, &CharProps::default()).unwrap();
+                para_block(p)
+            })
+            .collect();
+        d
+    };
+    let fastest = |d: &Document| {
+        (0..3)
+            .map(|_| {
+                let t = std::time::Instant::now();
+                let bytes = export(d, &PdfOptions::default()).unwrap();
+                assert!(!bytes.is_empty());
+                t.elapsed().as_secs_f64()
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+    let (small, big) = (doc(100), doc(400));
+    let _ = export(&small, &PdfOptions::default());
+    let ratio = fastest(&big) / fastest(&small).max(1e-9);
+    assert!(ratio < 9.0, "4x the paragraphs and links took {ratio:.1}x as long (quadratic would be ~16x)");
 }

@@ -156,6 +156,7 @@ fn write(doc: &Document, lay: &DocLayout, opts: &PdfOptions, pages: &[usize], ou
         tags: Vec::new(),
         tag_index: HashMap::new(),
         links: Vec::new(),
+        bookmarks: std::cell::OnceCell::new(),
     };
     if let Some(o) = ex.outline(pages) {
         pdf.set_outline(o);
@@ -522,6 +523,10 @@ struct Exporter<'a> {
     tag_index: HashMap<(StoryRef, DocPath), usize>,
     /// Link rectangles on the current page: (x0, y0, x1, y1, target).
     links: Vec<(f32, f32, f32, f32, String)>,
+    /// Bookmark positions by name (the first of a name wins), gathered once: looking each internal
+    /// link up by walking the whole document made a long document with a linked table of contents
+    /// take seconds to export.
+    bookmarks: std::cell::OnceCell<HashMap<String, wordcraft_doc::Pos>>,
 }
 
 /// What the content being drawn is, for tagging.
@@ -1210,7 +1215,14 @@ impl Exporter<'_> {
     /// Where a bookmark is: (output page, x, y) — the page and line its start lands on, which
     /// in a paragraph split across pages need not be the paragraph's first page.
     fn bookmark(&self, name: &str) -> Option<(usize, f32, f32)> {
-        let (_, pos) = self.doc.bookmarks().into_iter().find(|(n, _)| n == name)?;
+        let marks = self.bookmarks.get_or_init(|| {
+            let mut m = HashMap::new();
+            for (n, pos) in self.doc.bookmarks() {
+                m.entry(n).or_insert(pos);
+            }
+            m
+        });
+        let pos = marks.get(name)?.clone();
         if let Some(c) = self.lay.caret(&pos)
             && let Some(out) = self.out_index.get(&c.page)
         {

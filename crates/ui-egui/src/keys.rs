@@ -104,8 +104,23 @@ pub fn combo(m: Modifiers, key: &str, with_shift: bool) -> String {
     s
 }
 
+/// Shortcuts for interface commands (`ui.*`), which aren't in the engine's keymap: Alt+Q moves
+/// to "Tell me" command search, as in Word for Windows (#819). Not on macOS, where Option+Q types
+/// a character.
+fn ui_shortcut(key: Key, m: Modifiers) -> Option<(&'static str, Value)> {
+    let alt_only = m.alt && !m.command && !m.ctrl && !m.mac_cmd && !m.shift;
+    match key {
+        Key::Q if alt_only && !cfg!(target_os = "macos") => Some(("ui.dialog", json!({"name": "commands"}))),
+        _ => None,
+    }
+}
+
 /// Find and run the command bound to this key. Returns true if handled.
 fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
+    if let Some((id, params)) = ui_shortcut(key, m) {
+        let _ = app.run(id, params);
+        return true;
+    }
     let Some(name) = key_name(key) else { return false };
     let reg = app.session.registry.clone();
     if let Some(spec) = app.session.keymap.resolve(&reg, &combo(m, name, true)) {
@@ -133,6 +148,12 @@ fn shift_variant_params(id: &str) -> Option<Value> {
     } else {
         None
     }
+}
+
+/// Shift+F10 opens the context menu, as the Menu key does (#821). (The Menu key itself doesn't
+/// reach the app: the windowing layer drops it.)
+fn is_context_menu_key(key: Key, m: Modifiers) -> bool {
+    key == Key::F10 && m.shift && !m.command && !m.alt && !m.ctrl
 }
 
 /// F1–F12: shortcuts on these work without the canvas focused.
@@ -168,6 +189,11 @@ fn equation_key(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
 /// picture may be pasted on it (#45).
 fn is_paste_release(key: Key, modifiers: egui::Modifiers) -> bool {
     (modifiers.command || key == Key::Paste) && !modifiers.alt && !modifiers.shift
+}
+
+/// Whether releasing `key` with `modifiers` is Mod+Alt+V (Paste Special).
+fn is_paste_special_release(key: Key, modifiers: egui::Modifiers) -> bool {
+    key == Key::V && modifiers.command && modifiers.alt && !modifiers.shift
 }
 
 /// Events for the focused canvas: text, editing keys, clipboard, IME. While keytips are showing
@@ -225,6 +251,11 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
             let pasted = std::mem::take(&mut app.canvas.pasted);
             if !pasted && paste_keys && app.session.math.is_none() && app.services.clipboard_picture.is_some() {
                 let _ = app.run("edit.paste", json!({}));
+            }
+            // Mod+Alt+V with no text on the clipboard: Paste Special still opens, listing what
+            // is there (a picture) or saying what it holds (#687, #833).
+            if !pasted && is_paste_special_release(*key, *modifiers) && app.session.math.is_none() && app.services.clipboard_picture.is_some() {
+                let _ = app.run("edit.pasteSpecial", json!({}));
             }
             continue;
         }
@@ -319,6 +350,11 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
                 if crate::objects::key(app, key, modifiers) {
                     continue;
                 }
+                // Shift+F10, Windows' keyboard way to the context menu (#821).
+                if is_context_menu_key(key, modifiers) {
+                    app.canvas.context_menu_from_keys = true;
+                    continue;
+                }
                 // Escape leaves a text box to just after it in the body.
                 if key == Key::Escape
                     && crate::canvas::in_text_box(app)
@@ -340,6 +376,12 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
     }
 }
 
+/// Whether a key runs its shortcut with the canvas unfocused (after a ribbon click, say): Mod and
+/// Alt shortcuts (Alt+Q reaches Search from anywhere, as in Word, #819) and the function keys.
+fn is_global_shortcut(key: Key, m: Modifiers) -> bool {
+    m.command || m.alt || is_function_key(key)
+}
+
 /// Command shortcuts when the canvas isn't focused but no text field is either.
 pub fn global_shortcuts(app: &mut WordApp, ctx: &egui::Context) {
     // Customize Keyboard records the keys pressed; they never run commands meanwhile.
@@ -349,7 +391,7 @@ pub fn global_shortcuts(app: &mut WordApp, ctx: &egui::Context) {
     let events = ctx.input(|i| i.events.clone());
     for e in events {
         if let egui::Event::Key { key, pressed: true, modifiers, .. } = e
-            && (modifiers.command || is_function_key(key))
+            && is_global_shortcut(key, modifiers)
         {
             dispatch(app, key, modifiers);
         }
@@ -368,6 +410,21 @@ mod tests {
     }
 
     #[test]
+    fn alt_q_opens_command_search() {
+        let m = |alt, shift, command| egui::Modifiers { alt, shift, command, ..Default::default() };
+        let tell_me = Some(("ui.dialog", json!({"name": "commands"})));
+        if cfg!(target_os = "macos") {
+            assert_eq!(ui_shortcut(Key::Q, m(true, false, false)), None, "Option+Q types a character");
+        } else {
+            assert_eq!(ui_shortcut(Key::Q, m(true, false, false)), tell_me);
+        }
+        assert_eq!(ui_shortcut(Key::Q, m(true, true, false)), None, "Alt+Shift+Q");
+        assert_eq!(ui_shortcut(Key::Q, m(true, false, true)), None, "Mod+Alt+Q");
+        assert_eq!(ui_shortcut(Key::Q, m(false, false, false)), None, "a plain Q");
+        assert_eq!(ui_shortcut(Key::W, m(true, false, false)), None);
+    }
+
+    #[test]
     fn only_plain_paste_releases_paste_a_clipboard_picture() {
         let m = |command, shift, alt| egui::Modifiers { command, shift, alt, ..Default::default() };
         assert!(is_paste_release(Key::V, m(true, false, false)), "Mod+V");
@@ -375,5 +432,27 @@ mod tests {
         assert!(!is_paste_release(Key::V, m(true, true, false)), "Mod+Shift+V is Paste Formatting");
         assert!(!is_paste_release(Key::V, m(true, false, true)), "Mod+Alt+V is Paste Special");
         assert!(!is_paste_release(Key::V, m(false, false, false)), "a plain V");
+        assert!(is_paste_special_release(Key::V, m(true, false, true)), "Mod+Alt+V opens Paste Special");
+        assert!(!is_paste_special_release(Key::V, m(true, true, true)) && !is_paste_special_release(Key::V, m(true, false, false)));
+    }
+
+    #[test]
+    fn shift_f10_is_the_context_menu_key() {
+        let m = |shift, ctrl, alt| egui::Modifiers { shift, ctrl, command: ctrl, alt, ..Default::default() };
+        assert!(is_context_menu_key(Key::F10, m(true, false, false)));
+        assert!(!is_context_menu_key(Key::F10, m(false, false, false)), "F10 alone shows keytips");
+        assert!(!is_context_menu_key(Key::F10, m(true, true, false)), "Ctrl+Shift+F10");
+        assert!(!is_context_menu_key(Key::F9, m(true, false, false)), "Shift+F9 is a field key");
+    }
+
+    #[test]
+    fn alt_shortcuts_work_without_the_canvas_focused() {
+        let m = |command, alt, shift| egui::Modifiers { command, alt, shift, ..Default::default() };
+        assert!(is_global_shortcut(Key::Q, m(false, true, false)), "Alt+Q (#819)");
+        assert!(is_global_shortcut(Key::D, m(false, true, true)), "Alt+Shift+D");
+        assert!(is_global_shortcut(Key::B, m(true, false, false)), "Mod+B");
+        assert!(is_global_shortcut(Key::F7, m(false, false, false)), "F7");
+        assert!(!is_global_shortcut(Key::Q, m(false, false, false)), "a plain letter is typing");
+        assert!(!is_global_shortcut(Key::Q, m(false, false, true)), "Shift+letter is typing");
     }
 }

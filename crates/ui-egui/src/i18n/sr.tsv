@@ -208,6 +208,7 @@
 	Preview	Преглед
 	Remove Password	Уклони лозинку
 	Save documents	Чување докумената
+	Search	Претрага
 	Shadow, glow and soft edges	Сенка, сјај и меке ивице
 	Shape Effects	Ефекти облика
 	Show all revisions inline	Прикажи све измене у тексту
@@ -259,6 +260,7 @@
 	Page Border	Ивица стране
 	Apply to:	Примени на:
 	These marks show even when Show/Hide ¶ is off.	Ове ознаке се приказују и када је Прикажи/сакриј ¶ искључено.
+	Title Bar	Насловна трака
 	Typing replaces selected text	Откуцано замењује изабрани текст
 	Update fields before printing	Ажурирај поља пре штампања
 	Use the Insert key to switch overtype on and off	Тастер Insert укључује и искључује преписивање
@@ -521,6 +523,7 @@
 	Insert Above	Уметни изнад
 	Insert Below	Уметни испод
 	Insert Caption	Уметни натпис
+	Insert Caption…	Уметни натпис…
 	Insert Citation	Уметни цитат
 	Insert Endnote	Уметни ендноту
 	Insert Footnote	Уметни фусноту
@@ -916,6 +919,7 @@
 	Table of Contents	Садржај
 	Table of\nContents	Садржај
 	Table Properties	Својства табеле
+	Table Properties…	Својства табеле…
 	Table Row Height	Висина реда табеле
 	Table style	Стил табеле
 	Table Style Options	Опције стила табеле
@@ -970,6 +974,10 @@
 	Underline Words Only	Подвуци само речи
 	Undo	Опозови
 	Undo {action}	Опозови {action}
+	Undo Actions	Опозови радње
+	Undo History	Историја опозивања
+	Undo 1 Action	Опозови 1 радњу
+	Undo {n} Actions	Опозови радње: {n}
 	Ungroup	Разгруписање
 	Up	Горе
 	Update Field	Ажурирај поље
@@ -1143,6 +1151,8 @@
 	Keeps the fonts and formatting of the copied text.	Задржава фонтове и форматирање копираног текста.
 	Reads the clipboard's rich text and keeps its formatting.	Чита обогаћени текст (RTF) из оставе и задржава његово форматирање.
 	Reads the clipboard's web content and keeps its formatting.	Чита веб садржај из оставе и задржава његово форматирање.
+	Picture	Слика
+	Pastes the clipboard's picture.	Лепи слику из оставе.
 	Drops all formatting and pastes plain text.	Уклања све форматирање и лепи обичан текст.
 	Advanced Find	Напредна претрага
 	Advanced Find…	Напредна претрага…
@@ -1442,6 +1452,8 @@
 	Border lines	Линије ивица
 	Capitalize first letter of sentences	Велико прво слово реченице
 	Capitalize first letter of table cells	Велико прво слово у ћелијама табеле
+	Correct TWo INitial CApitals	Исправи ДВа ПОчетна велика слова
+	Correct accidental usage of cAPS LOCK key	Исправи случајно укључен cAPS LOCK
 	Capitalize names of days	Велико слово у називима дана
 	Case changes	Промене величине слова
 	Character level	Ниво знака
@@ -2067,3 +2079,13 @@
 	Your system has animation effects turned on.	У систему су ефекти анимације укључени.
 	Your system has animation effects turned off.	У систему су ефекти анимације искључени.
 	Your system doesn't report an animation setting, so animation effects stay on.	Систем не пријављује подешавање анимације, па ефекти анимације остају укључени.
+	Select Column	Изабери колону
+	Select Table Cells by Clicking	Избор ћелија табеле кликом
+	Insert Row or Column by Clicking	Уметање реда или колоне кликом
+	Move Table by Dragging	Премештање табеле превлачењем
+	AutoFit Column by Double-Clicking	Аутоматско уклапање колоне двоструким кликом
+	Region:	Регион:
+	Automatic ({region})	Аутоматски ({region})
+	Start-up	Покретање
+	Show the Start screen when WordCraft starts	Прикажи почетни екран при покретању програма WordCraft
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Укључено: WordCraft се отвара на Фајл › Почетак, са празним документом, шаблонима и недавним документима. Искључено: отвара празан документ.

@@ -174,7 +174,7 @@ impl StyleSheet {
     /// The built-in style set used for new documents.
     pub fn builtin() -> Self {
         let mut s = StyleSheet {
-            default_chr: CharProps { font: Some(BODY_FONT.into()), size: Some(12.0), kern: Some(0.0), lang: Some("en-US".into()), ..chr() },
+            default_chr: CharProps { font: Some(BODY_FONT.into()), size: Some(12.0), kern: Some(1.0), lang: Some("en-US".into()), ..chr() },
             default_para: ParaProps {
                 space_after: Some(8.0),
                 space_before: Some(0.0),
@@ -443,6 +443,19 @@ impl StyleSheet {
         }
         out.reverse();
         out
+    }
+    /// Which indents (left, first line) of a paragraph that gets its list from style `id` the style
+    /// chain sets over the list level's own. Word applies the level's indents on top of the most
+    /// derived style that gives a list, so that style and the ones based on it win over the level,
+    /// and the styles it is based on don't (Heading 3 with its own left indent on Heading 2's
+    /// list). `(false, false)` when no style in the chain gives a list.
+    pub fn indents_over_list(&self, id: &str) -> (bool, bool) {
+        let chain = self.chain(id);
+        let Some(k) = chain.iter().rposition(|s| s.para.numbering.is_some()) else { return (false, false) };
+        let set = |v: Option<f32>, chars: Option<f32>| v.is_some() || chars.is_some_and(|c| c != 0.0);
+        chain.get(k..).unwrap_or_default().iter().fold((false, false), |(l, f), s| {
+            (l || set(s.para.indent_left, s.para.indent_left_chars), f || set(s.para.indent_first, s.para.indent_first_chars))
+        })
     }
     /// Table style `id` with its based-on chain merged, base styles first (`None` when there is no
     /// such table style). Styles of other kinds in the chain are skipped.

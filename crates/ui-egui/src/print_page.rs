@@ -1,9 +1,7 @@
 //! File › Print (#641): the print settings and a preview of the pages.
 //!
-//! WordCraft prints through a PDF that the host opens in the system's print flow, so the settings
-//! here are the ones that shape that PDF: which pages, odd/even, copies and collation. They go to
-//! `ui.print` / `file.printPdf` as params (see `wordcraft_engine::print`). The printer, two-sided
-//! printing and pages per sheet are chosen in the system print dialog that opens next.
+//! Page range and parity shape the PDF. Native printer settings and copy collation go to
+//! the shared spooler; browser printing and saved print PDFs retain copies in the PDF.
 
 use std::sync::Arc;
 
@@ -109,8 +107,14 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         ui.vertical(|ui| {
             ui.set_width(380.0);
             ui.spacing_mut().item_spacing.y = 8.0;
-            let hook = app.services.print.is_some();
-            if hook {
+            let native = app.services.print_native.is_some();
+            let hook = native || app.services.print.is_some();
+            if native {
+                if let Some(discover) = &app.services.printers {
+                    crate::printing::show(&mut app.printing, ui, discover, |label| crate::i18n::t(label).to_owned());
+                }
+                app.ui.print.copies = app.printing.settings.copies;
+            } else if hook {
                 ui.label(tl!("Send the document straight to the system print dialog, or save a copy in another format below."));
                 ui.label(
                     egui::RichText::new(tl!("The printer, two-sided printing and pages per sheet are chosen in that dialog.")).color(t.text_dim),
@@ -119,7 +123,14 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 ui.label(tl!("Save a copy in another format. Printing goes through a PDF you can print from any viewer."));
             }
             ui.add_space(4.0);
-            if hook && ui.add(egui::Button::new(egui::RichText::new(tl!("Print")).font(medium(13.5))).min_size(vec2(320.0, 34.0))).clicked() {
+            if hook
+                && ui
+                    .add_enabled(
+                        !native || app.printing.ready(),
+                        egui::Button::new(egui::RichText::new(tl!("Print")).font(medium(13.5))).min_size(vec2(320.0, 34.0)),
+                    )
+                    .clicked()
+            {
                 let params = app.ui.print.params();
                 let _ = app.run("ui.print", params);
             }
@@ -131,15 +142,21 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             }
             ui.add_space(6.0);
 
-            ui.label(egui::RichText::new(tl!("Copies")).font(medium(13.0)));
-            ui.horizontal(|ui| {
-                let mut n = app.ui.print.copies;
-                ui.add(egui::DragValue::new(&mut n).range(1..=wordcraft_engine::print::MAX_COPIES).speed(0.2));
-                app.ui.print.copies = n.clamp(1, wordcraft_engine::print::MAX_COPIES);
+            if native {
                 if app.ui.print.copies > 1 {
-                    ui.checkbox(&mut app.ui.print.collate, tl!("Collate copies"));
+                    ui.add_enabled(!app.printing.busy(), egui::Checkbox::new(&mut app.ui.print.collate, tl!("Collate copies")));
                 }
-            });
+            } else {
+                ui.label(egui::RichText::new(tl!("Copies")).font(medium(13.0)));
+                ui.horizontal(|ui| {
+                    let mut n = app.ui.print.copies;
+                    ui.add(egui::DragValue::new(&mut n).range(1..=wordcraft_engine::print::MAX_COPIES).speed(0.2));
+                    app.ui.print.copies = n.clamp(1, wordcraft_engine::print::MAX_COPIES);
+                    if app.ui.print.copies > 1 {
+                        ui.checkbox(&mut app.ui.print.collate, tl!("Collate copies"));
+                    }
+                });
+            }
 
             ui.label(egui::RichText::new(tl!("Pages")).font(medium(13.0)));
             if choice(ui, "print_range", &mut app.ui.print.range, &RANGES) {

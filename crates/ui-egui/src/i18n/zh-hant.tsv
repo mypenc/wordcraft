@@ -156,6 +156,7 @@
 	Right (vertical)	靠右（直書）
 	Ruby text:	注音文字：
 	Save documents	儲存文件
+	Search	搜尋
 	Search for templates	搜尋範本
 	Show all revisions inline	以內嵌方式顯示所有修訂
 	Show documents with their colours inverted, like View › Switch Modes. Saving, printing and PDFs are unchanged.	像「檢視 › 切換模式」一樣以反轉的色彩顯示文件。儲存、列印和 PDF 不受影響。
@@ -199,6 +200,7 @@
 	Page Border	頁面框線設定
 	Apply to:	套用至：
 	These marks show even when Show/Hide ¶ is off.	即使關閉「顯示/隱藏 ¶」，這些標記也會顯示。
+	Title Bar	標題列
 	Typing replaces selected text	輸入的內容取代選取的文字
 	Update fields before printing	列印前更新功能變數
 	Use the Insert key to switch overtype on and off	使用 Insert 鍵切換取代模式
@@ -470,6 +472,7 @@
 	Insert Above	插入上方列
 	Insert Below	插入下方列
 	Insert Caption	插入標號
+	Insert Caption…	插入標號…
 	Insert Citation	插入引文
 	Insert Endnote	插入章節附註
 	Insert Footnote	插入註腳
@@ -859,6 +862,7 @@
 	Table of Contents	目錄
 	Table of\nContents	目錄
 	Table Properties	表格內容
+	Table Properties…	表格內容…
 	Table Row Height	表格列高
 	Table Style Options	表格樣式選項
 	Table Styles	表格樣式
@@ -908,6 +912,10 @@
 	Underline Words Only	只在文字下加底線
 	Undo	復原
 	Undo {action}	復原{action}
+	Undo Actions	復原多項動作
+	Undo History	復原記錄
+	Undo 1 Action	復原 1 項動作
+	Undo {n} Actions	復原 {n} 項動作
 	Ungroup	取消群組
 	Up	上
 	Update Field	更新功能變數
@@ -1074,6 +1082,8 @@
 	Keeps the fonts and formatting of the copied text.	保留所複製文字的字型和格式。
 	Reads the clipboard's rich text and keeps its formatting.	讀取剪貼簿中的 RTF 內容並保留其格式。
 	Reads the clipboard's web content and keeps its formatting.	讀取剪貼簿中的網頁內容並保留其格式。
+	Picture	圖片
+	Pastes the clipboard's picture.	貼上剪貼簿中的圖片。
 	Drops all formatting and pastes plain text.	移除所有格式，貼上純文字。
 	Advanced Find	進階尋找
 	Advanced Find…	進階尋找…
@@ -1429,6 +1439,8 @@
 	Border lines	框線
 	Capitalize first letter of sentences	句首字母大寫
 	Capitalize first letter of table cells	表格儲存格首字母大寫
+	Correct TWo INitial CApitals	更正前兩個字母連續大寫
+	Correct accidental usage of cAPS LOCK key	更正意外使用 Caps Lock 鍵造成的大小寫錯誤
 	Capitalize names of days	星期名稱首字母大寫
 	Case changes	大小寫變更
 	Character level	字元層級
@@ -2054,3 +2066,13 @@
 	Your system has animation effects turned on.	系統已開啟動畫效果。
 	Your system has animation effects turned off.	系統已關閉動畫效果。
 	Your system doesn't report an animation setting, so animation effects stay on.	系統未提供動畫設定，因此動畫效果保持開啟。
+	Select Column	選取欄
+	Select Table Cells by Clicking	按一下選取表格儲存格
+	Insert Row or Column by Clicking	按一下插入列或欄
+	Move Table by Dragging	拖曳移動表格
+	AutoFit Column by Double-Clicking	按兩下自動調整欄寬
+	Region:	地區：
+	Automatic ({region})	自動（{region}）
+	Start-up	啟動
+	Show the Start screen when WordCraft starts	啟動 WordCraft 時顯示開始畫面
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	開：WordCraft 開啟時顯示「檔案 › 常用」，其中有空白文件、範本和最近使用的文件。關：直接開啟空白文件。

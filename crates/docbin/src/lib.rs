@@ -142,6 +142,7 @@ pub fn read(bytes: &[u8]) -> Result<Document, DocbinError> {
         notes: &[],
         marks: &[],
         drawn: &[],
+        sect_ends: &[],
     };
 
     // Drawings: text box stories become parts first, then the floating shapes and pictures
@@ -215,7 +216,9 @@ pub fn read(bytes: &[u8]) -> Result<Document, DocbinError> {
     // Sorted so the main walk finds each reference by binary search.
     note_links.sort_by_key(|(cp, _, _)| *cp);
     let marks = notes::parse_bookmarks(&table, &fib);
-    let ctx = WalkCtx { notes: &note_links, marks: &marks, ..ctx };
+    let mut sect_ends: Vec<u32> = sects.iter().map(|s| s.end_cp).collect();
+    sect_ends.sort_unstable();
+    let ctx = WalkCtx { notes: &note_links, marks: &marks, sect_ends: &sect_ends, ..ctx };
 
     // Sections: each section's properties attach to the paragraph that ends it (its story of
     // header/footer parts included); the section reaching the end of the text is the final one.
@@ -277,6 +280,9 @@ struct WalkCtx<'a> {
     marks: &'a [(u32, notes::Mark)],
     /// Floating shapes and pictures by anchor CP (absolute), sorted.
     drawn: &'a [(u32, InlineObject)],
+    /// Where sections end (main-document CPs, sorted): the section mark (0x0C) just before
+    /// each ends the section's last paragraph, it isn't a page break inside it.
+    sect_ends: &'a [u32],
 }
 
 /// State while assembling one paragraph from per-CP formatting.
@@ -350,8 +356,10 @@ fn walk(ctx: &WalkCtx, cp_start: u32, cp_end: u32, pics: &mut media::Pictures) -
                 continue;
             }
         };
+        // A section mark (0x0C) at a section's end is that section's last paragraph mark.
+        let section_mark = c == '\u{C}' && ctx.sect_ends.binary_search(&cp.saturating_add(1)).is_ok();
         match c {
-            '\r' | '\u{7}' => {
+            '\r' | '\u{7}' | '\u{C}' if c != '\u{C}' || section_mark => {
                 // Paragraph mark: its PAPX covers the FC range of the paragraph it ends, so
                 // querying at the mark's own FC finds that paragraph's properties.
                 let fc_mark = ctx.pieces.fc_of_cp(cp).unwrap_or(0);

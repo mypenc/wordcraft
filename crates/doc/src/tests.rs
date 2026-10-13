@@ -17,6 +17,51 @@ fn word_count() {
 }
 
 #[test]
+fn word_count_includes_numbered_list_labels_but_not_bullets() {
+    let mut d = Document::new();
+    let num_id = d.numbering.add_list(ListKind::Numbered);
+    let bul_id = d.numbering.add_list(ListKind::Bullet);
+
+    let mut p1 = Paragraph::with_text("Apple", CharProps::default());
+    p1.props.numbering = Some(props::NumRef { num: num_id, level: 0 });
+    let mut p2 = Paragraph::with_text("Banana", CharProps::default());
+    p2.props.numbering = Some(props::NumRef { num: num_id, level: 0 });
+
+    let mut p3 = Paragraph::with_text("Cherry", CharProps::default());
+    p3.props.numbering = Some(props::NumRef { num: bul_id, level: 0 });
+    let mut p4 = Paragraph::with_text("Date", CharProps::default());
+    p4.props.numbering = Some(props::NumRef { num: bul_id, level: 0 });
+
+    d.body = vec![Arc::new(Block::Para(p1)), Arc::new(Block::Para(p2)), Arc::new(Block::Para(p3)), Arc::new(Block::Para(p4))];
+
+    // Numbered items contribute 2 words each (label + text) = 4 words.
+    // Bullet items contribute 1 word each (bullet marker is not a word + text) = 2 words.
+    assert_eq!(d.word_count(), 6);
+    let plain = d.plain_text(StoryRef::Body);
+    assert_eq!(plain, "Apple\nBanana\nCherry\nDate");
+}
+
+#[test]
+fn word_count_includes_numbered_labels_with_nothing_suffix() {
+    let mut d = Document::new();
+    let num_id = d.numbering.add_list(ListKind::Numbered);
+    let aid = d.numbering.num(num_id).expect("list num exists").abstract_id;
+    let a = d.numbering.abstracts.iter_mut().find(|a| a.id == aid).expect("abstract num exists");
+    a.levels[0].suffix = numbering::LevelSuffix::Nothing;
+
+    let mut p1 = Paragraph::with_text("Apple", CharProps::default());
+    p1.props.numbering = Some(props::NumRef { num: num_id, level: 0 });
+    let mut p2 = Paragraph::with_text("Banana Cherry", CharProps::default());
+    p2.props.numbering = Some(props::NumRef { num: num_id, level: 0 });
+    d.body = vec![Arc::new(Block::Para(p1)), Arc::new(Block::Para(p2))];
+
+    // Label "1." and text "Apple" must each be counted as a separate word (2 words),
+    // and label "2." and text "Banana Cherry" as 3 words (total: 5 words),
+    // even though LevelSuffix::Nothing produces no visible separator between label and text.
+    assert_eq!(d.word_count(), 5);
+}
+
+#[test]
 fn sections_and_section_mut() {
     let mut d = Document::from_text("a\nb\nc");
     if let Some(Block::Para(p)) = d.body.get_mut(0).map(Arc::make_mut) {

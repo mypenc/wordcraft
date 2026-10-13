@@ -88,13 +88,19 @@ pub fn visible(app: &WordApp) -> bool {
     if app.canvas.context_menu_open {
         return false;
     }
-    // Never while a drag-select is in progress (Word shows it on mouse-up).
-    if app.canvas.drag_selecting() {
+    // Never while a drag-select is in progress, in the text or a table's selection areas (Word
+    // shows it on mouse-up), nor while a table is being moved.
+    if app.canvas.drag_selecting() || app.canvas.table_drag.is_some() {
         return false;
     }
     // Never while keytips are showing: the ribbon owns the letters, and the bar's buttons reuse
     // the ribbon's widgets, so they would record duplicate badges.
     if app.ui.keytips != crate::keytips::Phase::Off {
+        return false;
+    }
+    // Nor for whole table cells: pinned above them, it would cover the table's column selection
+    // areas, insert buttons and move handle.
+    if app.session.cell_range().is_some() {
         return false;
     }
     // Never for a collapsed caret.

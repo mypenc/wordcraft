@@ -27,6 +27,13 @@ impl Fragment {
         d.body = self.blocks.iter().cloned().map(Arc::new).collect();
         d.plain_text(crate::StoryRef::Body)
     }
+    /// The text a copy puts on the clipboard: [`Self::plain_text`] with symbol-font characters
+    /// (Wingdings…) as their Unicode equivalents.
+    pub fn clipboard_text(&self) -> String {
+        let mut d = Document::new();
+        d.body = self.blocks.iter().cloned().map(Arc::new).collect();
+        d.shown_text(crate::StoryRef::Body)
+    }
     pub fn from_text(s: &str) -> Fragment {
         let lines: Vec<&str> = s.split('\n').collect();
         Fragment {

@@ -121,14 +121,7 @@ impl Previews {
                     return None;
                 }
                 let ppp = ui.ctx().pixels_per_point();
-                let mut img = snippet(
-                    &Document::new(),
-                    Paragraph::with_text(name, CharProps { font: Some(name.to_string()), size: Some(13.0), ..Default::default() }),
-                    240.0,
-                    20.0,
-                    ppp,
-                    2.0,
-                )?;
+                let mut img = font_entry_image(name, ppp);
                 ink_mask(&mut img);
                 let h = ui.ctx().load_texture(&key, img, egui::TextureOptions::LINEAR);
                 ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(&key), h.clone()));
@@ -238,7 +231,10 @@ fn math_image(nodes: &wordcraft_doc::math::Arg, display: bool, pt: f32, w: f32, 
     opts.display.placeholders = true;
     let img = wordcraft_render::render_area(&d, page, 0.0, mid - h / 2.0, w, h, ppp, &opts);
     let px = img.to_straight();
-    Some(egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &px))
+    let mut out = egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &px);
+    // An ink mask, tinted with the theme's text colour when drawn, so the pictures read on dark tiles (#817).
+    ink_mask(&mut out);
+    Some(out)
 }
 
 /// Turn a snippet rendered black on white paper into an ink mask: white whose alpha is the ink's
@@ -252,6 +248,20 @@ pub fn ink_mask(img: &mut egui::ColorImage) {
         let ink = 255u32.saturating_sub(lum.min(255)) * u32::from(a) / 255;
         *p = egui::Color32::from_white_alpha(u8::try_from(ink).unwrap_or(u8::MAX));
     }
+}
+
+/// A font list entry: `name` in its own face, 240×20 pt. The face is read for the preview alone
+/// and dropped (#848): browsing the list used to load every family shown for good, so each trip
+/// through the Font box grew memory by tens of megabytes. A name the font has no glyphs for (a
+/// symbol font's), or a font that can't be read, shows in the default face.
+pub fn font_entry_image(name: &str, ppp: f32) -> egui::ColorImage {
+    let db = wordcraft_fonts::FontDb::global();
+    let face = db
+        .preview_face(name)
+        .filter(|f| name.chars().filter(|c| !c.is_whitespace()).all(|c| f.covers(c)))
+        .unwrap_or_else(|| db.face(wordcraft_fonts::FALLBACK_FAMILY, "Regular"));
+    let img = wordcraft_render::render_text_line(&face, name, 13.0, 244.0, 22.0, 2.0, ppp);
+    egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &img.to_straight())
 }
 
 /// Lay out `para` (with `base`'s styles) in a `w`×`h` pt box and rasterise it.
@@ -510,6 +520,30 @@ pub fn table_style_tile(ui: &mut Ui, app: &mut WordApp, style: &str) -> Response
 mod tests {
     use super::*;
 
+    /// #848: each trip through the Font box loaded every family it showed, for good. Entries are
+    /// now drawn with a face read for the preview alone: installed families stay unloaded.
+    #[test]
+    fn font_menu_entries_leave_installed_families_unloaded() {
+        let db = wordcraft_fonts::FontDb::global();
+        let ink = |img: &egui::ColorImage| img.pixels.iter().filter(|p| p.r() < 128).count();
+        assert!(ink(&font_entry_image("Source Sans 3", 1.0)) > 20, "the bundled face draws");
+        assert!(ink(&font_entry_image("No Such Font 848", 1.0)) > 20, "an unknown font shows in the default face");
+        // Tests running alongside share this database and may load a fallback (a math font for
+        // an equation, a font for a script) at any time: leave the math fonts out, and allow a
+        // stray load or two. Before #848 every family previewed was loaded.
+        let shared = |f: &str| wordcraft_fonts::math::MATH_SUBSTITUTES.iter().any(|n| f.eq_ignore_ascii_case(n));
+        let unloaded: Vec<String> = db.families().into_iter().filter(|f| !db.is_loaded(f) && !shared(f)).take(25).collect();
+        let mut loaded = Vec::new();
+        for f in &unloaded {
+            let img = font_entry_image(f, 1.0);
+            assert_eq!(img.size, [244, 22]);
+            if db.is_loaded(f) {
+                loaded.push(f.clone());
+            }
+        }
+        assert!(loaded.len() <= 2, "previewing loaded {loaded:?}");
+    }
+
     /// #663: gallery previews are dimmed in the dark theme, unless they show Switch Modes' dark
     /// page; the light theme keeps a white page.
     #[test]
@@ -556,6 +590,16 @@ mod tests {
         });
         rx.recv_timeout(std::time::Duration::from_secs(30)).expect("font menu preview rendering hung or failed");
         worker.join().unwrap();
+    }
+
+    /// #817: equation pictures were black on white; they are now an ink mask (white, transparent paper).
+    #[test]
+    fn math_pictures_are_ink_masks() {
+        use wordcraft_doc::math::parse_linear;
+        let img = math_image(&parse_linear("x/y"), false, 12.0, 40.0, 34.0, 1.0).expect("renders");
+        assert!(img.pixels.iter().any(|p| p.a() == 0), "paper is transparent");
+        assert!(img.pixels.iter().any(|p| p.a() > 0), "ink is kept");
+        assert!(img.pixels.iter().all(|p| *p == egui::Color32::from_white_alpha(p.a())), "ink is white, to be tinted");
     }
 
     #[test]

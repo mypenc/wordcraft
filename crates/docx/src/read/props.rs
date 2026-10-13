@@ -14,6 +14,28 @@ use wordcraft_doc::section::{
 
 use super::drawing_color::adjust_lum;
 use crate::units::{int, measure, on_off, tw, u32_of};
+
+/// A text frame (`w:framePr` without a drop cap, ECMA-376 §17.3.1.11), sizes and offsets in
+/// points (clamped), names kept as OOXML writes them.
+fn text_frame(k: &El) -> wordcraft_doc::props::TextFrame {
+    let len = |name: &str| tw(k, name).filter(|v| v.is_finite()).map(|v| v.clamp(-1584.0, 1584.0));
+    let word = |name: &str, allowed: &[&str], default: &str| k.attr(name).filter(|v| allowed.contains(v)).unwrap_or(default).to_string();
+    let align = |name: &str, allowed: &[&str]| k.attr(name).filter(|v| allowed.contains(v)).map(str::to_string);
+    wordcraft_doc::props::TextFrame {
+        w: len("w:w").filter(|v| *v > 0.0),
+        h: len("w:h").map(f32::abs).filter(|v| *v > 0.0),
+        h_exact: k.attr("w:hRule") == Some("exact"),
+        x: len("w:x").unwrap_or(0.0),
+        y: len("w:y").unwrap_or(0.0),
+        x_align: align("w:xAlign", &["left", "center", "right", "inside", "outside"]),
+        y_align: align("w:yAlign", &["top", "center", "bottom", "inside", "outside"]),
+        h_anchor: word("w:hAnchor", &["text", "margin", "page"], "page"),
+        v_anchor: word("w:vAnchor", &["text", "margin", "page"], "page"),
+        wrap: word("w:wrap", &["around", "auto", "notBeside", "none", "tight", "through"], "auto"),
+        h_space: len("w:hSpace").unwrap_or(0.0).max(0.0),
+        v_space: len("w:vSpace").unwrap_or(0.0).max(0.0),
+    }
+}
 use crate::xml::El;
 
 /// Context for property reading: theme fonts and colours, and style id aliases.
@@ -31,6 +53,27 @@ pub struct PropCtx {
     pub alias: HashMap<String, String>,
     /// The theme's colours (for WordArt effects in theme colours).
     pub theme: Vec<Rgb>,
+}
+
+/// A `w:numPr` that gives a level (`w:ilvl`) and no list (`w:numId`): the list is the one the
+/// paragraph's style chain uses (ECMA-376 §17.3.1.19). A placeholder while reading, never left in
+/// a document (`resolve_list_levels`).
+pub(crate) const LEVEL_ONLY: u32 = u32::MAX;
+
+/// The list a level-only `numPr` refers to: the nearest numbering in style `style`'s based-on chain
+/// (its own included) that names a list. `None` when no style in the chain has one.
+pub(crate) fn chain_list(sheet: &wordcraft_doc::styles::StyleSheet, style: &str) -> Option<u32> {
+    sheet.chain(style).iter().rev().filter_map(|s| s.para.numbering).map(|n| n.num).find(|n| *n != LEVEL_ONLY)
+}
+
+/// Resolve level-only numbering in `p` against its style chain (`style` when it has none).
+pub(crate) fn resolve_level_only(sheet: &wordcraft_doc::styles::StyleSheet, p: &mut ParaProps, style: &str) {
+    if let Some(n) = p.numbering.as_mut().filter(|n| n.num == LEVEL_ONLY) {
+        match chain_list(sheet, p.style.as_deref().unwrap_or(style)) {
+            Some(num) => n.num = num,
+            None => p.numbering = None,
+        }
+    }
 }
 
 impl PropCtx {
@@ -194,6 +237,7 @@ impl PropCtx {
 
     /// `w:pPr` (without `w:sectPr`; `w:rPr` is the paragraph mark, returned separately).
     pub fn ppr(&self, e: &El) -> (ParaProps, CharProps) {
+        // (`w:numPr` with a level and no list sets `LEVEL_ONLY`, resolved by the caller.)
         let mut p = ParaProps::default();
         let mut mark = CharProps::default();
         for k in e.els() {
@@ -218,13 +262,21 @@ impl PropCtx {
                 "w:framePr" => {
                     if matches!(k.attr("w:dropCap"), Some("drop") | Some("margin")) {
                         p.drop_cap = Some(k.attr("w:lines").and_then(u32_of).unwrap_or(3).clamp(1, 10) as u8);
+                    } else {
+                        p.frame = Some(text_frame(k));
                     }
                 }
                 "w:numPr" => {
                     let num = k.child_val("w:numId").and_then(u32_of);
-                    let level = k.child_val("w:ilvl").and_then(u32_of).unwrap_or(0).min(8) as u8;
-                    if let Some(num) = num {
-                        p.numbering = Some(NumRef { num, level });
+                    let ilvl = k.child_val("w:ilvl").and_then(u32_of);
+                    let level = ilvl.unwrap_or(0).min(8) as u8;
+                    match (num, ilvl) {
+                        (Some(num), _) => p.numbering = Some(NumRef { num, level }),
+                        // A level without a list: the list comes from the based-on style, as in
+                        // a Heading 3 that only says "level 3" of Heading 2's list. Resolved once
+                        // the styles are read (`resolve_list_levels`).
+                        (None, Some(_)) => p.numbering = Some(NumRef { num: LEVEL_ONLY, level }),
+                        (None, None) => {}
                     }
                 }
                 "w:pBdr" => p.borders = Some(borders(k)),
@@ -239,6 +291,14 @@ impl PropCtx {
                     }
                     if let Some(v) = tw(k, "w:after") {
                         p.space_after = Some(v.max(0.0));
+                    }
+                    // HTML-style automatic spacing; "0" switches an inherited one off.
+                    let auto = |name| k.attr(name).map(|v| matches!(v.trim(), "1" | "true" | "on"));
+                    if let Some(a) = auto("w:beforeAutospacing") {
+                        p.space_before_auto = Some(a);
+                    }
+                    if let Some(a) = auto("w:afterAutospacing") {
+                        p.space_after_auto = Some(a);
                     }
                     if let Some(line) = k.attr("w:line") {
                         // Word reads the rule case-insensitively (`atleast` is seen in the wild).
@@ -478,6 +538,7 @@ pub fn tcpr(pc: &PropCtx, e: &El) -> (CellProps, bool) {
             "w:tcBorders" => c.borders = Some(borders(k)),
             "w:shd" => c.shading = pc.shd_fill(k),
             "w:noWrap" => c.no_wrap = on_off(k),
+            "w:hideMark" => c.hide_mark = on_off(k),
             "w:tcMar" => c.margins = Some(margins(k)),
             "w:textDirection" => c.text_direction = TextDirection::from_ooxml(k.attr("w:val").unwrap_or("")),
             "w:vAlign" => {

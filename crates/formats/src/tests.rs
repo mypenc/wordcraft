@@ -280,6 +280,14 @@ fn txt_round_trip() {
     assert_eq!(import("txt", &[0x63, 0x61, 0x66, 0xE9, 0x80]).unwrap().unwrap().plain_text(Default::default()), "café€");
 }
 
+#[test]
+fn txt_export_writes_symbol_font_text_as_unicode() {
+    let mut d = Document::from_text("Done J\u{F0FC}");
+    d.format_range(&wordcraft_doc::Pos::body(0, 5), &wordcraft_doc::Pos::body(0, 9), &|c| c.font = Some("Wingdings".into())).unwrap();
+    let out = export("txt", &d).unwrap().unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), "Done \u{263A}\u{2713}");
+}
+
 /// #569: a file with an extension we don't know opens as text when it is text (a playlist), and
 /// a binary file is told apart.
 #[test]

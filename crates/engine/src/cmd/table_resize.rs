@@ -1,13 +1,15 @@
 //! Resizing a table with the mouse, like Word: drag a border between columns (or the table's
-//! right edge), a row's bottom border, or the small handle just outside the table's bottom-right
-//! corner to scale the whole table. The geometry comes from the layout (what is on the page, in
+//! left or right edge), a row's bottom border, or the small handle just outside the table's
+//! bottom-right corner to scale the whole table. With cells selected, a border of theirs moves
+//! only in their rows. The geometry comes from the layout (what is on the page, in
 //! page points), so the result is what the drag showed even when autofit or a percentage width
 //! made the drawn columns differ from the stored grid. The app sends each finished drag here,
 //! so every drag is one undo step.
 
 use serde_json::Value;
-use wordcraft_doc::props::HeightRule;
-use wordcraft_doc::{Document, Path, StoryRef, Table};
+use wordcraft_doc::props::{Align, HeightRule, VMerge};
+use wordcraft_doc::table::MAX_COLS;
+use wordcraft_doc::{Cell, Document, Path, StoryRef, Table};
 use wordcraft_geom::Rect;
 use wordcraft_layout::{DocLayout, Placed};
 
@@ -27,20 +29,41 @@ const MAX_LEN: f32 = 1584.0;
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("table.resizeDrag", "Resize Table by Dragging", "Table Layout › Cell Size", resize_drag).params(
-        r#"{"page": n, "x": pt, "y": pt, "toX": pt, "toY": pt, "shift"?: bool, "reach"?: pt} (a mouse drag in page points, 0-based page, starting on a table border or the resize handle: a column border moves (the column to its right gives or takes the difference, so the table keeps its width; with shift, or on the table's right edge, only the column left of it changes); a row's bottom border sets that row's height; the handle just outside the bottom-right corner scales every column and the rows on that page. `reach` (default 3) is how near the start has to be.)"#,
+        r#"{"page": n, "x": pt, "y": pt, "toX": pt, "toY": pt, "shift"?: bool, "ctrl"?: bool, "reach"?: pt} (a mouse drag in page points, 0-based page, starting on a table border or the resize handle: a column border moves (the column to its right gives or takes the difference, so the table keeps its width; with ctrl the columns right of it share it in proportion; with shift, or on the table's right edge, only the column left of it changes); the table's left edge moves a left-aligned table's indent, the first column making up the difference (a centred or right-aligned table keeps its alignment: only the first column changes); with cells of the table selected, a border of theirs moves only in their rows; a row's bottom border sets that row's height; the handle just outside the bottom-right corner scales every column and the rows on that page. `reach` (default 3) is how near the start has to be.)"#,
     )]
 }
 
 /// What a press on the page would grab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Edge {
-    /// The vertical border at grid line `line` (1 = between the first two columns; the last is
-    /// the table's right edge).
+    /// The vertical border at grid line `line` (0 = the table's left edge, 1 = between the first
+    /// two columns; the last is the table's right edge).
     Column(usize),
     /// The bottom border of row `row`.
     Row(usize),
     /// The resize handle at the bottom-right corner.
     Corner,
+}
+
+/// Who makes up the difference when a column border moves: Word's keys while dragging.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Share {
+    /// No key: the column on the right, so the table keeps its width.
+    #[default]
+    Neighbour,
+    /// Shift (and a ruler marker): nobody; only the column on the left changes and the ones
+    /// right of it move along.
+    LeftOnly,
+    /// Ctrl: the columns on the right, in proportion to their widths, so the table keeps its
+    /// width.
+    Proportional,
+}
+
+/// Whether Shift is held.
+impl From<bool> for Share {
+    fn from(shift: bool) -> Share {
+        if shift { Share::LeftOnly } else { Share::Neighbour }
+    }
 }
 
 /// A row of the table as drawn on one page.
@@ -50,7 +73,7 @@ pub struct DrawnRow {
     pub top: f32,
     pub bottom: f32,
     /// Grid lines that are cell borders in this row (a merged cell hides the ones it covers).
-    edges: Vec<usize>,
+    pub(crate) edges: Vec<usize>,
 }
 
 /// A table border (or the handle) under the pointer, with the table's drawn geometry.
@@ -65,6 +88,10 @@ pub struct ResizeTarget {
     pub rows: Vec<DrawnRow>,
     /// Whether the table's last row is on this page (the handle is shown only then).
     pub ends_here: bool,
+    /// When cells of the table are selected and the column border is one of theirs
+    /// (`limit_to_selection`): their rows, each with the grid lines its cells' borders are on.
+    /// The border moves only there; empty, it moves in the whole column.
+    pub only: Vec<(usize, Vec<usize>)>,
 }
 
 /// What a drag to a point would make of the table.
@@ -74,6 +101,13 @@ pub struct Plan {
     pub widths: Option<Vec<f32>>,
     /// New heights (points) of these rows.
     pub heights: Vec<(usize, f32)>,
+    /// How far (points) the table's left edge moves: a left-aligned table's indent (or a
+    /// floating table's offset) changes by as much; a centred or right-aligned table keeps its
+    /// alignment.
+    pub indent_by: Option<f32>,
+    /// New cell widths (points, left to right) of the rows whose border moves on its own
+    /// (`ResizeTarget::only`).
+    pub cells: Vec<(usize, Vec<f32>)>,
 }
 
 impl ResizeTarget {
@@ -98,35 +132,52 @@ impl ResizeTarget {
         Rect::new(self.right() + 1.0, self.bottom() + 1.0, HANDLE, HANDLE)
     }
 
-    /// The new widths and heights a drag that moved the pointer by (`dx`, `dy`) points gives.
-    pub fn plan(&self, dx: f32, dy: f32, shift: bool) -> Plan {
+    /// The new widths and heights a drag that moved the pointer by (`dx`, `dy`) points gives;
+    /// `share` says who makes up a column border's move (`true`: Shift is held).
+    pub fn plan(&self, dx: f32, dy: f32, share: impl Into<Share>) -> Plan {
+        let share = share.into();
         let (dx, dy) =
             (if dx.is_finite() { dx.clamp(-MAX_LEN, MAX_LEN) } else { 0.0 }, if dy.is_finite() { dy.clamp(-MAX_LEN, MAX_LEN) } else { 0.0 });
         let mut w = self.widths();
         match self.edge {
-            Edge::Column(line) => {
-                let Some(left) = line.checked_sub(1).and_then(|i| w.get(i).copied()) else { return Plan::default() };
-                let right = w.get(line).copied();
-                let (new_left, new_right) = match right {
-                    // An inner border: the neighbour on the right makes up the difference.
-                    Some(right) if !shift => {
-                        let d = dx.clamp(MIN_COL - left, (right - MIN_COL).max(MIN_COL - left));
-                        (left + d, Some(right - d))
-                    }
-                    // The right edge (or Shift): only the column on the left changes.
-                    _ => ((left + dx).clamp(MIN_COL, MAX_LEN), None),
-                };
-                if let Some(x) = w.get_mut(line - 1) {
-                    *x = new_left;
-                }
-                if let (Some(r), Some(x)) = (new_right, w.get_mut(line)) {
-                    *x = r;
-                }
-                Plan { widths: Some(w), heights: Vec::new() }
+            // The table's left edge: the table moves in or out and the first column makes up the
+            // difference, so the other borders stay.
+            Edge::Column(0) => {
+                let Some(first) = w.first_mut() else { return Plan::default() };
+                let d = dx.clamp(*first - MAX_LEN, (*first - MIN_COL).max(*first - MAX_LEN));
+                *first -= d;
+                Plan { widths: Some(w), indent_by: Some(d), ..Plan::default() }
             }
+            // A border of selected cells: it moves in their rows only, as far as all of them let
+            // it, each row sharing the move out among its own cells.
+            Edge::Column(line) if !self.only.is_empty() => {
+                let rows: Vec<(usize, Vec<f32>, usize)> = self
+                    .only
+                    .iter()
+                    .filter_map(|(r, lines)| {
+                        let i = lines.iter().position(|g| *g == line)?.checked_sub(1)?;
+                        let xs: Vec<f32> = lines.iter().map(|g| self.cols.get(*g).copied()).collect::<Option<_>>()?;
+                        Some((*r, xs.windows(2).map(|x| (x[1] - x[0]).max(0.0)).collect(), i))
+                    })
+                    .collect();
+                let d = rows.iter().filter_map(|(_, w, i)| share_out(&mut w.clone(), *i, dx, share)).min_by(|a, b| a.abs().total_cmp(&b.abs()));
+                let Some(d) = d else { return Plan::default() };
+                let cells = rows
+                    .into_iter()
+                    .map(|(r, mut w, i)| {
+                        share_out(&mut w, i, d, share);
+                        (r, w)
+                    })
+                    .collect();
+                Plan { cells, ..Plan::default() }
+            }
+            Edge::Column(line) => match line.checked_sub(1).and_then(|i| share_out(&mut w, i, dx, share)) {
+                Some(_) => Plan { widths: Some(w), ..Plan::default() },
+                None => Plan::default(),
+            },
             Edge::Row(row) => {
                 let Some(r) = self.rows.iter().find(|r| r.row == row) else { return Plan::default() };
-                Plan { widths: None, heights: vec![(row, (r.bottom - r.top + dy).clamp(MIN_ROW, MAX_LEN))] }
+                Plan { heights: vec![(row, (r.bottom - r.top + dy).clamp(MIN_ROW, MAX_LEN))], ..Plan::default() }
             }
             Edge::Corner => {
                 let (width, height) = (self.right() - self.left(), self.bottom() - self.top());
@@ -138,22 +189,131 @@ impl ResizeTarget {
                 } else {
                     Vec::new()
                 };
-                Plan { widths, heights }
+                Plan { widths, heights, ..Plan::default() }
             }
         }
     }
+
+    /// Page x of grid line `line` once `plan` is applied: in row `row`, when that row's border
+    /// moves on its own (`Plan::cells`), else in every row.
+    pub fn planned_x(&self, plan: &Plan, row: Option<usize>, line: usize) -> f32 {
+        let left = self.left() + plan.indent_by.unwrap_or(0.0);
+        if let Some(r) = row
+            && let Some((_, w)) = plan.cells.iter().find(|(c, _)| *c == r)
+            && let Some(k) = self.only.iter().find(|(o, _)| *o == r).and_then(|(_, lines)| lines.iter().position(|g| *g == line))
+        {
+            return left + w.iter().take(k).sum::<f32>();
+        }
+        match &plan.widths {
+            Some(w) => left + w.iter().take(line).sum::<f32>(),
+            None => self.cols.get(line).copied().unwrap_or(left),
+        }
+    }
+
+    /// When the selection runs across cells of this table (Word selects them whole) and the
+    /// column border grabbed at page y `y` is one of theirs, in one of their rows, the drag
+    /// moves it only in those rows (`only`), as Word does with selected cells' borders. Not the
+    /// table's left edge, which moves the whole table, nor a border of a cell merged down into
+    /// rows outside the selection. Text selected within one cell isn't a cell selection.
+    pub fn limit_to_selection(&mut self, s: &Session, y: f32) {
+        self.only.clear();
+        let Edge::Column(line) = self.edge else { return };
+        let (a, b) = s.sel.ordered();
+        if line == 0 || s.sel.is_collapsed() || a.story != self.story || b.story != self.story {
+            return;
+        }
+        let (Some(t), Some((ra, ca)), Some((rb, cb))) =
+            (s.doc.table(self.story, &self.table), cell_in(&self.table, &a.path), cell_in(&self.table, &b.path))
+        else {
+            return;
+        };
+        if (ra, ca) == (rb, cb) {
+            return;
+        }
+        let span = |r: usize, c: usize| t.rows.get(r).and_then(|row| row.cells.get(c)).map_or(1, Cell::span);
+        let (ga, gb) = (t.grid_col(ra, ca), t.grid_col(rb, cb));
+        let (lo, hi) = (ga.min(gb), (ga + span(ra, ca)).max(gb + span(rb, cb)));
+        let (r0, r1) = (ra.min(rb), ra.max(rb));
+        let here = self.rows.iter().find(|r| y >= r.top && y <= r.bottom).map(|r| r.row);
+        if line < lo || line > hi || !here.is_some_and(|r| (r0..=r1).contains(&r)) {
+            return;
+        }
+        let mut only = Vec::new();
+        for r in r0..=r1 {
+            let Some(row) = t.rows.get(r) else { break };
+            let mut lines = vec![0usize];
+            for cell in &row.cells {
+                let g = lines.last().copied().unwrap_or(0);
+                let end = g.saturating_add(cell.span());
+                // A merged cell that goes on above or below the selection keeps one width.
+                let below =
+                    || t.cell_at_grid(r + 1, g).and_then(|c| t.rows.get(r + 1)?.cells.get(c)).is_some_and(|c| c.props.vmerge == VMerge::Continue);
+                let past = (r == r0 && cell.props.vmerge == VMerge::Continue) || (r == r1 && cell.props.vmerge != VMerge::None && below());
+                if past && (g == line || end == line) {
+                    return;
+                }
+                lines.push(end);
+            }
+            only.push((r, lines));
+        }
+        self.only = only;
+    }
+}
+
+/// Moves the border right of column `i` of `w` (column widths, left to right) by up to `dx`
+/// points, `share` saying who makes up the difference, and no column narrower than `MIN_COL`:
+/// how far it moved, or `None` when there's no column `i`.
+fn share_out(w: &mut [f32], i: usize, dx: f32, share: Share) -> Option<f32> {
+    let left = *w.get(i)?;
+    let rest: f32 = w.iter().skip(i + 1).sum();
+    let narrowest = w.iter().skip(i + 1).copied().fold(f32::INFINITY, f32::min);
+    // On the table's right edge (or with no room on the right) only the left column changes.
+    let share = match share {
+        Share::Neighbour if i + 1 < w.len() => Share::Neighbour,
+        Share::Proportional if rest > 0.0 && narrowest > 0.0 => Share::Proportional,
+        _ => Share::LeftOnly,
+    };
+    let least = MIN_COL - left;
+    let d = match share {
+        Share::Neighbour => dx.clamp(least, (w.get(i + 1).copied().unwrap_or(0.0) - MIN_COL).max(least)),
+        // As far as the narrowest column on the right, shrunk in proportion, stays `MIN_COL`.
+        Share::Proportional => dx.clamp(least, (rest * (1.0 - (MIN_COL / narrowest).min(1.0))).max(least)),
+        Share::LeftOnly => (left + dx).clamp(MIN_COL, MAX_LEN) - left,
+    };
+    if let Some(x) = w.get_mut(i) {
+        *x = left + d;
+    }
+    match share {
+        Share::Neighbour => {
+            if let Some(x) = w.get_mut(i + 1) {
+                *x -= d;
+            }
+        }
+        Share::Proportional => w.iter_mut().skip(i + 1).for_each(|x| *x *= (rest - d) / rest),
+        Share::LeftOnly => {}
+    }
+    Some(d)
+}
+
+/// The (row, cell) of table `tp` that a position at `p` is in.
+fn cell_in(tp: &Path, p: &Path) -> Option<(usize, usize)> {
+    let n = tp.0.len();
+    if p.0.len() < n + 3 || !p.0.starts_with(&tp.0) {
+        return None;
+    }
+    Some((*p.0.get(n)? as usize, *p.0.get(n + 1)? as usize))
 }
 
 /// A table cell's area on a page.
-struct CellBox {
-    rect: Rect,
-    table: Path,
-    story: StoryRef,
-    row: usize,
-    cell: usize,
+pub(crate) struct CellBox {
+    pub(crate) rect: Rect,
+    pub(crate) table: Path,
+    pub(crate) story: StoryRef,
+    pub(crate) row: usize,
+    pub(crate) cell: usize,
 }
 
-fn cell_boxes(l: &DocLayout, page: usize) -> Vec<CellBox> {
+pub(crate) fn cell_boxes(l: &DocLayout, page: usize) -> Vec<CellBox> {
     let Some(pg) = l.pages.get(page) else { return Vec::new() };
     pg.items
         .iter()
@@ -184,10 +344,12 @@ fn geometry(t: &Table, boxes: &[&CellBox]) -> Option<(Vec<f32>, Vec<DrawnRow>)> 
         if let Some(x) = lines.get_mut(end) {
             x.get_or_insert(b.rect.right());
         }
+        // A vertically merged cell's box spans all its rows (#640), so a row ends at its
+        // shortest box.
         match rows.iter_mut().find(|r| r.row == b.row) {
             Some(r) => {
                 r.top = r.top.min(b.rect.y);
-                r.bottom = r.bottom.max(b.rect.bottom());
+                r.bottom = r.bottom.min(b.rect.bottom());
                 r.edges.extend([g, end]);
             }
             None => rows.push(DrawnRow { row: b.row, top: b.rect.y, bottom: b.rect.bottom(), edges: vec![g, end] }),
@@ -215,11 +377,19 @@ fn geometry(t: &Table, boxes: &[&CellBox]) -> Option<(Vec<f32>, Vec<DrawnRow>)> 
         cols.push(x);
     }
     rows.sort_by_key(|r| r.row);
+    // A row whose every cell starts a vertical merge has only boxes that span further: it ends
+    // where the next row starts.
+    let tops: Vec<(usize, f32)> = rows.iter().map(|r| (r.row, r.top)).collect();
+    for (r, (next, top)) in rows.iter_mut().zip(tops.into_iter().skip(1)) {
+        if next == r.row.saturating_add(1) && top < r.bottom {
+            r.bottom = top.max(r.top);
+        }
+    }
     Some((cols, rows))
 }
 
 /// Every table drawn on a page, with its geometry there (`edge` is a placeholder).
-fn tables_on(l: &DocLayout, doc: &Document, page: usize) -> Vec<ResizeTarget> {
+pub(crate) fn tables_on(l: &DocLayout, doc: &Document, page: usize) -> Vec<ResizeTarget> {
     let boxes = cell_boxes(l, page);
     let mut tables: Vec<(StoryRef, &Path)> = Vec::new();
     for b in &boxes {
@@ -234,7 +404,7 @@ fn tables_on(l: &DocLayout, doc: &Document, page: usize) -> Vec<ResizeTarget> {
             let mine: Vec<&CellBox> = boxes.iter().filter(|b| b.story == story && b.table == *path).collect();
             let (cols, rows) = geometry(t, &mine)?;
             let ends_here = rows.last().is_some_and(|r| r.row + 1 == t.rows.len());
-            Some(ResizeTarget { edge: Edge::Corner, story, table: path.clone(), cols, rows, ends_here })
+            Some(ResizeTarget { edge: Edge::Corner, story, table: path.clone(), cols, rows, ends_here, only: Vec::new() })
         })
         .collect()
 }
@@ -283,8 +453,11 @@ pub fn resize_target(l: &DocLayout, doc: &Document, page: usize, x: f32, y: f32,
         // Column borders: in the row under the pointer, only lines that are cell borders there.
         let row_here = target.rows.iter().find(|r| y >= r.top && y <= r.bottom).cloned();
         if let Some(r) = &row_here {
-            for line in 1..target.cols.len() {
+            for line in 0..target.cols.len() {
+                // The table's left edge is grabbed from outside it (a point in, for the border's
+                // width): inside starts the first cell.
                 if r.edges.contains(&line)
+                    && (line > 0 || x <= left + 1.0)
                     && let Some(cx) = target.cols.get(line).copied()
                 {
                     offer((x - cx).abs(), Edge::Column(line), &mut target);
@@ -306,27 +479,23 @@ fn resize_drag(s: &mut Session, v: &Value) -> CmdResult {
         p::u64(v, "page").map(|n| usize::try_from(n).unwrap_or(usize::MAX)).ok_or_else(|| CmdError::Params("`page` (number) is required".into()))?;
     let (x, y) = (p::req_f32(v, "x")?, p::req_f32(v, "y")?);
     let (to_x, to_y) = (p::req_f32(v, "toX")?, p::req_f32(v, "toY")?);
-    let shift = p::bool(v, "shift").unwrap_or(false);
+    // Ctrl wins over Shift, as in Word.
+    let share = if p::bool(v, "ctrl").unwrap_or(false) { Share::Proportional } else { Share::from(p::bool(v, "shift").unwrap_or(false)) };
     let reach = p::f32(v, "reach").unwrap_or(REACH);
     let l = s.layout();
     if l.pages.get(page).is_none() {
         return Err(CmdError::Params(format!("no page {page}")));
     }
-    let target =
+    let mut target =
         resize_target(&l, &s.doc, page, x, y, reach).ok_or_else(|| CmdError::Failed("there's no table border or resize handle there".into()))?;
-    let plan = target.plan(to_x - x, to_y - y, shift);
-    if plan.widths.is_none() && plan.heights.is_empty() {
+    target.limit_to_selection(s, y);
+    let plan = target.plan(to_x - x, to_y - y, share);
+    if plan.widths.is_none() && plan.heights.is_empty() && plan.cells.is_empty() {
         return sel_result(s);
     }
     let t = s.doc.table_mut(target.story, &target.table)?;
-    if let Some(widths) = plan.widths
-        && widths.len() == t.cols()
-    {
-        t.grid = widths;
-        // The drag's widths are the table's now: no preferred table width scales them again.
-        t.props.width = None;
-        t.props.width_pct = None;
-        super::table::sync_cell_widths(t);
+    if let Some(widths) = plan.widths {
+        set_widths(t, widths);
     }
     for (r, h) in &plan.heights {
         if let Some(row) = t.rows.get_mut(*r) {
@@ -336,14 +505,28 @@ fn resize_drag(s: &mut Session, v: &Value) -> CmdResult {
             }
         }
     }
+    let moved = plan.indent_by.is_some_and(|d| move_left_edge(t, d));
+    if !plan.cells.is_empty() {
+        regrid(t, &target.cols, &plan.cells)?;
+    }
     touch(s, &target)?;
+    // Where a moved left edge lands isn't always its indent or offset alone (a floating table's
+    // anchor): measure where it came to and put it right once.
+    if moved
+        && let Some(d) = plan.indent_by
+        && let Some(got) = drawn_left(&s.layout(), page, &target)
+        && (got - (target.left() + d)).abs() > 0.05
+    {
+        move_left_edge(s.doc.table_mut(target.story, &target.table)?, target.left() + d - got);
+        touch(s, &target)?;
+    }
     if plan.heights.is_empty() {
         return sel_result(s);
     }
     // An "at least" height leaves out the cells' margins and border bands, which the layout adds
     // (and which depend on the table style): measure what the rows came to and take the extra
     // off once. A row its text holds taller keeps the dragged height.
-    let drawn = drawn_heights(&s.layout(), page, &target);
+    let drawn = drawn_heights(&s.layout(), &s.doc, page, &target);
     let mut fixed = Vec::new();
     let t = s.doc.table_mut(target.story, &target.table)?;
     for (r, want) in &plan.heights {
@@ -360,7 +543,7 @@ fn resize_drag(s: &mut Session, v: &Value) -> CmdResult {
         return sel_result(s);
     }
     touch(s, &target)?;
-    let again = drawn_heights(&s.layout(), page, &target);
+    let again = drawn_heights(&s.layout(), &s.doc, page, &target);
     let t = s.doc.table_mut(target.story, &target.table)?;
     for (r, want, got) in fixed {
         let now = again.iter().find(|(i, _)| *i == r).map_or(got, |(_, h)| *h);
@@ -374,20 +557,106 @@ fn resize_drag(s: &mut Session, v: &Value) -> CmdResult {
     sel_result(s)
 }
 
-/// The drawn height of each of the target table's rows on `page`.
-fn drawn_heights(l: &DocLayout, page: usize, target: &ResizeTarget) -> Vec<(usize, f32)> {
-    let mut out: Vec<(usize, f32)> = Vec::new();
-    for b in cell_boxes(l, page).iter().filter(|b| b.story == target.story && b.table == target.table) {
-        match out.iter_mut().find(|(r, _)| *r == b.row) {
-            Some((_, h)) => *h = h.max(b.rect.h),
-            None => out.push((b.row, b.rect.h)),
+/// Moves `t`'s left edge `by` points: its indent, or a floating table's offset; whether it did.
+/// A centred or right-aligned table keeps its alignment, as in Word: the first column's new width
+/// is all that changes, and the table stays centred or on its right edge.
+fn move_left_edge(t: &mut Table, by: f32) -> bool {
+    match t.props.float.as_mut() {
+        Some(f) => {
+            f.h_align = None;
+            f.x = (f.x + by).clamp(-MAX_LEN, MAX_LEN);
+            true
+        }
+        None if matches!(t.props.align, Some(Align::Center | Align::Right)) => false,
+        None => {
+            t.props.indent = Some((t.props.indent.unwrap_or(0.0) + by).clamp(-MAX_LEN, MAX_LEN));
+            true
         }
     }
-    out
+}
+
+/// Sets `t`'s grid when some rows' cells change width on their own: `rows` gives their new
+/// widths, left to right; the other rows keep their cells' borders where they are drawn (the
+/// grid lines at `cols`). The grid gets a line wherever a row has a cell border, and each cell
+/// spans the columns between its own.
+fn regrid(t: &mut Table, cols: &[f32], rows: &[(usize, Vec<f32>)]) -> Result<(), CmdError> {
+    let left = cols.first().copied().unwrap_or(0.0);
+    let last = cols.len().saturating_sub(1);
+    // Every row's cell borders, measured from the table's left edge.
+    let borders: Vec<Vec<f32>> = t
+        .rows
+        .iter()
+        .enumerate()
+        .map(|(r, row)| match rows.iter().find(|(i, w)| *i == r && w.len() == row.cells.len()) {
+            Some((_, w)) => std::iter::once(0.0)
+                .chain(w.iter().scan(0.0, |x, cw| {
+                    *x += cw;
+                    Some(*x)
+                }))
+                .collect::<Vec<f32>>(),
+            None => std::iter::once(0.0)
+                .chain(row.cells.iter().scan(0usize, |g, c| {
+                    *g = g.saturating_add(c.span());
+                    Some(cols.get((*g).min(last)).copied().unwrap_or(left) - left)
+                }))
+                .collect::<Vec<f32>>(),
+        })
+        .collect();
+    let mut lines: Vec<f32> = borders.iter().flatten().copied().collect();
+    lines.sort_by(f32::total_cmp);
+    lines.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+    if lines.len() > MAX_COLS + 1 {
+        return Err(CmdError::Failed(format!("a table can't have more than {MAX_COLS} columns")));
+    }
+    let line_at = |x: f32| lines.iter().enumerate().min_by(|(_, a), (_, b)| (*a - x).abs().total_cmp(&(*b - x).abs())).map_or(0, |(i, _)| i);
+    let mut spans: Vec<Vec<u32>> = Vec::with_capacity(borders.len());
+    for b in &borders {
+        let at: Vec<usize> = b.iter().map(|x| line_at(*x)).collect();
+        let row: Vec<u32> = at.windows(2).map(|g| g[1].saturating_sub(g[0]) as u32).collect();
+        if row.contains(&0) {
+            return Err(CmdError::Failed("the cells there are too narrow to move that border".into()));
+        }
+        spans.push(row);
+    }
+    t.grid = lines.windows(2).map(|x| x[1] - x[0]).collect();
+    for (row, row_spans) in t.rows.iter_mut().zip(spans) {
+        for (cell, span) in row.cells.iter_mut().zip(row_spans) {
+            cell.props.span = span;
+        }
+    }
+    t.props.width = None;
+    t.props.width_pct = None;
+    super::table::sync_cell_widths(t);
+    Ok(())
+}
+
+/// The page x of the target table's left edge on `page`, as drawn.
+fn drawn_left(l: &DocLayout, page: usize, target: &ResizeTarget) -> Option<f32> {
+    cell_boxes(l, page).iter().filter(|b| b.story == target.story && b.table == target.table).map(|b| b.rect.x).min_by(f32::total_cmp)
+}
+
+/// Make `widths` (one per grid column) the table's column widths, as drawn: no preferred table
+/// width scales them again.
+pub(crate) fn set_widths(t: &mut Table, widths: Vec<f32>) {
+    if widths.len() == t.cols() {
+        t.grid = widths;
+        t.props.width = None;
+        t.props.width_pct = None;
+        super::table::sync_cell_widths(t);
+    }
+}
+
+/// The drawn height of each of the target table's rows on `page`.
+fn drawn_heights(l: &DocLayout, doc: &Document, page: usize, target: &ResizeTarget) -> Vec<(usize, f32)> {
+    tables_on(l, doc, page)
+        .into_iter()
+        .find(|t| t.story == target.story && t.table == target.table)
+        .map(|t| t.rows.iter().map(|r| (r.row, r.bottom - r.top)).collect())
+        .unwrap_or_default()
 }
 
 /// Mark the table's paragraphs changed, so the layout redoes them.
-fn touch(s: &mut Session, target: &ResizeTarget) -> Result<(), CmdError> {
+pub(crate) fn touch(s: &mut Session, target: &ResizeTarget) -> Result<(), CmdError> {
     let story = target.story;
     let paths: Vec<Path> =
         s.doc.para_paths(story).into_iter().filter(|q| q.0.len() > target.table.0.len() && q.0.starts_with(&target.table.0)).collect();
@@ -522,6 +791,28 @@ mod tests {
         assert_eq!(t.edge, Edge::Column(1));
     }
 
+    /// A vertical merge lays out as one box as tall as its rows (#640); each row keeps its own
+    /// bottom border, and dragging one changes that row alone.
+    #[test]
+    fn a_vertical_merge_keeps_each_rows_border() {
+        let mut s = table_session(3, 2);
+        let (m, a, b) = (cell_rect(&mut s, 0, 0), cell_rect(&mut s, 0, 1), cell_rect(&mut s, 1, 1));
+        s.run("table.eraser", &json!({"page": 0, "x": m.x + m.w / 2.0, "y": m.bottom() + 0.5})).unwrap();
+        assert_eq!(first_table(&s).rows[1].cells[0].props.vmerge, wordcraft_doc::props::VMerge::Continue);
+        let l = s.layout();
+        let x = b.x + b.w / 2.0;
+        let t = resize_target(&l, &s.doc, 0, x, a.bottom() + 1.0, REACH).unwrap();
+        assert_eq!(t.edge, Edge::Row(0), "the border between the merged rows is still there");
+        let t = resize_target(&l, &s.doc, 0, x, b.bottom() + 1.0, REACH).unwrap();
+        assert_eq!(t.edge, Edge::Row(1), "the merge's bottom is the second row's border");
+        s.run("table.resizeDrag", &json!({"page": 0, "x": x, "y": a.bottom() + 1.0, "toX": x, "toY": a.bottom() + 21.0})).unwrap();
+        let t = first_table(&s);
+        let h = cell_rect(&mut s, 0, 1).h;
+        assert!((h - (a.h + 20.0)).abs() < 0.1, "{} → {h}", a.h);
+        assert_eq!(t.rows[1].props.height, None, "the other rows are untouched");
+        assert!((cell_rect(&mut s, 1, 1).h - b.h).abs() < 0.1);
+    }
+
     /// Away from any border, or with hostile numbers: an error and no change, never a panic.
     #[test]
     fn misses_and_hostile_params_change_nothing() {
@@ -538,5 +829,129 @@ mod tests {
         assert!(first_table(&s).grid.iter().all(|w| w.is_finite() && *w >= MIN_COL));
         s.run("edit.undo", &json!({})).unwrap();
         assert_eq!(first_table(&s), start);
+    }
+
+    /// With Ctrl the columns right of the border share the change in proportion to their
+    /// widths, so the table keeps its width (Ctrl wins over Shift); none gets narrower than the
+    /// minimum.
+    #[test]
+    fn ctrl_shares_a_border_drag_among_the_columns_right_of_it() {
+        let mut s = table_session(1, 4);
+        let (a, b, d) = (cell_rect(&mut s, 0, 0), cell_rect(&mut s, 0, 1), cell_rect(&mut s, 0, 3));
+        let y = a.y + a.h / 2.0;
+        s.run("table.resizeDrag", &json!({"page": 0, "x": a.right(), "y": y, "toX": a.right() + 30.0, "toY": y, "ctrl": true, "shift": true}))
+            .unwrap();
+        let a1 = cell_rect(&mut s, 0, 0);
+        assert!((a1.w - (a.w + 30.0)).abs() < 1.0, "{a:?} → {a1:?}");
+        for c in 1..4 {
+            let w = cell_rect(&mut s, 0, c).w;
+            assert!((w - (b.w - 10.0)).abs() < 1.0, "column {c}: {} → {w}", b.w);
+        }
+        assert!((cell_rect(&mut s, 0, 3).right() - d.right()).abs() < 1.0, "the table keeps its width");
+        // In proportion: 40 and 80 give up 10 and 20 of a 30-point move.
+        let mut w = [100.0, 40.0, 80.0];
+        assert_eq!(share_out(&mut w, 0, 30.0, Share::Proportional), Some(30.0));
+        assert!((w[1] - 30.0).abs() < 0.01 && (w[2] - 60.0).abs() < 0.01, "{w:?}");
+        // As far as the narrowest stays at the minimum.
+        let mut w = [100.0, 12.0, 120.0];
+        share_out(&mut w, 0, 500.0, Share::Proportional);
+        assert!((w[1] - MIN_COL).abs() < 0.01 && (w.iter().sum::<f32>() - 232.0).abs() < 0.01, "{w:?}");
+        assert_eq!(share_out(&mut w, 3, 1.0, Share::Proportional), None);
+    }
+
+    /// The table's left edge, grabbed from just outside it, moves the table in or out: its
+    /// indent changes and the first column makes up the difference, so the other borders stay.
+    /// A centred or right-aligned table keeps its alignment, as in Word: only the first column
+    /// changes, and the table stays centred or on its right edge.
+    #[test]
+    fn the_left_edge_moves_the_indent_and_the_first_column() {
+        let mut s = table_session(2, 3);
+        let start = first_table(&s);
+        let (a, b) = (cell_rect(&mut s, 0, 0), cell_rect(&mut s, 0, 1));
+        let y = a.y + a.h / 2.0;
+        let l = s.layout();
+        assert_eq!(resize_target(&l, &s.doc, 0, a.x - 2.0, y, REACH).map(|t| t.edge), Some(Edge::Column(0)));
+        assert!(resize_target(&l, &s.doc, 0, a.x + 2.5, y, REACH).is_none(), "inside the first cell");
+        s.run("table.resizeDrag", &json!({"page": 0, "x": a.x - 1.0, "y": y, "toX": a.x + 35.0, "toY": y})).unwrap();
+        let (a1, b1) = (cell_rect(&mut s, 0, 0), cell_rect(&mut s, 0, 1));
+        assert!((a1.x - (a.x + 36.0)).abs() < 0.5 && (a1.right() - a.right()).abs() < 0.5, "{a:?} → {a1:?}");
+        assert!((b1.x - b.x).abs() < 0.5 && (b1.w - b.w).abs() < 0.5, "the other columns stay: {b:?} → {b1:?}");
+        assert!((cell_rect(&mut s, 1, 0).x - a1.x).abs() < 0.01, "the whole table moved in");
+        assert!((first_table(&s).props.indent.unwrap() - 36.0).abs() < 0.5, "{:?}", first_table(&s).props.indent);
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(first_table(&s), start, "one undo step");
+        s.run("table.properties", &json!({"align": "center", "width": 300})).unwrap();
+        let (c, e) = (cell_rect(&mut s, 0, 0), cell_rect(&mut s, 0, 2));
+        let y = c.y + c.h / 2.0;
+        s.run("table.resizeDrag", &json!({"page": 0, "x": c.x, "y": y, "toX": c.x - 20.0, "toY": y})).unwrap();
+        let (c1, e1) = (cell_rect(&mut s, 0, 0), cell_rect(&mut s, 0, 2));
+        assert!((c1.w - (c.w + 20.0)).abs() < 0.5, "the first column takes the drag: {c:?} → {c1:?}");
+        assert!((e1.w - e.w).abs() < 0.5, "the other columns keep their widths");
+        assert!(((c1.x + e1.right()) - (c.x + e.right())).abs() < 1.0, "the table stays centred: {c:?} {e:?} → {c1:?} {e1:?}");
+        assert_eq!(first_table(&s).props.align, Some(Align::Center));
+        s.run("edit.undo", &json!({})).unwrap();
+        s.run("table.properties", &json!({"align": "right"})).unwrap();
+        let (c, e) = (cell_rect(&mut s, 0, 0), cell_rect(&mut s, 0, 2));
+        s.run("table.resizeDrag", &json!({"page": 0, "x": c.x, "y": y, "toX": c.x - 20.0, "toY": y})).unwrap();
+        let (c1, e1) = (cell_rect(&mut s, 0, 0), cell_rect(&mut s, 0, 2));
+        assert!((c1.x - (c.x - 20.0)).abs() < 0.5 && (e1.right() - e.right()).abs() < 0.5, "only the left edge moves: {c:?} → {c1:?}");
+        assert_eq!(first_table(&s).props.align, Some(Align::Right));
+    }
+
+    /// With the selection across cells, a border of theirs moves only in their rows: the grid
+    /// gets a line for those rows' border and the other rows keep theirs. Text within one cell
+    /// isn't a cell selection; a border grabbed in a row outside the selection moves in the
+    /// whole column.
+    #[test]
+    fn with_cells_selected_their_border_moves_only_in_their_rows() {
+        let mut s = table_session(3, 3);
+        let (b, d) = (cell_rect(&mut s, 1, 1), cell_rect(&mut s, 2, 1));
+        s.run("caret.set", &json!({"page": 0, "x": b.x + b.w / 2.0, "y": b.y + b.h / 2.0})).unwrap();
+        s.run("text.insert", &json!({"text": "Wide"})).unwrap();
+        let start = first_table(&s);
+        let (b, c) = (cell_rect(&mut s, 1, 1), cell_rect(&mut s, 1, 2));
+        let y = b.y + b.h / 2.0;
+        let drag = json!({"page": 0, "x": b.right(), "y": y, "toX": b.right() + 30.0, "toY": y});
+        s.run("select.text", &json!({"text": "Wide"})).unwrap();
+        s.run("table.resizeDrag", &drag).unwrap();
+        assert!((cell_rect(&mut s, 0, 1).w - (b.w + 30.0)).abs() < 1.0, "text in one cell: every row");
+        s.run("edit.undo", &json!({})).unwrap();
+        // From the second row's cell down into the third's.
+        s.run("caret.set", &json!({"page": 0, "x": d.x + d.w / 2.0, "y": d.y + d.h / 2.0, "extend": true})).unwrap();
+        s.run("table.resizeDrag", &drag).unwrap();
+        for r in [1, 2] {
+            let (b1, c1) = (cell_rect(&mut s, r, 1), cell_rect(&mut s, r, 2));
+            assert!((b1.w - (b.w + 30.0)).abs() < 1.0 && (c1.w - (c.w - 30.0)).abs() < 1.0, "row {r}: {b1:?} {c1:?}");
+        }
+        assert!((cell_rect(&mut s, 0, 1).right() - b.right()).abs() < 0.5, "the first row keeps its border");
+        let t = first_table(&s);
+        assert_eq!(t.grid.len(), 4, "{:?}", t.grid);
+        assert_eq!(t.rows[0].cells.iter().map(Cell::span).collect::<Vec<_>>(), [1, 1, 2]);
+        assert_eq!(t.rows[2].cells.iter().map(Cell::span).collect::<Vec<_>>(), [1, 2, 1]);
+        let a = cell_rect(&mut s, 0, 0);
+        let ya = a.y + a.h / 2.0;
+        s.run("table.resizeDrag", &json!({"page": 0, "x": a.right(), "y": ya, "toX": a.right() - 10.0, "toY": ya})).unwrap();
+        assert!((cell_rect(&mut s, 1, 0).w - (a.w - 10.0)).abs() < 1.0, "a row outside the selection: the whole column");
+        s.run("edit.undo", &json!({})).unwrap();
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(first_table(&s), start, "one undo step each");
+    }
+
+    /// A cell merged down past the selection keeps one width: a border of it moves in the whole
+    /// column.
+    #[test]
+    fn a_border_of_a_cell_merged_past_the_selection_moves_in_every_row() {
+        let mut s = table_session(3, 3);
+        let (a, b) = (cell_rect(&mut s, 0, 1), cell_rect(&mut s, 1, 1));
+        s.run("caret.set", &json!({"page": 0, "x": a.x + a.w / 2.0, "y": a.y + a.h / 2.0})).unwrap();
+        s.run("caret.set", &json!({"page": 0, "x": b.x + b.w / 2.0, "y": b.y + b.h / 2.0, "extend": true})).unwrap();
+        s.run("table.merge", &json!({})).unwrap();
+        let (c, e) = (cell_rect(&mut s, 1, 2), cell_rect(&mut s, 2, 2));
+        let y = c.y + c.h / 2.0;
+        s.run("caret.set", &json!({"page": 0, "x": c.x + c.w / 2.0, "y": y})).unwrap();
+        s.run("caret.set", &json!({"page": 0, "x": e.x + e.w / 2.0, "y": e.y + e.h / 2.0, "extend": true})).unwrap();
+        s.run("table.resizeDrag", &json!({"page": 0, "x": c.x, "y": y, "toX": c.x + 20.0, "toY": y})).unwrap();
+        assert_eq!(first_table(&s).grid.len(), 3, "no new grid line");
+        assert!((cell_rect(&mut s, 0, 2).x - (c.x + 20.0)).abs() < 1.0, "the first row follows");
     }
 }

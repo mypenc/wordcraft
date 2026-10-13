@@ -53,9 +53,9 @@ fn text_box(d: &mut Document, text: &str, body: TextBody) -> InlineObject {
 #[test]
 fn direction_alignment_and_links_round_trip() {
     let mut d = Document::from_text("a\nb\nc");
-    let a = text_box(&mut d, "Flows on", TextBody { vert: TextVert::Vert, anchor: VAlign::Center, next: None });
+    let a = text_box(&mut d, "Flows on", TextBody { vert: TextVert::Vert, anchor: VAlign::Center, ..Default::default() });
     let b = text_box(&mut d, "", TextBody::default());
-    let c = text_box(&mut d, "", TextBody { vert: TextVert::Stacked, anchor: VAlign::Bottom, next: None });
+    let c = text_box(&mut d, "", TextBody { vert: TextVert::Stacked, anchor: VAlign::Bottom, ..Default::default() });
     for (i, o) in [a, b, c].into_iter().enumerate() {
         d.insert_object(&wordcraft_doc::Pos::body(i, 1), o, &Default::default()).unwrap();
     }

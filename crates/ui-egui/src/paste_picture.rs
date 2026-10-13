@@ -16,8 +16,13 @@ use crate::WordApp;
 pub enum ClipboardPicture {
     /// Straight (not premultiplied) RGBA8 pixels, row by row.
     Pixels { width: usize, height: usize, rgba: Vec<u8> },
+    /// An encoded picture (PNG, JPEG, GIF, WebP, BMP) as another program offered it.
+    Encoded(Vec<u8>),
     /// Copied files (a file manager's Copy); the pictures among them are inserted.
     Files(Vec<PathBuf>),
+    /// A picture the host couldn't read, and why (its format isn't supported, the clipboard
+    /// couldn't be reached) — said instead of "the clipboard is empty" (#833).
+    Unreadable(String),
 }
 
 /// Longest side of a pasted picture, in pixels.
@@ -28,7 +33,7 @@ pub const MAX_PIXELS: usize = 50_000_000;
 pub const MAX_FILE_BYTES: u64 = 200 << 20;
 /// Most picture files one paste inserts.
 const MAX_FILES: usize = 20;
-const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
+const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "wmf", "emf"];
 
 /// PNG bytes for clipboard pixels, or why they can't be pasted.
 pub fn png_from_rgba(width: usize, height: usize, rgba: Vec<u8>) -> Result<Vec<u8>, String> {
@@ -82,6 +87,18 @@ pub(crate) fn paste(app: &mut WordApp) -> Option<Result<Value, String>> {
                 Err(e)
             }
         },
+        ClipboardPicture::Encoded(bytes) if bytes.len() as u64 > MAX_FILE_BYTES => {
+            let e = "the clipboard picture is larger than 200 MB".to_string();
+            app.status(e.clone());
+            Err(e)
+        }
+        ClipboardPicture::Encoded(bytes) => app.execute("insert.picture", json!({"data": wordcraft_engine::cmd::insert::base64_encode(&bytes)})),
+        ClipboardPicture::Unreadable(why) => {
+            let e = format!("the picture on the clipboard couldn't be read: {why}");
+            log::warn!("clipboard picture: {e}");
+            app.status(e.clone());
+            Err(e)
+        }
         ClipboardPicture::Files(files) => {
             let files: Vec<PathBuf> = files.into_iter().filter(|p| is_picture_file(p)).take(MAX_FILES).collect();
             if files.is_empty() {
@@ -105,6 +122,24 @@ pub(crate) fn paste(app: &mut WordApp) -> Option<Result<Value, String>> {
         }
     };
     Some(r)
+}
+
+/// The picture on the system clipboard as PNG (or the first copied picture file's bytes), for
+/// Paste Special to offer. `None` when there is none, or it is too large or unreadable.
+pub(crate) fn clipboard_png(app: &WordApp) -> Option<Vec<u8>> {
+    match app.services.clipboard_picture.as_ref()?()? {
+        ClipboardPicture::Pixels { width, height, rgba } => png_from_rgba(width, height, rgba).ok(),
+        ClipboardPicture::Encoded(bytes) => Some(bytes),
+        ClipboardPicture::Files(files) => {
+            let path = files.into_iter().take(MAX_FILES).find(|p| is_picture_file(p))?;
+            let size = std::fs::metadata(&path).ok()?.len();
+            if size > MAX_FILE_BYTES.min(wordcraft_engine::cmd::paste::MAX_PICTURE_BYTES as u64 / 4 * 3) {
+                return None;
+            }
+            std::fs::read(path).ok()
+        }
+        ClipboardPicture::Unreadable(_) => None,
+    }
 }
 
 /// Paste text naming copied picture files: insert the pictures when the clipboard holds those

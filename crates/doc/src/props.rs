@@ -31,11 +31,40 @@ impl Rgb {
 }
 
 /// A text colour: automatic (black on light backgrounds, white on dark) or a fixed colour.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Default)]
 pub enum TextColor {
     #[default]
     Auto,
     Rgb(Rgb),
+}
+
+impl TextColor {
+    /// `auto` or `automatic` (any case), or a colour [`Rgb::parse`] reads.
+    pub fn parse(s: &str) -> Option<TextColor> {
+        if s.eq_ignore_ascii_case("auto") || s.eq_ignore_ascii_case("automatic") { Some(TextColor::Auto) } else { Rgb::parse(s).map(TextColor::Rgb) }
+    }
+}
+
+impl<'de> Deserialize<'de> for TextColor {
+    /// Reads what it writes (`"Auto"`, `{"Rgb": [r, g, b]}`) and also a string [`TextColor::parse`]
+    /// reads, so `styles.modify` and `format.set` take the colours `format.color` takes.
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::{Error, Unexpected};
+        #[derive(Deserialize)]
+        enum Written {
+            Auto,
+            Rgb(Rgb),
+        }
+        match serde_json::Value::deserialize(d)? {
+            serde_json::Value::String(s) => {
+                TextColor::parse(&s).ok_or_else(|| D::Error::invalid_value(Unexpected::Str(&s), &"`auto`, `RRGGBB` or `#RRGGBB`"))
+            }
+            v => Ok(match serde_json::from_value(v).map_err(D::Error::custom)? {
+                Written::Auto => TextColor::Auto,
+                Written::Rgb(c) => TextColor::Rgb(c),
+            }),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -626,6 +655,33 @@ pub struct NumRef {
     pub level: u8,
 }
 
+/// A text frame's placement (`w:framePr`, ECMA-376 §17.3.1.11), in points. Offsets apply when
+/// the matching alignment is unset; anchors and the wrap keep OOXML's names.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TextFrame {
+    /// Width; `None` fits the text.
+    pub w: Option<f32>,
+    /// Height, with `h_exact` exact rather than at least; `None` fits the text.
+    pub h: Option<f32>,
+    pub h_exact: bool,
+    pub x: f32,
+    pub y: f32,
+    /// `left`, `center`, `right`, `inside`, `outside`.
+    pub x_align: Option<String>,
+    /// `top`, `center`, `bottom`, `inside`, `outside` (`inline` is no alignment).
+    pub y_align: Option<String>,
+    /// `text` (the column), `margin` or `page`.
+    pub h_anchor: String,
+    /// `text` (the paragraph), `margin` or `page`.
+    pub v_anchor: String,
+    /// `around`, `auto`, `notBeside`, `none`, `tight` or `through`.
+    pub wrap: String,
+    /// Distance from the text left and right, and above and below.
+    pub h_space: f32,
+    pub v_space: f32,
+}
+
 /// Paragraph formatting. `None` = inherit.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -659,6 +715,13 @@ pub struct ParaProps {
     pub space_before: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub space_after: Option<f32>,
+    /// HTML-style automatic space before (`w:beforeAutospacing`): 14 pt, none at the top of the
+    /// document or of a table cell, and collapsing with the space after the paragraph above.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_before_auto: Option<bool>,
+    /// HTML-style automatic space after (`w:afterAutospacing`): 14 pt, none at the end of a cell.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_after_auto: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line_spacing: Option<LineSpacing>,
     /// Ignore space before/after between paragraphs of the same style.
@@ -697,6 +760,10 @@ pub struct ParaProps {
     /// Drop cap: lines to drop (0 = none) — applies to the first character(s).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drop_cap: Option<u8>,
+    /// A text frame (`w:framePr` other than a drop cap): the paragraph is placed apart from the
+    /// text, which may wrap around it — a footer's page number in a frame, for instance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame: Option<TextFrame>,
     /// Asian typography (`w:kinsoku`): East Asian line-breaking rules — no line starts with
     /// closing punctuation such as 、。」 or ends with opening punctuation such as 「（.
     /// Unset = on.
@@ -731,9 +798,9 @@ pub struct ParaProps {
 
 impl ParaProps {
     pub fn overlay(&mut self, patch: &ParaProps) {
-        overlay_fields!(self, patch; style, align, indent_left, indent_right, indent_first, indent_left_chars, indent_right_chars, indent_first_chars, space_before, space_after, line_spacing,
+        overlay_fields!(self, patch; style, align, indent_left, indent_right, indent_first, indent_left_chars, indent_right_chars, indent_first_chars, space_before, space_after, space_before_auto, space_after_auto, line_spacing,
             contextual_spacing, mirror_indents, keep_next, keep_lines, page_break_before, widow_control, outline_level, numbering, tabs, shading, borders,
-            suppress_hyphens, suppress_line_numbers, bidi, drop_cap, kinsoku, word_wrap, overflow_punct, top_line_punct, auto_space_de, auto_space_dn,
+            suppress_hyphens, suppress_line_numbers, bidi, drop_cap, frame, kinsoku, word_wrap, overflow_punct, top_line_punct, auto_space_de, auto_space_dn,
             snap_to_grid);
     }
     pub fn overlaid(mut self, patch: &ParaProps) -> ParaProps {
@@ -1013,6 +1080,10 @@ pub struct CellProps {
     /// Which way the cell's text runs.
     pub text_direction: TextDirection,
     pub no_wrap: bool,
+    /// The cell's last paragraph takes no room when it is empty (`w:hideMark`): a row of such
+    /// empty cells shrinks to its borders.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub hide_mark: bool,
     /// Tracked formatting change (`w:tcPrChange`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fmt_change: Option<Box<PropChange<CellProps>>>,
@@ -1081,6 +1152,27 @@ mod tests {
         assert_eq!(TextDirection::from_ooxml("tb"), TextDirection::Horizontal);
         assert_eq!(TextDirection::from_ooxml("lrTbV"), TextDirection::Horizontal);
         assert_eq!(TextDirection::from_ooxml("é?"), TextDirection::Horizontal);
+    }
+
+    /// #865: a colour reads as `format.color` takes it (`RRGGBB`, `#RRGGBB`, `auto`), while what
+    /// documents and settings already hold reads and writes exactly as before.
+    #[test]
+    fn text_color_reads_hex_and_keeps_its_serialized_forms() {
+        let read = |j: &str| serde_json::from_str::<TextColor>(j);
+        let ink = TextColor::Rgb(Rgb(0x1B, 0x16, 0x11));
+        assert_eq!(read(r#""1B1611""#).unwrap(), ink);
+        assert_eq!(read(r##""#1b1611""##).unwrap(), ink);
+        assert_eq!(read(r#""auto""#).unwrap(), TextColor::Auto);
+        assert_eq!(read(r#""Automatic""#).unwrap(), TextColor::Auto);
+        for (c, j) in [(TextColor::Auto, r#""Auto""#), (ink, r#"{"Rgb":[27,22,17]}"#)] {
+            assert_eq!(serde_json::to_string(&c).unwrap(), j, "written as before");
+            assert_eq!(read(j).unwrap(), c);
+        }
+        for bad in [r#""1B161""#, r#""zzzzzz""#, r#""""#, r#"{"Rgb":"1B1611"}"#, r#"{"Hex":[1,2,3]}"#, "7", "[27,22,17]"] {
+            assert!(read(bad).is_err(), "{bad}");
+        }
+        let p: CharProps = serde_json::from_value(serde_json::json!({"color": "#1B1611", "bold": true})).unwrap();
+        assert_eq!((p.color, p.bold), (Some(ink), Some(true)));
     }
 
     #[test]

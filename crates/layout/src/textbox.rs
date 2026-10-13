@@ -14,7 +14,7 @@ use wordcraft_doc::props::{TextDirection, TextVert, VAlign};
 use wordcraft_doc::{Block, Blocks, Path, StoryRef, TextBody};
 use wordcraft_geom::Rect;
 
-use crate::{BOX_INSET_X, BOX_INSET_Y, Ctx, Placed, fit_box, layout_box};
+use crate::{Ctx, Placed, fit_box, layout_box};
 
 /// Linked text boxes for one layout, worked out when a linked box is first laid out.
 #[derive(Default)]
@@ -54,12 +54,14 @@ pub(crate) fn shown_story(ctx: &mut Ctx, id: u32) -> u32 {
     }
 }
 
-/// Line length and the depth lines stack in, for a `w` × `h` box whose text runs `vert`.
-fn frame(vert: TextVert, w: f32, h: f32) -> (f32, f32) {
+/// Line length and the depth lines stack in, for a `w` × `h` box whose text runs as `body`
+/// says, inside its internal margins.
+fn frame(body: &TextBody, w: f32, h: f32) -> (f32, f32) {
     let (w, h) = (wordcraft_geom::finite(w), wordcraft_geom::finite(h));
-    let (along, across) = match vert.turn() {
-        TextDirection::Horizontal => (w - 2.0 * BOX_INSET_X, h - 2.0 * BOX_INSET_Y),
-        _ => (h - 2.0 * BOX_INSET_Y, w - 2.0 * BOX_INSET_X),
+    let [l, t, r, b] = body.insets_pt();
+    let (along, across) = match body.vert.turn() {
+        TextDirection::Horizontal => (w - l - r, h - t - b),
+        _ => (h - t - b, w - l - r),
     };
     (along.max(12.0), across)
 }
@@ -97,7 +99,7 @@ fn lay(ctx: &mut Ctx, id: u32, blocks: &Blocks, len: f32, vert: TextVert, depth:
 /// share of a linked chain's, cut to what fits, aligned and turned as the box says.
 pub(crate) fn box_items(ctx: &mut Ctx, id: u32, rect: Rect, depth: usize) -> Vec<Placed> {
     let body = ctx.doc.parts.get(&id).map(|p| p.body).unwrap_or_default();
-    let (len, across) = frame(body.vert, rect.w, rect.h);
+    let (len, across) = frame(&body, rect.w, rect.h);
     let items = match chain_share(ctx, id, depth) {
         Some(items) => items,
         None => {
@@ -107,8 +109,9 @@ pub(crate) fn box_items(ctx: &mut Ctx, id: u32, rect: Rect, depth: usize) -> Vec
             let blocks = ctx.doc.parts.get(&id).map(|p| p.blocks.clone()).unwrap_or_default();
             let inner = lay(ctx, id, &blocks, len, body.vert, depth);
             ctx.boxes.leave();
-            // Text that doesn't fit inside the margins is hidden, as in Word.
-            fit_box(inner, across)
+            // Text that doesn't fit inside the margins is hidden, as in Word; a box that resizes
+            // to fit its text shows it all (#743).
+            if body.auto_fit { inner } else { fit_box(inner, across) }
         }
     };
     place(items, &body, rect, across)
@@ -124,11 +127,12 @@ fn place(mut items: Vec<Placed>, body: &TextBody, rect: Rect, across: f32) -> Ve
         VAlign::Bottom => (across - used).max(0.0),
     };
     let turn = body.vert.turn();
+    let [l, t, r, b] = body.insets_pt();
     let (ox, oy) = match turn {
-        TextDirection::Horizontal => (rect.x + BOX_INSET_X, rect.y + BOX_INSET_Y + off),
+        TextDirection::Horizontal => (rect.x + l, rect.y + t + off),
         // Top-to-bottom lines stack from the right edge, bottom-to-top ones from the left.
-        TextDirection::Down => (rect.right() - BOX_INSET_X - off, rect.y + BOX_INSET_Y),
-        TextDirection::Up => (rect.x + BOX_INSET_X + off, rect.bottom() - BOX_INSET_Y),
+        TextDirection::Down => (rect.right() - r - off, rect.y + t),
+        TextDirection::Up => (rect.x + l + off, rect.bottom() - b),
     };
     for it in &mut items {
         it.turn(turn, ox, oy);
@@ -204,7 +208,7 @@ fn flow(ctx: &mut Ctx, chain: &[u32], depth: usize) -> Vec<Vec<Placed>> {
         };
         let body = ctx.doc.parts.get(id).map(|p| p.body).unwrap_or_default();
         let (w, h) = sizes.get(id).copied().unwrap_or((0.0, 0.0));
-        let (len, across) = frame(body.vert, w, h);
+        let (len, across) = frame(&body, w, h);
         let key = (len.to_bits(), body.vert);
         let items = match layouts.iter().find(|(k, _)| *k == key) {
             Some((_, items)) => items.clone(),

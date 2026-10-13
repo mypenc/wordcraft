@@ -155,6 +155,7 @@
 	Right (vertical)	右 (縦書き)
 	Ruby text:	ルビ文字:
 	Save documents	ドキュメントの保存
+	Search	検索
 	Search for templates	テンプレートを検索
 	Show all revisions inline	すべての変更履歴を本文中に表示
 	Show documents with their colours inverted, like View › Switch Modes. Saving, printing and PDFs are unchanged.	表示 › モードの切り替えと同様に、文書の色を反転して表示します。保存、印刷、PDF は変わりません。
@@ -198,6 +199,7 @@
 	Page Border	ページ罫線の設定
 	Apply to:	適用先:
 	These marks show even when Show/Hide ¶ is off.	これらの記号は、[編集記号の表示/非表示 ¶] がオフでも表示されます。
+	Title Bar	タイトル バー
 	Typing replaces selected text	入力時に選択文字列を置き換える
 	Update fields before printing	印刷前にフィールドを更新する
 	Use the Insert key to switch overtype on and off	Insert キーで上書きのオンとオフを切り替える
@@ -469,6 +471,7 @@
 	Insert Above	上に行を挿入
 	Insert Below	下に行を挿入
 	Insert Caption	図表番号の挿入
+	Insert Caption…	図表番号の挿入…
 	Insert Citation	引用文献の挿入
 	Insert Endnote	文末脚注の挿入
 	Insert Footnote	脚注の挿入
@@ -858,6 +861,7 @@
 	Table of Contents	目次
 	Table of\nContents	目次
 	Table Properties	表のプロパティ
+	Table Properties…	表のプロパティ…
 	Table Row Height	表の行の高さ
 	Table Style Options	表スタイルのオプション
 	Table Styles	表のスタイル
@@ -907,6 +911,10 @@
 	Underline Words Only	単語のみ下線
 	Undo	元に戻す
 	Undo {action}	元に戻す: {action}
+	Undo Actions	複数の操作を元に戻す
+	Undo History	元に戻す履歴
+	Undo 1 Action	1 件の操作を元に戻す
+	Undo {n} Actions	{n} 件の操作を元に戻す
 	Ungroup	グループ解除
 	Up	上
 	Update Field	フィールドの更新
@@ -1073,6 +1081,8 @@
 	Keeps the fonts and formatting of the copied text.	コピーしたテキストのフォントと書式を保持します。
 	Reads the clipboard's rich text and keeps its formatting.	クリップボードの RTF を読み込み、書式を保持します。
 	Reads the clipboard's web content and keeps its formatting.	クリップボードの Web コンテンツを読み込み、書式を保持します。
+	Picture	画像
+	Pastes the clipboard's picture.	クリップボードの画像を貼り付けます。
 	Drops all formatting and pastes plain text.	書式をすべて取り除き、プレーン テキストとして貼り付けます。
 	Advanced Find	高度な検索
 	Advanced Find…	高度な検索…
@@ -1428,6 +1438,8 @@
 	Border lines	罫線
 	Capitalize first letter of sentences	文の先頭文字を大文字にする
 	Capitalize first letter of table cells	表のセルの先頭文字を大文字にする
+	Correct TWo INitial CApitals	先頭 2 文字の大文字を修正する
+	Correct accidental usage of cAPS LOCK key	Caps Lock キーの押し間違いを修正する
 	Capitalize names of days	曜日の先頭文字を大文字にする
 	Case changes	大文字/小文字の変更
 	Character level	文字単位
@@ -2053,3 +2065,13 @@
 	Your system has animation effects turned on.	システムのアニメーション効果はオンです。
 	Your system has animation effects turned off.	システムのアニメーション効果はオフです。
 	Your system doesn't report an animation setting, so animation effects stay on.	システムからアニメーションの設定を取得できないため、アニメーション効果はオンのままです。
+	Select Column	列の選択
+	Select Table Cells by Clicking	クリックで表のセルを選択
+	Insert Row or Column by Clicking	クリックで行または列を挿入
+	Move Table by Dragging	ドラッグで表を移動
+	AutoFit Column by Double-Clicking	ダブルクリックで列の幅を自動調整
+	Region:	地域:
+	Automatic ({region})	自動 ({region})
+	Start-up	起動
+	Show the Start screen when WordCraft starts	WordCraft の起動時にスタート画面を表示する
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	オン: WordCraft は [ファイル] › [ホーム] で開き、白紙の文書、テンプレート、最近使った文書を表示します。オフ: 白紙の文書を開きます。

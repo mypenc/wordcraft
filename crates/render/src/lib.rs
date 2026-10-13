@@ -200,6 +200,24 @@ pub fn image_size(bytes: &[u8]) -> Option<(u32, u32)> {
     image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?.into_dimensions().ok()
 }
 
+/// The natural size in points of a Windows Metafile or Enhanced Metafile picture, and the file
+/// extension it is stored under (`"wmf"` or `"emf"`), or None for anything else (#802). Very large
+/// frames are scaled down to 22 inches on the longer side, keeping the shape.
+pub fn metafile_size(bytes: &[u8]) -> Option<(f32, f32, &'static str)> {
+    if !wordcraft_metafile::is_metafile(bytes) {
+        return None;
+    }
+    let pic = wordcraft_metafile::parse(bytes).ok()?;
+    let (w, h) = (pic.width, pic.height);
+    if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
+        return None;
+    }
+    let k = (1584.0 / w.max(h)).min(1.0);
+    // An EMF starts with its header record, type 1.
+    let ext = if bytes.get(..4) == Some(&[1, 0, 0, 0]) { "emf" } else { "wmf" };
+    Some((w * k, h * k, ext))
+}
+
 /// A metafile (WMF/EMF) picture, parsed once. The geometry comes placed by the metafile crate; the
 /// bitmaps are pixmaps, one per picture item (None for paths and undecodable bitmaps).
 struct Vector {
@@ -402,6 +420,44 @@ pub fn render_region(doc: &Document, page: &Page, w: u32, h: u32, view: Affine, 
     }
     for it in &items {
         draw(&mut ctx, doc, it, view, &visible, opts);
+    }
+    ctx.flush();
+    let mut pixels = vec![0u8; w16 as usize * h16 as usize * 4];
+    let mut res = Resources::new();
+    if let Some(pm) = vello_cpu::PixmapMut::new(w16, h16, &mut pixels) {
+        ctx.render(pm, &mut res);
+    }
+    Rendered { width: w16 as u32, height: h16 as u32, pixels }
+}
+
+/// One line of `text` in `face` at `size` points, black on white, in a `w`×`h` point raster at
+/// `scale` pixels per point, starting `margin` points in with the baseline `margin` + the face's
+/// ascent down: a font list entry. Outlines come straight from the face, not the shared outline
+/// cache, so a face read just for the preview leaves nothing behind once dropped (#848).
+pub fn render_text_line(face: &wordcraft_fonts::FontFace, text: &str, size: f32, w: f32, h: f32, margin: f32, scale: f32) -> Rendered {
+    let fin = |v: f32, d: f32| if v.is_finite() && v >= 0.0 { v } else { d };
+    let (size, w, h, margin) = (fin(size, 12.0).min(1000.0) as f64, fin(w, 1.0), fin(h, 1.0), fin(margin, 0.0).min(1000.0) as f64);
+    let scale = if scale.is_finite() && scale > 0.0 { scale.min(16.0) } else { 1.0 };
+    let (w16, h16) = (((w * scale).ceil() as u32).clamp(1, MAX_SIDE) as u16, ((h * scale).ceil() as u32).clamp(1, MAX_SIDE) as u16);
+    let mut ctx = RenderContext::new_with(w16, h16, vello_cpu::RenderSettings { num_threads: 0, ..Default::default() });
+    ctx.set_transform(Affine::IDENTITY);
+    ctx.set_paint(color(Rgb(255, 255, 255), 1.0));
+    ctx.fill_rect(&kurbo::Rect::new(0.0, 0.0, w16 as f64, h16 as f64));
+    ctx.set_paint(color(Rgb(0, 0, 0), 1.0));
+    let upem = if face.upem.is_finite() && face.upem > 0.0 { face.upem } else { 1000.0 };
+    let k = size / upem;
+    let view = Affine::scale(scale as f64);
+    let ascent = if face.ascent.is_finite() { face.ascent.clamp(0.0, upem * 4.0) } else { upem * 0.8 };
+    let baseline = margin + ascent * k;
+    let mut x = margin;
+    for g in wordcraft_fonts::shape(face, text, &[], |c| c) {
+        let o = face.glyph_outline(g.gid);
+        ctx.set_transform(view * Affine::translate((x + g.x_offset as f64 * k, baseline - g.y_offset as f64 * k)) * Affine::scale(k));
+        ctx.fill_path(&o);
+        x += g.x_advance as f64 * k;
+        if x > w as f64 {
+            break;
+        }
     }
     ctx.flush();
     let mut pixels = vec![0u8; w16 as usize * h16 as usize * 4];

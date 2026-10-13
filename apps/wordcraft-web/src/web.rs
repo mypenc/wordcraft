@@ -9,7 +9,7 @@ use wordcraft_engine::Session;
 use wordcraft_ui_egui::{Inbox, Services, WordApp};
 
 const DOC_EXTS: &[&str] = &["docx", "docm", "dotx", "dotm", "doc", "dot", "odt", "rtf", "txt", "md", "html", "htm", "tex", "json", "xml"];
-const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
+const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "wmf", "emf"];
 const RECIPIENT_EXTS: &[&str] = &["csv", "tsv", "txt", "xlsx", "xlsm", "ods"];
 mod font_store;
 const CANVAS_ID: &str = "wordcraft_canvas";
@@ -51,9 +51,19 @@ pub fn start() {
                     if let Err(e) = listen_for_pasted_pictures(inbox.clone(), cc.egui_ctx.clone()) {
                         log::error!("pasting pictures is unavailable: {e}");
                     }
-                    let doc = if query().contains("sample") { wordcraft_engine::sample::sample_document() } else { wordcraft_doc::Document::new() };
-                    let mut app = WordApp::new(Session::new(doc), services(inbox.clone(), cc.egui_ctx.clone(), dirty, saves.clone()));
+                    // The browser's locale picks the new document's paper, the units and the
+                    // decimal separator (#838).
+                    let region = wordcraft_ui_egui::i18n::system_region();
+                    let sample = query().contains("sample");
+                    let doc = if sample { wordcraft_engine::sample::sample_document() } else { wordcraft_engine::blank_document(&region) };
+                    let mut session = Session::new(doc);
+                    session.system_region = region;
+                    let mut app = WordApp::new(session, services(inbox.clone(), cc.egui_ctx.clone(), dirty, saves.clone()));
                     app.autosave = false;
+                    // No document to show: start on File › Home, as the desktop app does (#766).
+                    if !sample {
+                        app.start_screen();
+                    }
                     Ok(Box::new(WebShell { app, inbox, saves }))
                 }),
             )

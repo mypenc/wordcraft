@@ -162,6 +162,7 @@
 	Border Painter	Pincel de bordas
 	Border\nPainter	Pincel\nde bordas
 	Borders	Bordas
+	Search	Pesquisar
 	Show the mini toolbar when text is selected	Mostrar a minibarra de ferramentas ao selecionar texto
 	Spaces	Espaços
 	Spelling	Ortografia
@@ -178,6 +179,7 @@
 	Page Border	Borda da página
 	Apply to:	Aplicar a:
 	These marks show even when Show/Hide ¶ is off.	Estas marcas aparecem mesmo com Mostrar/ocultar ¶ desativado.
+	Title Bar	Barra de título
 	Typing replaces selected text	O que você digita substitui o texto selecionado
 	Update fields before printing	Atualizar campos antes de imprimir
 	Use the Insert key to switch overtype on and off	Usar a tecla Insert para ativar e desativar a sobrescrita
@@ -470,6 +472,7 @@
 	Insert Above	Inserir acima
 	Insert Below	Inserir abaixo
 	Insert Caption	Inserir legenda
+	Insert Caption…	Inserir legenda…
 	Insert Citation	Inserir citação
 	Insert Endnote	Inserir nota de fim
 	Insert Footnote	Inserir nota de rodapé
@@ -859,6 +862,7 @@
 	Table of Contents	Sumário
 	Table of\nContents	Sumário
 	Table Properties	Propriedades da tabela
+	Table Properties…	Propriedades da tabela…
 	Table Row Height	Altura da linha da tabela
 	Table Style Options	Opções de estilo de tabela
 	Table Styles	Estilos de tabela
@@ -907,6 +911,10 @@
 	Underline Words Only	Sublinhar somente palavras
 	Undo	Desfazer
 	Undo {action}	Desfazer {action}
+	Undo Actions	Desfazer ações
+	Undo History	Histórico de desfazer
+	Undo 1 Action	Desfazer 1 ação
+	Undo {n} Actions	Desfazer {n} ações
 	Ungroup	Desagrupar
 	Up	Para cima
 	Update Field	Atualizar campo
@@ -1085,6 +1093,8 @@
 	Keeps the fonts and formatting of the copied text.	Mantém as fontes e a formatação do texto copiado.
 	Reads the clipboard's rich text and keeps its formatting.	Lê o rich text da área de transferência e mantém a formatação.
 	Reads the clipboard's web content and keeps its formatting.	Lê o conteúdo web da área de transferência e mantém a formatação.
+	Picture	Imagem
+	Pastes the clipboard's picture.	Cola a imagem da área de transferência.
 	Drops all formatting and pastes plain text.	Remove toda a formatação e cola texto simples.
 	Advanced Find	Localização avançada
 	Advanced Find…	Localização avançada…
@@ -1440,6 +1450,8 @@
 	Border lines	Linhas de borda
 	Capitalize first letter of sentences	Primeira letra das frases em maiúscula
 	Capitalize first letter of table cells	Primeira letra das células em maiúscula
+	Correct TWo INitial CApitals	Corrigir DUas INiciais MAiúsculas
+	Correct accidental usage of cAPS LOCK key	Corrigir o uso acidental da tecla cAPS LOCK
 	Capitalize names of days	Nomes dos dias em maiúscula
 	Case changes	Alterações de maiúsculas
 	Character level	Nível de caractere
@@ -2065,3 +2077,13 @@
 	Your system has animation effects turned on.	Seu sistema está com os efeitos de animação ativados.
 	Your system has animation effects turned off.	Seu sistema está com os efeitos de animação desativados.
 	Your system doesn't report an animation setting, so animation effects stay on.	Seu sistema não informa uma configuração de animação, então os efeitos de animação continuam ativados.
+	Select Column	Selecionar coluna
+	Select Table Cells by Clicking	Selecionar células da tabela clicando
+	Insert Row or Column by Clicking	Inserir linha ou coluna clicando
+	Move Table by Dragging	Mover tabela arrastando
+	AutoFit Column by Double-Clicking	Autoajustar coluna com clique duplo
+	Region:	Região:
+	Automatic ({region})	Automático ({region})
+	Start-up	Inicialização
+	Show the Start screen when WordCraft starts	Mostrar a tela inicial ao abrir o WordCraft
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Ativado: o WordCraft abre em Arquivo › Início, com um documento em branco, os modelos e seus documentos recentes. Desativado: abre um documento em branco.

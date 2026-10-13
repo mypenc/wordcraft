@@ -61,7 +61,7 @@ fn xdg_mime_args(desktop_id: &str) -> Vec<String> {
 /// The `applications` folders the desktop looks for entries in, from `XDG_DATA_HOME` (default
 /// `~/.local/share`) and `XDG_DATA_DIRS` (default `/usr/local/share:/usr/share`). Relative paths
 /// are ignored, as the XDG Base Directory spec says.
-#[cfg(any(all(unix, not(target_os = "macos")), test))]
+#[cfg(all(unix, any(not(target_os = "macos"), test)))]
 fn application_dirs(data_home: Option<&str>, data_dirs: Option<&str>, home: Option<&str>) -> Vec<std::path::PathBuf> {
     use std::path::{Path, PathBuf};
     let absolute = |s: &&str| Path::new(s).is_absolute();
@@ -130,6 +130,7 @@ mod xdg {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::path::PathBuf;
 
     use super::*;
@@ -163,6 +164,7 @@ mod tests {
         assert!(entry.lines().any(|l| l == "Exec=wordcraft %F"), "files are passed on the command line");
     }
 
+    #[cfg(unix)]
     #[test]
     fn application_dirs_follow_the_xdg_spec() {
         let p = |s: &str| PathBuf::from(s);

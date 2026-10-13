@@ -451,9 +451,42 @@ fn resolve_sel(s: &mut Session, accept: bool) -> CmdResult {
         // The change at the caret: the run around it, else the paragraph mark right after it,
         // else the paragraph's formatting, else the table cell's.
         let found = s.doc.para_at(&a).and_then(|p| {
-            p.run_ranges()
-                .find(|(r, c)| r.start <= a.off && a.off <= r.end && (c.ins.is_some() || c.del.is_some() || c.fmt_change.is_some()))
-                .map(|(r, _)| r)
+            let runs: Vec<_> = p.run_ranges().collect();
+            let i = runs
+                .iter()
+                .position(|(r, c)| r.start <= a.off && a.off <= r.end && (c.ins.is_some() || c.del.is_some() || c.fmt_change.is_some()))?;
+            let (mut start, mut end) = (runs[i].0.start, runs[i].0.end);
+            let key = (runs[i].1.ins, runs[i].1.del);
+            if key == (None, None) {
+                return Some(start..end);
+            }
+            // Comment anchors split a revision's text into several runs; the revision goes on past them.
+            let is_anchor =
+                |k: usize| matches!(p.object_at(runs[k].0.start), Some(InlineObject::CommentStart { .. } | InlineObject::CommentEnd { .. }));
+            let same = |k: usize| (runs[k].1.ins, runs[k].1.del) == key;
+            let mut k = i;
+            while k > 0 {
+                if same(k - 1) {
+                    k -= 1;
+                } else if is_anchor(k - 1) && k > 1 && same(k - 2) {
+                    k -= 2;
+                } else {
+                    break;
+                }
+                start = runs[k].0.start;
+            }
+            let mut k = i;
+            while k + 1 < runs.len() {
+                if same(k + 1) {
+                    k += 1;
+                } else if is_anchor(k + 1) && k + 2 < runs.len() && same(k + 2) {
+                    k += 2;
+                } else {
+                    break;
+                }
+                end = runs[k].0.end;
+            }
+            Some(start..end)
         });
         let para_fmt = s.doc.para_at(&a).is_some_and(|p| p.props.fmt_change.is_some() || p.props.num_change.is_some());
         let mark_fmt = s.doc.para_at(&a).is_some_and(|p| a.off == p.len() && p.mark.fmt_change.is_some());
@@ -720,7 +753,11 @@ fn word_count(s: &mut Session, v: &Value) -> CmdResult {
     } else {
         s.selected_text()
     };
-    let words = wordcraft_doc::count_words(&text);
+    let words = if s.sel.is_collapsed() || super::objects::object_selection(s).is_some() {
+        stories.iter().map(|st| s.doc.story_word_count(*st)).sum()
+    } else {
+        wordcraft_doc::count_words(&text)
+    };
     let chars = text.chars().filter(|c| *c != '\n').count();
     let chars_no_spaces = text.chars().filter(|c| !c.is_whitespace()).count();
     let paragraphs = text.split('\n').filter(|l| !l.trim().is_empty()).count();
@@ -1173,6 +1210,29 @@ mod tests {
 
     fn body_para(s: &Session) -> &wordcraft_doc::Paragraph {
         s.doc.para(wordcraft_doc::StoryRef::Body, &wordcraft_doc::Path::top(0)).unwrap()
+    }
+
+    /// A comment inside a tracked insertion splits it into several runs; Accept and Reject at the
+    /// caret resolve the whole insertion, not just the run around the caret.
+    #[test]
+    fn accept_and_reject_cover_a_change_split_by_a_comment() {
+        for accept in [true, false] {
+            let mut s = Session::new(Document::new());
+            s.view.proofing = false;
+            s.author = "Ana".into();
+            s.run("review.trackChanges", &json!({"value": true})).unwrap();
+            s.run("text.insert", &json!({"text": "hello world"})).unwrap();
+            s.run("select.range", &json!({"anchor": {"block": 0, "off": 3}, "focus": {"block": 0, "off": 8}})).unwrap();
+            s.run("review.newComment", &json!({"text": "note"})).unwrap();
+            assert!(body_para(&s).runs.len() > 3, "the comment anchors split the insertion");
+            s.run("select.range", &json!({"anchor": {"block": 0, "off": 1}, "focus": {"block": 0, "off": 1}})).unwrap();
+            s.run(if accept { "review.accept" } else { "review.reject" }, &json!({})).unwrap();
+            let p = body_para(&s);
+            assert!(p.runs.iter().all(|r| r.props.ins.is_none()), "no tracked insertion is left");
+            // The comment's anchors are objects in the text; read past them.
+            let shown: String = p.text.chars().filter(|c| *c != wordcraft_doc::para::OBJ).collect();
+            assert_eq!(shown.contains("hello"), accept, "{:?}", p.text);
+        }
     }
 
     /// "plain words here" with "words" made bold, then 14 pt, and the paragraph centred, under

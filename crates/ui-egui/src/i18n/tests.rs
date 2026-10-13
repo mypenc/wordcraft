@@ -644,7 +644,10 @@ fn estonian_covers_the_interface_catalog_and_keeps_count_labels_neutral() {
     use std::collections::HashSet;
     let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
     let et = lang("et");
-    assert_eq!(keys(et.0.source), keys(lang("es").0.source));
+    // Estonian carries the interface catalog; Spanish and Turkish add the equation gallery and
+    // built-in style names on top.
+    assert!(keys(et.0.source).is_subset(&keys(lang("es").0.source)));
+    assert!(keys(et.0.source).is_subset(&keys(lang("tr").0.source)));
     assert!(keys(lang("zh-hans").0.source).is_subset(&keys(et.0.source)));
     assert_eq!(tr(et, "Home"), "Avaleht");
     assert_eq!(tr(et, "Save"), "Salvesta");
@@ -919,9 +922,11 @@ fn polish_covers_every_key_of_every_other_catalog() {
     use std::collections::HashSet;
     let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
     let polish = keys(lang("pl").0.source);
-    // Russian, Italian, Hungarian and Turkish also translate the built-in style names and the equation gallery,
-    // which the others don't yet; Polish matches every other catalog.
-    for other in Lang::all().filter(|l| *l != Lang::EN && !matches!(l.code(), "pl" | "ru" | "it" | "hu" | "tr")) {
+    // Italian and Hungarian still carry "Style: APA", which the interface no longer shows;
+    // Hungarian and Bulgarian also name the citation styles, and Bulgarian has a few one-line
+    // pieces of gallery labels. Polish matches every other catalog, including the style names and
+    // equation gallery Russian translates.
+    for other in Lang::all().filter(|l| *l != Lang::EN && !matches!(l.code(), "pl" | "it" | "hu" | "bg")) {
         let mut missing: Vec<String> = keys(other.0.source).difference(&polish).cloned().collect();
         missing.sort();
         assert!(missing.is_empty(), "pl lacks {}'s {missing:?}", other.code());
@@ -997,9 +1002,9 @@ fn a_polish_interface_writes_new_documents_in_polish() {
 }
 
 #[test]
-fn only_polish_has_an_editing_language() {
+fn the_editing_languages_are_the_ones_wordcraft_can_proof() {
     let with: Vec<(&str, &str)> = Lang::all().filter_map(|l| l.editing_lang().map(|e| (l.code(), e))).collect();
-    assert_eq!(with, [("pl", "pl-PL")]);
+    assert_eq!(with, [("pt-br", "pt-BR"), ("pl", "pl-PL")]);
 }
 
 #[test]
@@ -1108,4 +1113,81 @@ fn bundled_interface_fonts_cover_italian_letters() {
             assert_ne!(face.glyph_for(ch), 0, "{family} {style} lacks {ch}");
         }
     }
+}
+
+#[test]
+fn bulgarian_locales_and_saved_preference_work_without_changing_the_document() {
+    let bg = lang("bg");
+    for tag in ["bg", "bg-BG", "bg_BG.UTF-8", "BG-bg", "bg-Cyrl-BG"] {
+        assert_eq!(lang_from_tag(tag), Some(bg), "{tag}");
+    }
+    assert_eq!(first_supported(["ko-KR", "bg-BG", "en-US"]), Some(bg));
+    let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+    let before = serde_json::to_value(&app.session.doc).unwrap();
+    let result = app.run("ui.language", serde_json::json!({"value": "BG"})).unwrap();
+    assert_eq!(result["effective"], "bg");
+    assert_eq!(app.ui.language, "bg");
+    assert!(result["available"].as_array().unwrap().iter().any(|l| l["code"] == "bg" && l["name"] == "Български"));
+    assert_eq!(serde_json::to_value(&app.session.doc).unwrap(), before);
+    let saved = serde_json::to_string(&app.ui).unwrap();
+    let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
+    assert_eq!(Lang::from_pref(&restored.language), bg);
+    assert_eq!(bg.name(), "Български");
+}
+
+#[test]
+fn bulgarian_covers_the_entire_existing_interface_catalog() {
+    use std::collections::HashSet;
+    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
+    // Every key the interface looks up (Spanish carries them all), and no catalog errors.
+    assert!(keys(lang("bg").0.source).is_superset(&keys(lang("es").0.source)));
+    assert!(parse_entries(lang("bg").0.source).1.is_empty());
+    let bg = lang("bg");
+    for (source, expected) in [
+        ("Home", "Начало"),
+        ("Insert", "Вмъкване"),
+        ("Font", "Шрифт"),
+        ("Paragraph", "Абзац"),
+        ("Review", "Преглед"),
+        ("Save", "Запазване"),
+        ("Heading 1", "Заглавие 1"),
+        ("Hyphenation", "Сричкопренасяне"),
+        ("Track Changes", "Проследяване на промените"),
+        ("WordCraft", "WordCraft"),
+        ("unknown future label", "unknown future label"),
+    ] {
+        assert_eq!(tr(bg, source), expected, "{source}");
+    }
+    // The search hint's example must find the command it names.
+    assert_eq!(tr(bg, "Insert Table"), "Вмъкване на таблица");
+    assert!(tr(bg, "Type a command, e.g. \"insert table\"").contains("вмъкване на таблица"));
+    assert_eq!(fmt(tr(bg, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Страница 3 от 9");
+    // Count-neutral wording is grammatical for every count: `Думи: 21`, `Думи: 1 от 21`.
+    for count in [0, 1, 2, 5, 21, 100, 1000] {
+        let words = count.to_string();
+        assert_eq!(fmt(tr(bg, "{words} words"), &[("words", &words)]), format!("Думи: {count}"));
+        assert_eq!(fmt(tr(bg, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Думи: 1 от {count}"));
+    }
+}
+
+#[test]
+fn bundled_interface_fonts_cover_bulgarian_without_system_fallbacks() {
+    let db = wordcraft_fonts::FontDb::with_font_dirs(Vec::new());
+    let (entries, errors) = parse_entries(lang("bg").0.source);
+    assert!(errors.is_empty());
+    let chars: std::collections::HashSet<char> = entries
+        .iter()
+        .flat_map(|e| e.translation.chars())
+        // Cyrillic letters plus the Bulgarian quotes and dash; symbols come from the English sources.
+        .filter(|c| ('\u{0400}'..='\u{04FF}').contains(c) || matches!(c, '„' | '“' | '—' | '–'))
+        .chain("АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯабвгдежзийклмнопрстуфхцчшщъьюя".chars())
+        .collect();
+    for (family, style) in [("Inter", "Regular"), ("Inter", "Medium"), ("Inter", "SemiBold"), ("JetBrains Mono", "Regular")] {
+        let face = db.face(family, style);
+        assert_eq!(face.family, family, "must use the bundled interface face");
+        for ch in &chars {
+            assert_ne!(face.glyph_for(*ch), 0, "{family} {style} lacks {ch}");
+        }
+    }
+    assert!(!lang("bg").uses_cjk());
 }

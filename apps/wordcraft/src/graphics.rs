@@ -20,17 +20,27 @@ pub struct Dx12Adapter {
 /// The backends to initialize on Windows.
 ///
 /// An explicit `backend_override` (normally `Backends::from_env()`, i.e. `WGPU_BACKEND`) always
-/// wins. Otherwise DirectX 12 only, as long as `dx12_adapters` (what a DirectX 12-only probe found)
-/// contains a usable hardware GPU. Without one, OpenGL is the way to the GPU: graphics chips whose
-/// driver has no DirectX 12 support (Intel 4th generation on Windows 11, #316) still have an
-/// OpenGL driver, and GL can't reach the AMD driver crash described in [`configure_backends`],
-/// because an AMD GPU with a driver shows up as a DirectX 12 adapter and keeps us on DirectX 12.
-/// When DirectX 12 offers only WARP, it stays enabled next to GL as a last resort for machines
-/// without an OpenGL driver either (virtual machines): wgpu prefers any GPU over a software
-/// adapter, so it's only picked when GL has nothing better.
-pub fn choose_backends(backend_override: Option<Backends>, dx12_adapters: &[Dx12Adapter]) -> Backends {
+/// wins. Otherwise DirectX 12 only, as long as `dx12_graphics` is set and `dx12_adapters` (what a
+/// DirectX 12-only probe found) contains a usable hardware GPU. Without one, OpenGL is the way to
+/// the GPU: graphics chips whose driver has no DirectX 12 support (Intel 4th generation on Windows
+/// 11, #316) still have an OpenGL driver, and GL can't reach the AMD driver crash described in
+/// [`configure_backends`], because an AMD GPU with a driver shows up as a DirectX 12 adapter and
+/// keeps us on DirectX 12. When DirectX 12 offers only WARP, it stays enabled next to GL as a last
+/// resort for machines without an OpenGL driver either (virtual machines): wgpu prefers any GPU
+/// over a software adapter, so it's only picked when GL has nothing better.
+///
+/// `dx12_graphics` is false on 32-bit Windows. wgpu creates the graphics pipeline through
+/// `ID3D12Device2::CreatePipelineState`, and that stream is aligned to 8 bytes. The 32-bit runtime
+/// expects pointer alignment (4), so creation returns `E_INVALIDARG` ("The parameter is incorrect")
+/// and the process exits before the first frame. Compute pipelines use the older API and succeed,
+/// which is why startup gets as far as the egui pipeline and then quits. OpenGL does not use that
+/// stream.
+pub fn choose_backends(backend_override: Option<Backends>, dx12_adapters: &[Dx12Adapter], dx12_graphics: bool) -> Backends {
     if let Some(backends) = backend_override {
         return backends;
+    }
+    if !dx12_graphics {
+        return Backends::GL;
     }
     let hardware = |a: &&Dx12Adapter| a.device_type != DeviceType::Cpu;
     if dx12_adapters.iter().filter(hardware).any(|a| a.meets_limits) {
@@ -94,9 +104,16 @@ pub fn configure(options: &mut NativeOptions, backend_override: Option<Backends>
             backends
         }
         None => {
-            let adapters = probe_dx12(options);
-            let backends = choose_backends(None, &adapters);
-            log::info!("graphics: {} DirectX 12 adapter(s) {adapters:?}, backends {backends:?}", adapters.len());
+            // 32-bit: skip the DirectX 12 probe. A capable GPU would be selected, then
+            // CreatePipelineState fails and the app exits with no window.
+            let dx12_graphics = cfg!(not(target_arch = "x86"));
+            let adapters = if dx12_graphics { probe_dx12(options) } else { Vec::new() };
+            let backends = choose_backends(None, &adapters, dx12_graphics);
+            if dx12_graphics {
+                log::info!("graphics: {} DirectX 12 adapter(s) {adapters:?}, backends {backends:?}", adapters.len());
+            } else {
+                log::info!("graphics: 32-bit Windows uses OpenGL; DirectX 12 graphics pipeline creation fails");
+            }
             backends
         }
     };
@@ -157,7 +174,7 @@ mod tests {
         };
         assert!(eframe_default.instance_descriptor.backends.contains(Backends::GL));
         let gpu = [adapter(DeviceType::IntegratedGpu, true)];
-        assert_eq!(configured_backends(choose_backends(None, &gpu)), Backends::DX12);
+        assert_eq!(configured_backends(choose_backends(None, &gpu, true)), Backends::DX12);
     }
 
     #[test]
@@ -165,8 +182,8 @@ mod tests {
         let warp_only = [adapter(DeviceType::Cpu, true)];
         for backends in [Backends::VULKAN, Backends::GL, Backends::DX12, Backends::VULKAN | Backends::DX12, Backends::empty()] {
             // Whatever the probe would have found, the override wins (the probe doesn't run then).
-            assert_eq!(choose_backends(Some(backends), &[]), backends);
-            assert_eq!(choose_backends(Some(backends), &warp_only), backends);
+            assert_eq!(choose_backends(Some(backends), &[], true), backends);
+            assert_eq!(choose_backends(Some(backends), &warp_only, true), backends);
             assert_eq!(configured_backends(backends), backends);
         }
     }
@@ -192,13 +209,23 @@ mod tests {
     fn gl_when_dx12_has_no_usable_gpu() {
         // #316: no DirectX 12 driver, so DirectX 12 offers only WARP (or nothing) and lags.
         let warp_only = [adapter(DeviceType::Cpu, true)];
-        assert_eq!(choose_backends(None, &warp_only), Backends::GL | Backends::DX12);
-        assert_eq!(choose_backends(None, &[]), Backends::GL);
+        assert_eq!(choose_backends(None, &warp_only, true), Backends::GL | Backends::DX12);
+        assert_eq!(choose_backends(None, &[], true), Backends::GL);
         // A GPU that can't create eframe's device: GL alone, so it isn't picked over the GL one.
         let weak_gpu = [adapter(DeviceType::IntegratedGpu, false), adapter(DeviceType::Cpu, true)];
-        assert_eq!(choose_backends(None, &weak_gpu), Backends::GL);
+        assert_eq!(choose_backends(None, &weak_gpu, true), Backends::GL);
         // Any usable GPU keeps DirectX 12 only, next to WARP or a weaker GPU.
         let mixed = [adapter(DeviceType::Cpu, true), adapter(DeviceType::IntegratedGpu, false), adapter(DeviceType::DiscreteGpu, true)];
-        assert_eq!(choose_backends(None, &mixed), Backends::DX12);
+        assert_eq!(choose_backends(None, &mixed, true), Backends::DX12);
+    }
+
+    /// 32-bit Windows: a usable DirectX 12 GPU still starts on OpenGL. `WGPU_BACKEND` still wins.
+    #[test]
+    fn x86_uses_opengl_even_with_a_usable_gpu() {
+        let gpu = [adapter(DeviceType::IntegratedGpu, true)];
+        assert_eq!(choose_backends(None, &gpu, false), Backends::GL);
+        assert_eq!(choose_backends(Some(Backends::DX12), &gpu, false), Backends::DX12);
+        assert_eq!(choose_backends(Some(Backends::VULKAN), &[], false), Backends::VULKAN);
+        assert_eq!(configured_backends(choose_backends(None, &gpu, false)), Backends::GL);
     }
 }

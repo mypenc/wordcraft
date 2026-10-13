@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
+use wordcraft_doc::collate::{SortKey, heading_letter, sort_key};
 use wordcraft_doc::para::InlineObject;
 use wordcraft_doc::props::{CharProps, TabAlign, TabLeader, TabStop};
 use wordcraft_doc::section::SectionStart;
@@ -167,14 +168,15 @@ struct PageRef {
 
 #[derive(Default)]
 struct Node {
-    /// The entry's levels as written (the key is their lower-case form).
+    /// The entry's levels as written (the key is their sort keys).
     levels: Vec<String>,
     pages: Vec<PageRef>,
     see: Vec<String>,
 }
 
-/// Every XE entry in the body with its page (or page range), grouped by entry.
-fn collect(s: &mut Session) -> BTreeMap<Vec<String>, Node> {
+/// Every XE entry in the body with its page (or page range), grouped by entry and sorted in the
+/// order of language `lang` (Polish files `Łódź` between `L` and `M`).
+fn collect(s: &mut Session, lang: Option<&str>) -> BTreeMap<Vec<SortKey>, Node> {
     let mut marks: Vec<(FieldCode, Pos)> = Vec::new();
     for path in s.doc.para_paths(StoryRef::Body) {
         let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
@@ -197,7 +199,7 @@ fn collect(s: &mut Session) -> BTreeMap<Vec<String>, Node> {
         })
     };
     let starts = s.doc.bookmarks();
-    let mut tree: BTreeMap<Vec<String>, Node> = BTreeMap::new();
+    let mut tree: BTreeMap<Vec<SortKey>, Node> = BTreeMap::new();
     for (f, pos) in marks {
         let text = f.args.first().cloned().unwrap_or_default();
         let levels: Vec<String> = text.split(':').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).take(9).collect();
@@ -207,10 +209,10 @@ fn collect(s: &mut Session) -> BTreeMap<Vec<String>, Node> {
         // Every level above gets a line of its own, even without pages.
         for k in 1..levels.len() {
             let head: Vec<String> = levels.iter().take(k).cloned().collect();
-            tree.entry(head.iter().map(|x| x.to_lowercase()).collect()).or_insert_with(|| Node { levels: head, ..Default::default() });
+            tree.entry(head.iter().map(|x| sort_key(x, lang)).collect()).or_insert_with(|| Node { levels: head, ..Default::default() });
         }
         let node =
-            tree.entry(levels.iter().map(|x| x.to_lowercase()).collect()).or_insert_with(|| Node { levels: levels.clone(), ..Default::default() });
+            tree.entry(levels.iter().map(|x| sort_key(x, lang)).collect()).or_insert_with(|| Node { levels: levels.clone(), ..Default::default() });
         if let Some(see) = f.arg('t') {
             if !node.see.iter().any(|x| x == see) {
                 node.see.push(see.to_string());
@@ -278,7 +280,9 @@ pub fn rebuild(s: &mut Session, i: usize, leader: Option<TabLeader>) -> Result<(
     let sep = f.arg('e').map(str::to_string).unwrap_or_else(|| ", ".into());
     let run_in = f.has('r');
     let headings = f.switches.iter().find(|(c, _)| *c == 'h').map(|(_, a)| a.clone().unwrap_or_default());
-    let tree = collect(s);
+    // Entries sort in the language of the index's paragraph (else the document's).
+    let lang = s.doc.body.get(i).and_then(|b| b.as_para()).and_then(|p| super::para_lang(&s.doc, p)).or_else(|| super::default_lang(s));
+    let tree = collect(s, lang.as_deref());
     let mut lines: Vec<(usize, Line)> = Vec::new();
     let mut letter: Option<String> = None;
     let mut keys = tree.keys().peekable();
@@ -286,7 +290,7 @@ pub fn rebuild(s: &mut Session, i: usize, leader: Option<TabLeader>) -> Result<(
         let Some(node) = tree.get(key) else { continue };
         let Some(main) = node.levels.first() else { continue };
         if let Some(h) = &headings {
-            let first = main.chars().next().map(|c| c.to_uppercase().to_string());
+            let first = heading_letter(main, lang.as_deref());
             if first != letter {
                 if letter.is_some() || !h.is_empty() {
                     lines.push((0, vec![(if h.is_empty() { String::new() } else { first.clone().unwrap_or_default() }, CharProps::default())]));

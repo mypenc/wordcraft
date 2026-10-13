@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use wordcraft_doc::edit::Fragment;
 use wordcraft_doc::props::CharProps;
-use wordcraft_doc::{Document, Path, Pos, StoryRef};
+use wordcraft_doc::{Document, Path, Pos, StoryRef, Table};
 use wordcraft_layout::{DocLayout, LayoutCache, LayoutOptions, NumeralMode, ViewMode};
 
 use crate::{CmdError, Registry};
@@ -51,6 +51,52 @@ pub struct ColumnBlock {
     pub focus_x: f32,
     /// One `(start, end)` per line, in document order, each inside one paragraph.
     pub segments: Vec<(Pos, Pos)>,
+    /// Set when the block is whole table cells (Select Cell, Row, Column or Table, or the mouse in
+    /// a table's selection areas): one segment per paragraph of the cells.
+    pub cells: Option<CellRange>,
+}
+
+/// Whole table cells selected: rows `rows.0..=rows.1` and every cell of them that reaches into
+/// grid columns `cols.0..=cols.1`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CellRange {
+    pub story: StoryRef,
+    pub table: Path,
+    pub rows: (usize, usize),
+    pub cols: (usize, usize),
+    /// The cells are one run of the text (cells of one row, or whole rows), so the stream
+    /// selection between the corners holds just them and commands act on that as usual.
+    /// Otherwise (part of a column) text edits and formatting go cell by cell.
+    pub stream: bool,
+}
+
+impl CellRange {
+    /// The selected cells of table `t` (row, cell index), in document order.
+    pub fn cells(&self, t: &Table) -> Vec<(usize, usize)> {
+        let ((r0, r1), (g0, g1)) = (self.rows, self.cols);
+        let mut out = Vec::new();
+        for (r, row) in t.rows.iter().enumerate().take(r1.saturating_add(1)).skip(r0) {
+            let mut g = 0usize;
+            for (c, cell) in row.cells.iter().enumerate() {
+                let end = g.saturating_add(cell.span());
+                if g <= g1 && end > g0 {
+                    out.push((r, c));
+                }
+                g = end;
+            }
+        }
+        out
+    }
+}
+
+/// A selection Word's table rule widened to whole cells or rows (`cmd::table::extend_selection`),
+/// and where it really runs.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Widened {
+    /// The selection it became; this is current while `Session::sel` still equals it.
+    pub sel: Selection,
+    /// Where the selection was really extended from and to: extending it again goes on from here.
+    pub ends: Selection,
 }
 
 /// View state that commands can change (ribbon View tab, status bar).
@@ -87,6 +133,9 @@ pub struct ViewState {
     #[serde(default)]
     pub alt_text_pane: bool,
     pub multi_page: bool,
+    /// One Page or Page Width was chosen last: keep one page per row when a typed or wheel zoom replaces the fit mode.
+    #[serde(default)]
+    pub single_column: bool,
     /// Zoom to fit: "pageWidth", "onePage", "multiplePages", or empty.
     pub fit: String,
     pub web_width: f32,
@@ -169,6 +218,7 @@ impl Default for ViewState {
             accessibility_pane: false,
             alt_text_pane: false,
             multi_page: false,
+            single_column: false,
             fit: String::new(),
             web_width: 800.0,
             read_width: default_read_width(),
@@ -226,6 +276,9 @@ struct Undo {
     sel: Selection,
     /// Formatting waiting at the caret (Bold with nothing selected), so Undo takes it back too.
     pending: Option<CharProps>,
+    /// The column block or whole cells the selection was (undoing brings the selection back as
+    /// it was).
+    column: Option<ColumnBlock>,
 }
 
 /// What [`Session::restore`] needs to take commands back exactly: the document, the selection,
@@ -353,6 +406,11 @@ pub struct Session {
     pub read_aloud: crate::speech::ReadAloud,
     /// Preferences the front end saves between runs.
     pub prefs: Prefs,
+    /// The system region (#838): the paper a new blank document starts on, the default
+    /// measurement unit and the decimal separator. The front end sets it from the platform (the
+    /// browser's locale on the web); headless sessions keep `en-US`. A region the user chose
+    /// ([`Prefs::region`]) wins: read it with [`Session::region`].
+    pub system_region: wordcraft_geom::Region,
     /// Custom keyboard shortcuts (`tools.customizeKeyboard`); the front end saves them too.
     pub keymap: crate::KeyMap,
     /// Custom ribbon and Quick Access Toolbar (`tools.customizeRibbon`); the front end saves it too.
@@ -378,6 +436,9 @@ pub struct Session {
     pub column: Option<ColumnBlock>,
     /// Column selection mode (Ctrl+Shift+F8): caret movement extends the block.
     pub column_mode: bool,
+    /// A selection widened to whole table cells or rows, and where it really runs (see
+    /// [`Session::sel_ends`]).
+    pub(crate) widened: Option<Widened>,
     /// Where the last edits happened, oldest first (at most [`EDIT_MARKS`]), for Go Back
     /// (Shift+F5). Positions aren't mapped through later edits; they're clamped when used.
     edit_marks: Vec<Pos>,
@@ -419,8 +480,14 @@ pub struct Prefs {
     pub insert_key_overtype: bool,
     /// Overtype: typed characters replace the ones after the caret.
     pub overtype: bool,
-    /// The unit rulers and dialogs show lengths in.
-    pub units: wordcraft_geom::Unit,
+    /// The unit rulers and dialogs show lengths in, when the user chose one (File › Options ›
+    /// Advanced › Measurement units); `None` follows the region ([`Session::units`]). Saved under
+    /// a new key; an older `units` value other than inches (the old default) carries over on load.
+    #[serde(rename = "measurementUnits")]
+    pub units: Option<wordcraft_geom::Unit>,
+    /// The region the user chose for new documents, units and the decimal separator (a locale
+    /// tag like `pl-PL`, File › Options › Advanced › Region); `None` follows the system.
+    pub region: Option<String>,
     /// Formatting marks shown even while Show/Hide ¶ is off.
     pub marks: wordcraft_layout::display::FormattingMarks,
     /// Mark grammar errors as you type (with Check spelling as you type on).
@@ -444,6 +511,7 @@ impl Default for Prefs {
             insert_key_overtype: false,
             overtype: false,
             units: Default::default(),
+            region: None,
             marks: Default::default(),
             mark_grammar: true,
             ignore_uppercase: true,
@@ -474,6 +542,8 @@ fn doc_bib_style(doc: &Document) -> String {
 
 /// Maximum undo depth.
 const MAX_UNDO: usize = 500;
+/// How many steps the Undo button's list shows (#701); `edit.undoTo` reaches no further.
+pub const UNDO_LIST_MAX: usize = 100;
 
 impl Session {
     /// File name of the persisted custom dictionary inside the settings folder.
@@ -537,6 +607,7 @@ impl Session {
             math_normal_text: false,
             also_selected: Vec::new(),
             prefs: Prefs::default(),
+            system_region: Default::default(),
             keymap: crate::KeyMap::default(),
             ribbon: crate::RibbonLayout::default(),
             editing_lang: None,
@@ -544,6 +615,7 @@ impl Session {
             password: None,
             column: None,
             column_mode: false,
+            widened: None,
             edit_marks: Vec::new(),
             go_back_step: 0,
         }
@@ -584,7 +656,20 @@ impl Session {
     /// The line pieces of the current column selection, if there is one (the selection hasn't
     /// moved since the block was made).
     pub fn column_segments(&self) -> Option<&[(Pos, Pos)]> {
-        self.column.as_ref().filter(|c| c.sel == self.sel).map(|c| c.segments.as_slice())
+        // Cells that are one run of the text are an ordinary stream selection.
+        self.column.as_ref().filter(|c| c.sel == self.sel && !c.cells.as_ref().is_some_and(|r| r.stream)).map(|c| c.segments.as_slice())
+    }
+
+    /// The whole table cells selected, if the selection is that (see [`CellRange`]).
+    pub fn cell_range(&self) -> Option<&CellRange> {
+        self.column.as_ref().filter(|c| c.sel == self.sel).and_then(|c| c.cells.as_ref())
+    }
+
+    /// The selection as it was made: where a drag, Shift+click or Shift+arrows started and where
+    /// the caret went, even when Word's table rule widened it to whole cells or rows (`sel` holds
+    /// those).
+    pub fn sel_ends(&self) -> &Selection {
+        self.widened.as_ref().filter(|w| w.sel == self.sel).map_or(&self.sel, |w| &w.ends)
     }
 
     /// Document revision (bumped by every change).
@@ -724,7 +809,13 @@ impl Session {
             return;
         }
         self.typing_open = label == "Typing";
-        self.history.push(Arc::new(Undo { label: label.to_string(), doc: self.doc.clone(), sel: self.sel.clone(), pending: self.pending.clone() }));
+        self.history.push(Arc::new(Undo {
+            label: label.to_string(),
+            doc: self.doc.clone(),
+            sel: self.sel.clone(),
+            pending: self.pending.clone(),
+            column: self.column.clone(),
+        }));
         if self.history.len() > MAX_UNDO {
             self.history.remove(0);
             self.undo_evicted += 1;
@@ -734,7 +825,7 @@ impl Session {
     /// Record `doc`/`sel` as their own undo step after the fact and close the typing group, so
     /// Undo right after an automatic change (AutoFormat, AutoCorrect) reverts only that change.
     pub fn push_undo(&mut self, label: &str, doc: Document, sel: Selection) {
-        self.history.push(Arc::new(Undo { label: label.to_string(), doc, sel, pending: self.pending.clone() }));
+        self.history.push(Arc::new(Undo { label: label.to_string(), doc, sel, pending: self.pending.clone(), column: None }));
         if self.history.len() > MAX_UNDO {
             self.history.remove(0);
             self.undo_evicted += 1;
@@ -782,6 +873,21 @@ impl Session {
     pub fn undo_labels(&self) -> Vec<String> {
         self.history.iter().rev().map(|u| u.label.clone()).collect()
     }
+    /// The Undo button's list (#701): the undo steps' labels (English, as commands name them),
+    /// newest first, at most [`UNDO_LIST_MAX`].
+    pub fn undo_history(&self) -> Vec<&str> {
+        self.history.iter().rev().take(UNDO_LIST_MAX).map(|u| u.label.as_str()).collect()
+    }
+    /// Undo the newest `count` steps in one go, as picking an entry in the Undo list does (#701).
+    /// More than the undo depth undoes everything; a step that would take the document's
+    /// protection away stops it (only Stop Protection lifts it). Returns the steps undone.
+    pub fn undo_steps(&mut self, count: usize) -> usize {
+        let mut done = 0;
+        while done < count && !self.step_lifts_protection(false) && self.undo() {
+            done += 1;
+        }
+        done
+    }
     pub fn undo(&mut self) -> bool {
         self.typing_open = false;
         let Some(u) = self.history.pop().map(Arc::unwrap_or_clone) else { return false };
@@ -790,6 +896,7 @@ impl Session {
             doc: std::mem::replace(&mut self.doc, u.doc),
             sel: std::mem::replace(&mut self.sel, u.sel),
             pending: std::mem::replace(&mut self.pending, u.pending),
+            column: std::mem::replace(&mut self.column, u.column),
         };
         self.redo.push(Arc::new(cur));
         self.touch();
@@ -808,6 +915,7 @@ impl Session {
             doc: std::mem::replace(&mut self.doc, u.doc),
             sel: std::mem::replace(&mut self.sel, u.sel),
             pending: std::mem::replace(&mut self.pending, u.pending),
+            column: std::mem::replace(&mut self.column, u.column),
         };
         self.history.push(Arc::new(cur));
         self.touch();
@@ -818,6 +926,31 @@ impl Session {
         self.history.clear();
         self.redo.clear();
         self.typing_open = false;
+    }
+
+    /// The region in effect (#838): the one the user chose ([`Prefs::region`]), else the
+    /// system's.
+    pub fn region(&self) -> wordcraft_geom::Region {
+        match self.prefs.region.as_deref() {
+            Some(tag) => wordcraft_geom::Region::from_tag(tag),
+            None => self.system_region.clone(),
+        }
+    }
+
+    /// The unit rulers and dialogs show lengths in: the user's choice, else the region's.
+    pub fn units(&self) -> wordcraft_geom::Unit {
+        self.prefs.units.unwrap_or_else(|| self.region().units())
+    }
+
+    /// `pt` in [`Session::units`], written the region's way (`2,54 cm` in Poland).
+    pub fn format_length(&self, pt: f32) -> String {
+        self.region().format(self.units(), pt)
+    }
+
+    /// A new blank document (the Normal template) on the region's paper: Letter in the US and
+    /// other Letter regions, A4 elsewhere (#838). Margins stay 2.54 cm (1") all round.
+    pub fn blank_document(&self) -> Document {
+        blank_document(&self.region())
     }
 
     /// Replace the document (open/new).
@@ -832,6 +965,7 @@ impl Session {
         self.also_selected.clear();
         self.column = None;
         self.column_mode = false;
+        self.widened = None;
         self.edit_marks.clear();
         self.go_back_step = 0;
         self.view.outline.collapsed.clear();
@@ -901,6 +1035,7 @@ impl Session {
             document_id: _,
             read_aloud: _,
             prefs: _,
+            system_region: _,
             keymap: _,
             ribbon: _,
             // A preference for new documents, like `prefs`: not part of this document.
@@ -912,9 +1047,11 @@ impl Session {
             // The save password, like the file path: not an edit to the document.
             password: _,
             also_selected: _,
-            // Column selection, like `sel`'s shape: valid only while `sel` matches it.
+            // Column selection and a widened selection's ends, like `sel`'s shape: valid only while
+            // `sel` matches them.
             column: _,
             column_mode: _,
+            widened: _,
             // Go Back's places, like the caret history: not part of the document.
             edit_marks: _,
             go_back_step: _,
@@ -1046,7 +1183,8 @@ impl Session {
             self.typing_open = false;
         }
         // Only the paste right after a tracked cut makes it a move.
-        if (spec.mutates || matches!(id, "edit.undo" | "edit.redo")) && !matches!(id, "edit.cut" | "edit.paste" | "edit.pasteSpecial") {
+        if (spec.mutates || matches!(id, "edit.undo" | "edit.undoTo" | "edit.redo")) && !matches!(id, "edit.cut" | "edit.paste" | "edit.pasteSpecial")
+        {
             self.pending_move = None;
         }
         let sel_before = self.sel.clone();
@@ -1145,7 +1283,21 @@ impl Session {
 
     /// Selected plain text.
     pub fn selected_text(&self) -> String {
+        // A column block or whole cells that aren't one run of the text: each piece's own text,
+        // a line each, so the status bar and Word Count count those cells only.
+        if let Some(segs) = self.column_segments() {
+            return segs.iter().map(|(a, b)| self.doc.copy_range(a.min(b), a.max(b)).plain_text()).collect::<Vec<_>>().join("\n");
+        }
         let (a, b) = self.sel.ordered();
         self.doc.copy_range(&a, &b).plain_text()
     }
+}
+
+/// A new blank document on `region`'s paper (see [`Session::blank_document`]).
+pub fn blank_document(region: &wordcraft_geom::Region) -> Document {
+    let mut d = Document::new();
+    let (_, w, h) = region.paper();
+    d.last_section.page_w = w;
+    d.last_section.page_h = h;
+    d
 }

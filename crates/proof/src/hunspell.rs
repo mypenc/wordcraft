@@ -26,8 +26,20 @@ pub fn set_dictionary_dir(dir: Option<PathBuf>) {
     *EXTRA_DIR.write().unwrap_or_else(|e| e.into_inner()) = dir;
 }
 
-/// Directories that may hold Hunspell dictionaries, most specific first.
-pub fn search_dirs() -> Vec<PathBuf> {
+/// The LibreOffice extension directories a Hunspell dictionary name may live in: LibreOffice's
+/// IDs are per dictionary — Polish is `dict-pl`, Brazilian Portuguese `dict-pt-BR` — so both
+/// the primary-language folder and the dashed full name are tried.
+fn lo_ext_dirs(name: &str) -> Vec<String> {
+    let primary = name.split(['-', '_']).next().unwrap_or(name);
+    let dashed = name.replace('_', "-");
+    let first = format!("dict-{primary}");
+    let full = format!("dict-{dashed}");
+    if full == first { vec![first] } else { vec![first, full] }
+}
+
+/// Directories that may hold Hunspell dictionaries, most specific first. `lo_exts`, when a
+/// language is being searched for, adds LibreOffice's extension folders for it (`dict-pt-BR`).
+pub fn search_dirs(lo_exts: Option<&[String]>) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     if let Some(d) = EXTRA_DIR.read().unwrap_or_else(|e| e.into_inner()).clone() {
         dirs.push(d);
@@ -38,6 +50,9 @@ pub fn search_dirs() -> Vec<PathBuf> {
     if let Some(d) = std::env::var_os("WORDCRAFT_DICTIONARIES").filter(|v| !v.is_empty()) {
         dirs.push(PathBuf::from(d));
     }
+    // LibreOffice keeps each language under `…/share/extensions/<dict-xx>`.
+    let lo_dirs =
+        |prefix: &str| -> Vec<PathBuf> { lo_exts.map_or_else(Vec::new, |exts| exts.iter().map(|e| PathBuf::from(prefix).join(e)).collect()) };
     let home = std::env::var_os("HOME").filter(|v| !v.is_empty()).map(PathBuf::from);
     if cfg!(windows) {
         for var in ["LOCALAPPDATA", "APPDATA"] {
@@ -48,7 +63,7 @@ pub fn search_dirs() -> Vec<PathBuf> {
         }
         for var in ["ProgramFiles", "ProgramFiles(x86)"] {
             if let Some(base) = std::env::var_os(var).filter(|v| !v.is_empty()).map(PathBuf::from) {
-                dirs.push(base.join("LibreOffice").join("share").join("extensions").join("dict-pl"));
+                dirs.extend(lo_dirs(&base.join("LibreOffice").join("share").join("extensions").to_string_lossy()));
             }
         }
     } else if cfg!(target_os = "macos") {
@@ -58,30 +73,26 @@ pub fn search_dirs() -> Vec<PathBuf> {
         dirs.push(PathBuf::from("/Library/Spelling"));
         dirs.push(PathBuf::from("/opt/homebrew/share/hunspell"));
         dirs.push(PathBuf::from("/usr/local/share/hunspell"));
-        dirs.push(PathBuf::from("/Applications/LibreOffice.app/Contents/Resources/extensions/dict-pl"));
+        dirs.extend(lo_dirs("/Applications/LibreOffice.app/Contents/Resources/extensions"));
     } else {
         if let Some(h) = &home {
             dirs.push(h.join(".local/share/hunspell"));
         }
-        for d in [
-            "/usr/share/hunspell",
-            "/usr/share/myspell",
-            "/usr/share/myspell/dicts",
-            "/usr/local/share/hunspell",
-            "/usr/local/share/myspell",
-            "/usr/lib/libreoffice/share/extensions/dict-pl",
-            "/opt/libreoffice/share/extensions/dict-pl",
-        ] {
+        for d in ["/usr/share/hunspell", "/usr/share/myspell", "/usr/share/myspell/dicts", "/usr/local/share/hunspell", "/usr/local/share/myspell"] {
             dirs.push(PathBuf::from(d));
+        }
+        for d in ["/usr/lib/libreoffice/share/extensions", "/opt/libreoffice/share/extensions"] {
+            dirs.extend(lo_dirs(d));
         }
     }
     dirs
 }
 
 /// The first `<name>.aff`/`<name>.dic` pair found for any of `names` (`pl_PL`, `pl`), searching
-/// [`search_dirs`].
+/// [`search_dirs`] (including LibreOffice's extension folder for the first name).
 pub fn find(names: &[&str]) -> Option<(PathBuf, PathBuf)> {
-    search_dirs().into_iter().find_map(|dir| find_in(&dir, names))
+    let lo = names.first().copied().map(lo_ext_dirs);
+    search_dirs(lo.as_deref()).into_iter().find_map(|dir| find_in(&dir, names))
 }
 
 /// The first `<name>.aff`/`<name>.dic` pair for any of `names` in `dir`.
@@ -144,6 +155,18 @@ mod tests {
         assert_eq!(d, "żółw");
         assert!(decode(b"SET KOI8-R\n", b"").is_err());
         assert!(decode(b"SET UTF-8\n", b"\xff\xfe").is_err());
+    }
+
+    #[test]
+    fn libreoffice_extension_dirs_follow_the_language() {
+        // LibreOffice's IDs are per dictionary: Polish is `dict-pl`, Brazilian Portuguese
+        // `dict-pt-BR`, so both the primary-language folder and the dashed full name are tried.
+        assert_eq!(super::lo_ext_dirs("pl_PL"), ["dict-pl", "dict-pl-PL"]);
+        assert_eq!(super::lo_ext_dirs("pt_BR"), ["dict-pt", "dict-pt-BR"]);
+        assert_eq!(super::lo_ext_dirs("de-DE"), ["dict-de", "dict-de-DE"]);
+        let dirs = search_dirs(Some(&super::lo_ext_dirs("pt_BR")));
+        assert!(dirs.iter().any(|d| d.ends_with("dict-pt-BR")), "{dirs:?}");
+        assert!(search_dirs(None).iter().all(|d| !d.to_string_lossy().contains("dict-")), "no language: no LibreOffice guess");
     }
 
     #[test]

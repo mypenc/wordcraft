@@ -39,6 +39,7 @@ pub mod smart_art;
 pub mod speech;
 pub mod table;
 pub mod table_draw;
+pub mod table_mouse;
 pub mod table_resize;
 pub mod table_style;
 pub mod templates;
@@ -76,6 +77,7 @@ pub fn registry() -> Registry {
     v.extend(table_style::specs());
     v.extend(table_draw::specs());
     v.extend(table_resize::specs());
+    v.extend(table_mouse::specs());
     v.extend(review::specs());
     v.extend(file::specs());
     v.extend(options::specs());
@@ -128,6 +130,19 @@ pub fn pos_json(p: &Pos) -> Value {
 /// The standard result: the selection after the command.
 pub fn sel_result(s: &Session) -> CmdResult {
     Ok(json!({"anchor": pos_json(&s.sel.anchor), "focus": pos_json(&s.sel.focus)}))
+}
+
+/// The paragraphs the selection covers: those between its ends (not the next one when it ends at
+/// that one's start, #418) or, for whole table cells that aren't one run of the text (part of a
+/// column), just the cells' own.
+pub(crate) fn selected_paths(s: &Session) -> Vec<wordcraft_doc::Path> {
+    if s.cell_range().is_some()
+        && let Some(segs) = s.column_segments()
+    {
+        return segs.iter().map(|(a, _)| a.path.clone()).collect();
+    }
+    let (a, b) = s.sel.ordered();
+    s.doc.para_paths_in(&a, &b)
 }
 
 /// Delete the selection (respecting track changes); returns the collapsed position.
@@ -418,6 +433,24 @@ pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
 /// Story given in params (`"story": "body"` / `{"part": 3}`), else the caret's.
 pub fn story_param(s: &Session, v: &Value) -> StoryRef {
     v.get("story").and_then(|x| serde_json::from_value(x.clone()).ok()).unwrap_or(s.sel.focus.story)
+}
+
+/// The language (`w:lang`) of a paragraph's text: that of its first run with text (else of the
+/// paragraph mark), through styles and the document defaults. Sorting and number parsing follow it.
+pub fn para_lang(doc: &wordcraft_doc::Document, p: &wordcraft_doc::Paragraph) -> Option<String> {
+    let run = p.runs.iter().find(|r| r.len > 0).map(|r| &r.props).unwrap_or(&p.mark);
+    doc.styles.resolve_char(p.props.style.as_deref(), run).lang
+}
+
+/// The document's default text language (`w:docDefaults`, the Normal style).
+pub fn doc_lang(doc: &wordcraft_doc::Document) -> Option<String> {
+    doc.styles.resolve_char(None, &wordcraft_doc::CharProps::default()).lang
+}
+
+/// The language of text that names none: the document's default, else the editing language (a
+/// Polish interface writes Polish), else none (English). As AutoCorrect decides it.
+pub fn default_lang(s: &Session) -> Option<String> {
+    doc_lang(&s.doc).or_else(|| s.editing_lang.clone())
 }
 
 #[cfg(test)]

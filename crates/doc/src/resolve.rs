@@ -8,6 +8,10 @@ use crate::props::{
 };
 use crate::styles::{StyleKind, StyleSheet};
 
+/// Automatic (HTML-style) paragraph spacing, points: what Word for Windows gives `w:beforeAutospacing`
+/// and `w:afterAutospacing` at any font size (measured).
+pub const AUTO_SPACING: f32 = 14.0;
+
 /// Concrete character formatting.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +36,9 @@ pub struct ResolvedChar {
     pub spacing: f32,
     pub scale: f32,
     pub position: f32,
+    /// Kerning: the smallest font size, in points, that is kerned (`w:kern`); 0 = never kerned.
+    #[serde(default)]
+    pub kern: f32,
     pub outline: bool,
     pub shadow: bool,
     pub emboss: bool,
@@ -82,6 +89,7 @@ impl ResolvedChar {
             spacing: c.spacing.unwrap_or(0.0).clamp(-100.0, 100.0),
             scale: c.scale.unwrap_or(100.0).clamp(1.0, 600.0),
             position: c.position.unwrap_or(0.0).clamp(-800.0, 800.0),
+            kern: c.kern.filter(|k| k.is_finite()).unwrap_or(0.0).clamp(0.0, 1638.0),
             outline: c.outline.unwrap_or(false),
             shadow: c.shadow.unwrap_or(false),
             emboss: c.emboss.unwrap_or(false),
@@ -107,6 +115,11 @@ impl ResolvedChar {
     /// characters, and every character of an `rtl`/`cs` run, this way).
     pub fn complex(&self) -> ResolvedChar {
         ResolvedChar { font: self.font_cs.clone(), size: self.size_cs, bold: self.bold_cs, italic: self.italic_cs, ..self.clone() }
+    }
+    /// Whether the text is kerned: Word kerns only a run with Kerning for fonts set (`w:kern`) at
+    /// a size of at least that many points, never by default (measured in Word for Windows).
+    pub fn kerned(&self) -> bool {
+        self.kern > 0.0 && self.size >= self.kern
     }
     /// Does a character of this run use the complex-script properties?
     pub fn uses_complex(&self, c: char) -> bool {
@@ -138,6 +151,12 @@ pub struct ResolvedPara {
     pub indent_first: f32,
     pub space_before: f32,
     pub space_after: f32,
+    /// The space before or after is automatic (HTML-style, [`AUTO_SPACING`]): see
+    /// `ParaProps::space_before_auto`.
+    #[serde(default)]
+    pub before_auto: bool,
+    #[serde(default)]
+    pub after_auto: bool,
     pub line_spacing: LineSpacing,
     pub contextual_spacing: bool,
     /// Left/right indents are inside/outside: they swap on even pages.
@@ -153,6 +172,9 @@ pub struct ResolvedPara {
     pub borders: Option<Borders>,
     pub bidi: bool,
     pub drop_cap: u8,
+    /// A text frame the paragraph sits in (see `ParaProps::frame`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<crate::props::TextFrame>,
     pub suppress_hyphens: bool,
     pub suppress_line_numbers: bool,
     /// Asian typography (see `ParaProps`): East Asian line-breaking rules.
@@ -206,8 +228,10 @@ impl ResolvedPara {
             indent_left: clampi(p.indent_left),
             indent_right: clampi(p.indent_right),
             indent_first: clampi(p.indent_first),
-            space_before: p.space_before.unwrap_or(0.0).clamp(0.0, 1584.0),
-            space_after: p.space_after.unwrap_or(0.0).clamp(0.0, 1584.0),
+            space_before: if p.space_before_auto == Some(true) { AUTO_SPACING } else { p.space_before.unwrap_or(0.0).clamp(0.0, 1584.0) },
+            space_after: if p.space_after_auto == Some(true) { AUTO_SPACING } else { p.space_after.unwrap_or(0.0).clamp(0.0, 1584.0) },
+            before_auto: p.space_before_auto == Some(true),
+            after_auto: p.space_after_auto == Some(true),
             line_spacing: match p.line_spacing.unwrap_or_default() {
                 LineSpacing::Multiple(m) => LineSpacing::Multiple(if m.is_finite() { m.clamp(0.06, 132.0) } else { 1.0 }),
                 LineSpacing::AtLeast(v) => LineSpacing::AtLeast(if v.is_finite() { v.clamp(0.0, 1584.0) } else { 0.0 }),
@@ -226,6 +250,7 @@ impl ResolvedPara {
             borders: p.borders.filter(Borders::any_visible),
             bidi: p.bidi.unwrap_or(false),
             drop_cap: p.drop_cap.unwrap_or(0).min(10),
+            frame: p.frame.clone().filter(|_| p.drop_cap.unwrap_or(0) == 0),
             suppress_hyphens: p.suppress_hyphens.unwrap_or(false),
             suppress_line_numbers: p.suppress_line_numbers.unwrap_or(false),
             kinsoku: p.kinsoku.unwrap_or(true),

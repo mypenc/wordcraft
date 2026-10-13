@@ -213,6 +213,15 @@ fn nearest_turned(page: &Page, story: StoryRef, x: f32, y: f32) -> Option<Pos> {
     Some(Pos { story, path: path.clone(), off: para.off_at_x(li, u) })
 }
 
+/// The body line on `page` whose band is nearest height `y` (the leftmost on a tie, so in
+/// columns the first column wins); only top-level paragraphs' lines when `top_only`.
+fn nearest_line_at<'a>(page: &'a Page, y: f32, top_only: bool) -> Option<LineHit<'a>> {
+    page_lines(page, StoryRef::Body)
+        .into_iter()
+        .filter(|l| !top_only || l.path.0.len() <= 1)
+        .min_by(|a, b| band_dist(y, a.top, a.bottom - a.top).total_cmp(&band_dist(y, b.top, b.bottom - b.top)).then(a.left.total_cmp(&b.left)))
+}
+
 /// How far `v` is outside the band `top..top + h`.
 fn band_dist(v: f32, top: f32, h: f32) -> f32 {
     if v < top {
@@ -472,6 +481,51 @@ impl DocLayout {
             }
             let mk = |off| Pos { story: pos.story, path: pos.path.clone(), off };
             return Some((mk(l.start), mk(end)));
+        }
+        None
+    }
+
+    /// Word's selection bar (#856): when (x, y) is in the page's left margin, left of the body
+    /// text column, the start of the body line at that height. Not in the header/footer area,
+    /// not beside a table's lines (those are left to the table), nothing on an empty page.
+    pub fn selection_bar_at(&self, page: usize, x: f32, y: f32) -> Option<Pos> {
+        let p = self.pages.get(page)?;
+        if !(x.is_finite() && y.is_finite()) || x < 0.0 || x >= p.body.x || y < p.body.y || y > p.body.bottom() {
+            return None;
+        }
+        let l = nearest_line_at(p, y, false)?;
+        if l.path.0.len() > 1 || l.left < p.body.x - 0.5 {
+            // A table's line, or text hanging into the margin: not the selection bar.
+            return None;
+        }
+        Some(Pos { story: StoryRef::Body, path: l.path.clone(), off: l.para.lines.get(l.li)?.start })
+    }
+
+    /// The start of the top-level body line nearest height `y` on `page` (dragging in the
+    /// selection bar extends line by line, wherever the pointer is across).
+    pub fn body_line_at(&self, page: usize, y: f32) -> Option<Pos> {
+        let p = self.pages.get(page)?;
+        if !y.is_finite() {
+            return None;
+        }
+        let l = nearest_line_at(p, y, true)?;
+        Some(Pos { story: StoryRef::Body, path: l.path.clone(), off: l.para.lines.get(l.li)?.start })
+    }
+
+    /// The whole visual line holding `pos`, trailing spaces and break included: (start, end,
+    /// whether it is the paragraph's last line). What a click in the selection bar selects.
+    pub fn line_span(&self, pos: &Pos, page_hint: usize) -> Option<(Pos, Pos, bool)> {
+        for (_, it) in self.pieces(pos.story, &pos.path, page_hint) {
+            let Placed::Lines { para, l0, l1, .. } = it else { continue };
+            let li = para.line_of(pos.off);
+            if li < *l0 || li >= *l1 {
+                continue;
+            }
+            let l = para.lines.get(li)?;
+            let next = para.lines.get(li.saturating_add(1));
+            let end = next.map_or(l.stop, |n| n.start).max(l.start);
+            let mk = |off| Pos { story: pos.story, path: pos.path.clone(), off };
+            return Some((mk(l.start), mk(end), next.is_none()));
         }
         None
     }

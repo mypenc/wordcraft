@@ -164,6 +164,7 @@ fn zoom(s: &mut Session, v: &Value) -> CmdResult {
         Some(Value::String(f)) if ["pageWidth", "onePage", "multiplePages", "textWidth"].contains(&f.as_str()) => {
             s.view.fit = f.clone();
             s.view.multi_page = f == "multiplePages";
+            s.view.single_column = f == "onePage" || f == "pageWidth";
         }
         Some(x) => {
             let pct = x.as_f64().ok_or_else(|| CmdError::Params("zoom percent or fit mode".into()))? as f32;

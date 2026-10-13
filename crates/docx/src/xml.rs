@@ -6,7 +6,7 @@
 
 use quick_xml::XmlVersion;
 use quick_xml::events::Event;
-use quick_xml::name::ResolveResult;
+use quick_xml::name::{QName, ResolveResult};
 use quick_xml::reader::NsReader;
 
 use crate::DocxError;
@@ -26,6 +26,7 @@ pub const NAMESPACES: &[(&str, &str)] = &[
     ("pic", "http://schemas.openxmlformats.org/drawingml/2006/picture"),
     ("mc", "http://schemas.openxmlformats.org/markup-compatibility/2006"),
     ("w14", "http://schemas.microsoft.com/office/word/2010/wordml"),
+    ("wpi", "http://schemas.microsoft.com/office/word/2010/wordprocessingInk"),
     ("w15", "http://schemas.microsoft.com/office/word/2012/wordml"),
     ("wp14", "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing"),
     ("wps", "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"),
@@ -79,6 +80,24 @@ fn prefix_for(uri: &[u8], extra: &[(&'static str, &str)]) -> &'static str {
         }
     }
     "?"
+}
+
+/// Compatibility feature namespaces whose elements are not otherwise handled by this tree.
+/// Keep the reader's existing feature set when canonicalizing `mc:Choice/@Requires` aliases.
+fn requirement_prefix(uri: &[u8]) -> &'static str {
+    let prefix = prefix_for(uri, &[]);
+    if prefix != "?" {
+        return prefix;
+    }
+    match uri {
+        b"http://schemas.microsoft.com/office/drawing/2010/main" => "a14",
+        b"http://schemas.microsoft.com/office/word/2015/wordml/symex" => "w16se",
+        b"http://schemas.microsoft.com/office/word/2016/wordml/cid" => "w16cid",
+        b"http://schemas.microsoft.com/office/word/2018/wordml" => "w16",
+        b"http://schemas.microsoft.com/office/word/2018/wordml/cex" => "w16cex",
+        b"http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash" => "w16sdtdh",
+        _ => "?",
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -288,6 +307,28 @@ pub fn parse_ns(bytes: &[u8], extra: &[(&'static str, &str)]) -> Result<El, Docx
                         Ok(v) => v.into_owned(),
                         Err(_) => String::from_utf8_lossy(&a.value).into_owned(),
                     };
+                    // Requires contains namespace prefixes, not feature names. Resolve them while
+                    // the namespace scope still exists; declarations are omitted from this tree.
+                    let val = if el.name == "mc:Choice" && aname == "Requires" {
+                        let requirements: Vec<_> = val.split_whitespace().take(65).collect();
+                        if requirements.len() > 64 || requirements.iter().any(|prefix| prefix.len() > 128) {
+                            "?".to_string()
+                        } else {
+                            requirements
+                                .into_iter()
+                                .map(|prefix| {
+                                    let qualified = format!("{prefix}:requirement");
+                                    match r.resolver_mut().resolve_attribute(QName(qualified.as_bytes())).0 {
+                                        ResolveResult::Bound(ns) => requirement_prefix(ns.as_ref()),
+                                        _ => "?",
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        }
+                    } else {
+                        val
+                    };
                     el.attrs.push((aname, val));
                 }
                 if matches!(ev, Event::Start(_)) {
@@ -487,6 +528,14 @@ mod tests {
         let t = p.child("w:t").unwrap();
         assert_eq!(t.text(), " hi A< ");
         assert_eq!(t.attr("xml:space"), Some("preserve"));
+    }
+
+    #[test]
+    fn choice_requirements_resolve_namespace_aliases_and_rebindings() {
+        let x = br#"<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:pen="http://schemas.microsoft.com/office/word/2010/wordprocessingInk"><mc:Choice Requires="pen"/><mc:Choice xmlns:pen="urn:future" Requires="pen"/><mc:Choice Requires="undeclared"/></mc:AlternateContent>"#;
+        let e = parse(x).unwrap();
+        let values: Vec<_> = e.children("mc:Choice").map(|c| c.attr("Requires")).collect();
+        assert_eq!(values, [Some("wpi"), Some("?"), Some("?")]);
     }
 
     #[test]

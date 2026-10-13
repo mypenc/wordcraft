@@ -164,6 +164,7 @@
 	Border Painter	Пензель меж
 	Border\nPainter	Пензель\nмеж
 	Borders	Межі
+	Search	Пошук
 	Show the mini toolbar when text is selected	Показувати міні-панель інструментів під час виділення тексту
 	Spaces	Пробіли
 	Spelling	Правопис
@@ -180,6 +181,7 @@
 	Page Border	Межа сторінки
 	Apply to:	Застосувати до:
 	These marks show even when Show/Hide ¶ is off.	Ці знаки відображаються, навіть коли «Показати/приховати ¶» вимкнено.
+	Title Bar	Рядок заголовка
 	Typing replaces selected text	Введення замінює виділений текст
 	Update fields before printing	Оновлювати поля перед друком
 	Use the Insert key to switch overtype on and off	Клавіша Insert вмикає та вимикає режим заміни
@@ -482,6 +484,7 @@
 	Insert Above	Вставити вище
 	Insert Below	Вставити нижче
 	Insert Caption	Вставити підпис
+	Insert Caption…	Вставити підпис…
 	Insert Citation	Вставити цитату
 	Insert Endnote	Вставити кінцеву виноску
 	Insert Footnote	Вставити виноску
@@ -705,6 +708,8 @@
 	Read\nMode	Режим\nчитання
 	Reads the clipboard's rich text and keeps its formatting.	Читає форматований текст (RTF) із буфера обміну та зберігає його форматування.
 	Reads the clipboard's web content and keeps its formatting.	Читає вебвміст із буфера обміну та зберігає його форматування.
+	Picture	Зображення
+	Pastes the clipboard's picture.	Вставляє зображення з буфера обміну.
 	Reading Highlight	Виділення під час читання
 	Recent	Останні
 	Record Macro	Записати макрос
@@ -883,6 +888,7 @@
 	Table of Contents	Зміст
 	Table of\nContents	Зміст
 	Table Properties	Властивості таблиці
+	Table Properties…	Властивості таблиці…
 	Table Row Height	Висота рядка таблиці
 	Table Style Options	Параметри стилю таблиці
 	Table Styles	Стилі таблиць
@@ -932,6 +938,10 @@
 	Underline Words Only	Підкреслити лише слова
 	Undo	Скасувати
 	Undo {action}	Скасувати {action}
+	Undo Actions	Скасувати дії
+	Undo History	Журнал скасування
+	Undo 1 Action	Скасувати 1 дію
+	Undo {n} Actions	Скасувати дій: {n}
 	Ungroup	Розгрупувати
 	Unformatted Text	Неформатований текст
 	Up	Угору
@@ -1440,6 +1450,8 @@
 	Border lines	Лінії меж
 	Capitalize first letter of sentences	Перша літера речення велика
 	Capitalize first letter of table cells	Перша літера в клітинках таблиці велика
+	Correct TWo INitial CApitals	Виправляти ДВі ВЕликі літери на початку слова
+	Correct accidental usage of cAPS LOCK key	Виправляти випадкове натискання cAPS LOCK
 	Capitalize names of days	Назви днів із великої літери
 	Case changes	Зміни регістру
 	Character level	Рівень символів
@@ -2065,3 +2077,13 @@
 	Your system has animation effects turned on.	У вашій системі ефекти анімації ввімкнено.
 	Your system has animation effects turned off.	У вашій системі ефекти анімації вимкнено.
 	Your system doesn't report an animation setting, so animation effects stay on.	Система не повідомляє про налаштування анімації, тому ефекти анімації залишаються ввімкненими.
+	Select Column	Виділити стовпець
+	Select Table Cells by Clicking	Виділити клітинки таблиці клацанням
+	Insert Row or Column by Clicking	Вставити рядок або стовпець клацанням
+	Move Table by Dragging	Перемістити таблицю перетягуванням
+	AutoFit Column by Double-Clicking	Добір ширини стовпця подвійним клацанням
+	Region:	Регіон:
+	Automatic ({region})	Автоматично ({region})
+	Start-up	Запуск
+	Show the Start screen when WordCraft starts	Показувати початковий екран під час запуску WordCraft
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Увімкнено: WordCraft відкривається на сторінці Файл › Основне з порожнім документом, шаблонами та нещодавніми документами. Вимкнено: відкривається порожній документ.

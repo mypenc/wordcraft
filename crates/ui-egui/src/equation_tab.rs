@@ -36,7 +36,7 @@ fn paint_math(app: &mut WordApp, ui: &Ui, r: Rect, key: &str, linear: &str, node
     let nodes = nodes.unwrap_or_else(|| parse_linear(linear));
     match crate::previews::math_texture(app, ui.ctx(), key, &nodes, display, pt, r.size()) {
         Some(tex) => {
-            ui.painter().image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
+            ui.painter().image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Tokens::get(ui.ctx()).text);
         }
         None => {
             let t = Tokens::get(ui.ctx());
@@ -57,7 +57,7 @@ fn math_menu_button(ui: &mut Ui, app: &mut WordApp, picture: &str, label: &str, 
         ui.painter().rect_filled(r, 4.0, t.hover);
     }
     let pic = Rect::from_center_size(pos2(r.center().x, r.min.y + BIG_ICON_Y), vec2(40.0, 32.0));
-    ui.painter().rect_filled(pic, 3.0, egui::Color32::WHITE);
+    ui.painter().rect_filled(pic, 3.0, t.input);
     paint_math(app, ui, pic, &format!("btn:{picture}"), picture, None, false, 12.0);
     let lines: Vec<&str> = label.split('\n').collect();
     let mut y = r.min.y + BIG_LABEL_Y;
@@ -76,7 +76,7 @@ fn math_menu_button(ui: &mut Ui, app: &mut WordApp, picture: &str, label: &str, 
 fn tile(ui: &mut Ui, app: &mut WordApp, tpl: &Template, size: egui::Vec2) -> bool {
     let t = Tokens::get(ui.ctx());
     let (r, resp) = ui.allocate_exact_size(size, Sense::click());
-    ui.painter().rect_filled(r, 2.0, egui::Color32::WHITE);
+    ui.painter().rect_filled(r, 2.0, t.input);
     if resp.hovered() {
         ui.painter().rect_stroke(r, 2.0, Stroke::new(1.5, t.accent), egui::StrokeKind::Inside);
     }
@@ -125,7 +125,7 @@ pub fn builtin_menu(ui: &mut Ui, app: &mut WordApp) {
             let t = Tokens::get(ui.ctx());
             ui.label(egui::RichText::new(tl!(label)).font(semibold(11.5)).color(t.text));
             let (r, resp) = ui.allocate_exact_size(vec2(350.0, 64.0), Sense::click());
-            ui.painter().rect_filled(r, 2.0, egui::Color32::WHITE);
+            ui.painter().rect_filled(r, 2.0, t.input);
             if resp.hovered() {
                 ui.painter().rect_stroke(r, 2.0, Stroke::new(1.5, t.accent), egui::StrokeKind::Inside);
             }
@@ -249,7 +249,7 @@ fn symbols(ui: &mut Ui, app: &mut WordApp) {
 
 fn symbol_button(ui: &mut Ui, app: &mut WordApp, c: char, t: &Tokens) -> bool {
     let (r, resp) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
-    ui.painter().rect_filled(r, 2.0, egui::Color32::WHITE);
+    ui.painter().rect_filled(r, 2.0, t.input);
     if resp.hovered() {
         ui.painter().rect_stroke(r, 2.0, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
     }

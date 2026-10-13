@@ -183,7 +183,7 @@ pub fn base64_encode(b: &[u8]) -> String {
     out
 }
 
-fn picture(s: &mut Session, v: &Value) -> CmdResult {
+pub(crate) fn picture(s: &mut Session, v: &Value) -> CmdResult {
     let bytes = if let Some(d) = p::str(v, "data") {
         base64_decode(d).ok_or_else(|| CmdError::Params("bad base64 data".into()))?
     } else if let Some(path) = p::str(v, "path") {
@@ -201,20 +201,26 @@ fn place_picture(s: &mut Session, bytes: Vec<u8>, width: Option<f32>, alt: &str)
     if bytes.len() > 200 << 20 {
         return Err(CmdError::Failed("image is larger than 200 MB".into()));
     }
-    let (pw, ph) =
-        wordcraft_render::image_size(&bytes).ok_or_else(|| CmdError::Failed("not a supported image (PNG, JPEG, GIF, WebP, BMP)".into()))?;
-    let ext = match bytes.get(..4) {
-        Some([0x89, b'P', b'N', b'G']) => "png",
-        Some([0xFF, 0xD8, ..]) => "jpeg",
-        Some([b'G', b'I', b'F', _]) => "gif",
-        Some([b'R', b'I', b'F', b'F']) => "webp",
-        Some([b'B', b'M', ..]) => "bmp",
-        _ => "png",
+    // Natural size: pixels at 96 ppi, or a metafile's own frame (WMF, EMF: #802).
+    let (natural_w, natural_h, ext) = if let Some((pw, ph)) = wordcraft_render::image_size(&bytes) {
+        let ext = match bytes.get(..4) {
+            Some([0x89, b'P', b'N', b'G']) => "png",
+            Some([0xFF, 0xD8, ..]) => "jpeg",
+            Some([b'G', b'I', b'F', _]) => "gif",
+            Some([b'R', b'I', b'F', b'F']) => "webp",
+            Some([b'B', b'M', ..]) => "bmp",
+            _ => "png",
+        };
+        (pw as f32 * 0.75, ph as f32 * 0.75, ext)
+    } else if let Some(size) = wordcraft_render::metafile_size(&bytes) {
+        size
+    } else {
+        return Err(CmdError::Failed("not a supported image (PNG, JPEG, GIF, WebP, BMP, WMF, EMF)".into()));
     };
     let key = s.doc.add_media(bytes, ext);
-    // Natural size at 96 ppi, fitted to the text width.
+    // Fitted to the text width.
     let max_w = s.doc.sections().first().map(|(_, sp)| sp.text_width()).unwrap_or(468.0);
-    let (mut w, mut h) = (pw as f32 * 0.75, ph as f32 * 0.75);
+    let (mut w, mut h) = (natural_w, natural_h);
     if let Some(want) = width {
         let k = want.max(4.0) / w.max(1.0);
         w *= k;

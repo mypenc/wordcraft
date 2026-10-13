@@ -189,6 +189,8 @@
 	Delete Style	Удалить стиль
 	Delete Table	Удалить таблицу
 	Design	Дизайн
+	Search	Поиск
+	Title Bar	Строка заголовка
 	development build	сборка для разработки
 	Diagonal	Диагональ
 	Diamond	Ромб
@@ -341,6 +343,7 @@
 	Insert Above	Вставить сверху
 	Insert Below	Вставить снизу
 	Insert Caption	Вставить подпись
+	Insert Caption…	Вставить подпись…
 	Insert Citation	Вставить ссылку на источник
 	Insert Endnote	Вставить концевую сноску
 	Insert Footnote	Вставить сноску
@@ -728,6 +731,7 @@
 	Table of Figures	Список иллюстраций
 	Table of\nContents	Оглавление
 	Table Properties	Свойства таблицы
+	Table Properties…	Свойства таблицы…
 	Table Row Height	Высота строки таблицы
 	Table Style Options	Параметры стилей таблиц
 	Table Styles	Стили таблиц
@@ -778,6 +782,10 @@ preview	Title	Пример
 	Underline Words Only	Подчёркивать только слова
 	Undo	Отменить
 	Undo {action}	Отменить: {action}
+	Undo Actions	Отменить действия
+	Undo History	Журнал отмены
+	Undo 1 Action	Отменить действие
+	Undo {n} Actions	Отменить действий: {n}
 	Up	Вверх
 	Update Field	Обновить поле
 	Update Index	Обновить указатель
@@ -965,6 +973,8 @@ preview	Title	Пример
 	Keeps the fonts and formatting of the copied text.	Сохраняет шрифты и форматирование скопированного текста.
 	Reads the clipboard's rich text and keeps its formatting.	Берёт RTF-текст из буфера обмена и сохраняет его форматирование.
 	Reads the clipboard's web content and keeps its formatting.	Берёт веб-содержимое из буфера обмена и сохраняет его форматирование.
+	Picture	Рисунок
+	Pastes the clipboard's picture.	Вставляет рисунок из буфера обмена.
 	Drops all formatting and pastes plain text.	Убирает всё форматирование и вставляет обычный текст.
 	Advanced Find	Расширенный поиск
 	Advanced Find…	Расширенный поиск…
@@ -2037,6 +2047,8 @@ preview	Title	Пример
 	Border lines	Линии границ
 	Capitalize first letter of sentences	Делать первые буквы предложений прописными
 	Capitalize first letter of table cells	Делать первые буквы ячеек таблиц прописными
+	Correct TWo INitial CApitals	Исправлять ДВе ПРописные буквы в начале слова
+	Correct accidental usage of cAPS LOCK key	Устранять последствия случайного нажатия cAPS LOCK
 	Capitalize names of days	Названия дней с прописной буквы
 	Case changes	Изменения регистра
 	Character level	На уровне символов
@@ -2445,3 +2457,20 @@ preview	Title	Пример
 	Your system has animation effects turned on.	В системе эффекты анимации включены.
 	Your system has animation effects turned off.	В системе эффекты анимации выключены.
 	Your system doesn't report an animation setting, so animation effects stay on.	Система не сообщает о настройке анимации, поэтому эффекты анимации остаются включёнными.
+	Select Column	Выделить столбец таблицы
+	Select Table Cells by Clicking	Выделить ячейки таблицы щелчком
+	Insert Row or Column by Clicking	Вставить строку или столбец щелчком
+	Move Table by Dragging	Переместить таблицу перетаскиванием
+	AutoFit Column by Double-Clicking	Автоподбор ширины столбца двойным щелчком
+	Region:	Регион:
+	Automatic ({region})	Автоматически ({region})
+	Start-up	Запуск
+	Show the Start screen when WordCraft starts	Показывать начальный экран при запуске WordCraft
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Вкл.: WordCraft открывается на странице Файл › Главная с пустым документом, шаблонами и недавними документами. Выкл.: открывается пустой документ.
+	Typing	Ввод
+	Level 4	Уровень 4
+	Level 5	Уровень 5
+	Level 6	Уровень 6
+	Level 7	Уровень 7
+	Level 8	Уровень 8
+	Level 9	Уровень 9

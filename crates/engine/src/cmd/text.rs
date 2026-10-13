@@ -509,8 +509,18 @@ fn backspace_inner(s: &mut Session, _: &Value) -> CmdResult {
     }
     // At the start of a paragraph.
     if para.props.numbering.is_some_and(|n| n.num != 0) {
-        // First Backspace removes the number but keeps the item's indent (Word).
+        // First Backspace removes the number but keeps the item's indent (Word): the text stays
+        // where it was, so the indent becomes the paragraph's own (`num: 0` alone drops it).
+        let text_at = para.props.numbering.and_then(|n| s.doc.numbering.level(n.num, n.level)).map(|l| l.indent);
         let p = s.doc.para_mut(f.story, &f.path)?;
+        if p.props.style.as_deref() == Some("ListParagraph") {
+            if p.props.indent_left.is_none() && p.props.indent_left_chars.is_none_or(|c| c == 0.0) {
+                p.props.indent_left = text_at;
+            }
+            if p.props.indent_first.is_none() && p.props.indent_first_chars.is_none_or(|c| c == 0.0) {
+                p.props.indent_first = Some(0.0);
+            }
+        }
         p.props.numbering = Some(NumRef { num: 0, level: 0 });
         p.touch();
         return sel_result(s);

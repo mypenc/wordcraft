@@ -535,6 +535,7 @@
 	Insert Above	Vložit nad
 	Insert Below	Vložit pod
 	Insert Caption	Vložit titulek
+	Insert Caption…	Vložit titulek…
 	Insert Citation	Vložit citaci
 	Insert Endnote	Vložit vysvětlivku
 	Insert Footnote	Vložit poznámku pod čarou
@@ -867,6 +868,8 @@
 	Reading Speed	Rychlost čtení
 	Reads the clipboard's rich text and keeps its formatting.	Načte formátovaný text (RTF) ze schránky a zachová jeho formátování.
 	Reads the clipboard's web content and keeps its formatting.	Načte webový obsah ze schránky a zachová jeho formátování.
+	Picture	Obrázek
+	Pastes the clipboard's picture.	Vloží obrázek ze schránky.
 	Recent	Nedávné
 	Recently used symbols:	Naposledy použité symboly:
 	Recipient List	Seznam příjemců
@@ -1109,6 +1112,7 @@
 	Table of Contents	Obsah
 	Table of\nContents	Obsah
 	Table Properties	Vlastnosti tabulky
+	Table Properties…	Vlastnosti tabulky…
 	Table Row Height	Výška řádku tabulky
 	Table style	Styl tabulky
 	Table Style Options	Možnosti stylu tabulky
@@ -1874,6 +1878,11 @@
 	Word XML Document (*.xml)	Dokument Word XML (*.xml)
 	Deleted	Odstraněno
 	Resize Table by Dragging	Změnit velikost tabulky přetažením
+	Select Column	Vybrat sloupec
+	Select Table Cells by Clicking	Vybrat buňky tabulky kliknutím
+	Insert Row or Column by Clicking	Vložit řádek nebo sloupec kliknutím
+	Move Table by Dragging	Přesunout tabulku přetažením
+	AutoFit Column by Double-Clicking	Přizpůsobit sloupec dvojitým kliknutím
 	Print Markup	Tisknout revize
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Komentáře vedle každé stránky a sledované změny v souborech PDF, výtiscích a obrázcích; seznam komentářů na konci webových stránek, Markdownu a textu.
 	Add Font…	Přidat písmo…
@@ -2041,6 +2050,13 @@
 	Your system has animation effects turned off.	Efekty animace jsou v systému vypnuté.
 	Your system doesn't report an animation setting, so animation effects stay on.	Systém neuvádí žádné nastavení animací, proto efekty animace zůstávají zapnuté.
 	Do Not Check Spelling or Grammar	Nekontrolovat pravopis ani gramatiku
+	Undo Actions	Vrátit více akcí
+	Undo History	Historie vrácení
+	Undo 1 Action	Vrátit 1 akci
+	Undo {n} Actions	Vrátit akce: {n}
+	Start-up	Spuštění
+	Show the Start screen when WordCraft starts	Při spuštění WordCraftu zobrazit úvodní obrazovku
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Zapnuto: WordCraft se otevře na kartě Soubor › Domů s prázdným dokumentem, šablonami a nedávnými dokumenty. Vypnuto: otevře prázdný dokument.
 	Couldn't make WordCraft the default: {error}	WordCraft se nepodařilo nastavit jako výchozí: {error}
 	In Default apps, choose WordCraft for the document types you want it to open.	Ve Výchozích aplikacích vyberte WordCraft pro typy dokumentů, které má otevírat.
 	Make WordCraft the default for Word documents…	Nastavit WordCraft jako výchozí pro dokumenty Word…
@@ -2058,3 +2074,9 @@
 	Reading Column Width	Šířka sloupce pro čtení
 	Reading Line Spacing	Řádkování pro čtení
 	Reading Text Size	Velikost textu pro čtení
+	Correct TWo INitial CApitals	Opravovat DVě POčáteční VElká písmena
+	Correct accidental usage of cAPS LOCK key	Opravovat náhodné použití klávesy cAPS LOCK
+	Region:	Oblast:
+	Automatic ({region})	Automaticky ({region})
+	Search	Hledat
+	Title Bar	Záhlaví okna

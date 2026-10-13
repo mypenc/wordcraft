@@ -119,9 +119,10 @@ fn new(s: &mut Session, v: &Value) -> CmdResult {
         "letter" => crate::sample::letter(),
         "resume" => crate::sample::resume(),
         "report" => crate::sample::report(),
+        // The Normal template: the region's paper (#838), written in the editing language (the
+        // templates' text is English).
         _ => {
-            // A blank document is written in the editing language (the templates' text is English).
-            let mut d = Document::new();
+            let mut d = s.blank_document();
             if let Some(lang) = &s.editing_lang {
                 d.styles.default_chr.lang = Some(lang.clone());
             }

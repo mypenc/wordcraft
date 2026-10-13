@@ -341,6 +341,7 @@
 	Insert Above	Üste Ekle
 	Insert Below	Alta Ekle
 	Insert Caption	Resim Yazısı Ekle
+	Insert Caption…	Resim Yazısı Ekle…
 	Insert Citation	Atıf Ekle
 	Insert Endnote	Sonnot Ekle
 	Insert Footnote	Dipnot Ekle
@@ -557,6 +558,11 @@
 	Read Mode	Okuma Modu
 	Read\nAloud	Sesli\nOku
 	Read\nMode	Okuma\nModu
+	Reads the clipboard's rich text and keeps its formatting.	Panodaki zengin metni okur ve biçimlendirmesini korur.
+	Reads the clipboard's web content and keeps its formatting.	Panodaki web içeriğini okur ve biçimlendirmesini korur.
+	Picture	Resim
+	Pastes the clipboard's picture.	Panodaki resmi yapıştırır.
+	Reading Highlight	Okuma Vurgusu
 	Recent	Son Kullanılanlar
 	Record Macro	Makro Kaydet
 	Recover Unsaved Documents	Kaydedilmemiş Belgeleri Kurtar
@@ -616,6 +622,7 @@
 	Save As	Farklı Kaydet
 	Save as Template	Şablon Olarak Kaydet
 	Saved	Kaydedildi
+	Search	Ara
 	Search Commands	Komut Ara
 	Search commands and help	Komutlarda ve yardımda ara
 	Search document	Belgede ara
@@ -729,6 +736,7 @@
 	Table of Figures	Şekiller Tablosu
 	Table of\nContents	İçindekiler\nTablosu
 	Table Properties	Tablo Özellikleri
+	Table Properties…	Tablo Özellikleri…
 	Table Row Height	Tablo Satır Yüksekliği
 	Table Style Options	Tablo Stili Seçenekleri
 	Table Styles	Tablo Stilleri
@@ -762,6 +770,7 @@ preview	Title	Örnek
 	TOA Heading	Yetki Tablosu Başlığı
 	TOC Heading	İçindekiler Başlığı
 	TOC {n}	İçindekiler {n}
+	Title Bar	Başlık Çubuğu
 	Top Border	Üst Kenarlık
 	Top of Page	Sayfa Üstü
 	Top:	Üst:
@@ -779,6 +788,11 @@ preview	Title	Örnek
 	Underline Words Only	Yalnızca Sözcüklerin Altını Çiz
 	Undo	Geri Al
 	Undo {action}	Geri Al: {action}
+	Undo Actions	Eylemleri Geri Al
+	Undo History	Geri Alma Geçmişi
+	Undo 1 Action	1 Eylemi Geri Al
+	Undo {n} Actions	{n} Eylemi Geri Al
+	Unformatted Text	Biçimlendirilmemiş Metin
 	Up	Yukarı
 	Update Field	Alanı Güncelle
 	Update Index	Dizini Güncelle
@@ -961,15 +975,11 @@ preview	Title	Örnek
 	Formatted Text	Biçimlendirilmiş Metin
 	Rich Text Format (RTF)	Zengin Metin Biçimi (RTF)
 	HTML Format	HTML Biçimi
-	Unformatted Text	Biçimlendirilmemiş Metin
 	Result	Sonuç
-	Reads the clipboard's rich text and keeps its formatting.	Panodaki zengin metni okur ve biçimlendirmesini korur.
-	Reads the clipboard's web content and keeps its formatting.	Panodaki web içeriğini okur ve biçimlendirmesini korur.
 	Drops all formatting and pastes plain text.	Tüm biçimlendirmeyi kaldırır ve düz metin yapıştırır.
 	Advanced Find	Gelişmiş Bul
 	Advanced Find…	Gelişmiş Bul…
 	Go To…	Git…
-	Reading Highlight	Okuma Vurgusu
 	New Table Style	Yeni Tablo Stili
 	Modify Table Style	Tablo Stilini Değiştir
 	New Table Style…	Yeni Tablo Stili…
@@ -2039,6 +2049,8 @@ preview	Title	Örnek
 	Border lines	Kenarlık çizgileri
 	Capitalize first letter of sentences	Cümlelerin ilk harfini büyük yap
 	Capitalize first letter of table cells	Tablo hücrelerinin ilk harfini büyük yap
+	Correct TWo INitial CApitals	İKi BAşharfi büyük olan sözcükleri düzelt
+	Correct accidental usage of cAPS LOCK key	cAPS LOCK tuşunun yanlışlıkla kullanımını düzelt
 	Capitalize names of days	Gün adlarını büyük harfle başlat
 	Case changes	Büyük/küçük harf değişiklikleri
 	Character level	Karakter düzeyi
@@ -2444,3 +2456,20 @@ preview	Title	Örnek
 	Your system has animation effects turned on.	Sisteminizde animasyon efektleri açık.
 	Your system has animation effects turned off.	Sisteminizde animasyon efektleri kapalı.
 	Your system doesn't report an animation setting, so animation effects stay on.	Sisteminiz bir animasyon ayarı bildirmiyor, bu nedenle animasyon efektleri açık kalır.
+	Select Column	Tablo Sütunu Seç
+	Select Table Cells by Clicking	Tablo Hücrelerini Tıklayarak Seç
+	Insert Row or Column by Clicking	Tıklayarak Satır veya Sütun Ekle
+	Move Table by Dragging	Tabloyu Sürükleyerek Taşı
+	AutoFit Column by Double-Clicking	Sütunu Çift Tıklayarak Otomatik Sığdır
+	Region:	Bölge:
+	Automatic ({region})	Otomatik ({region})
+	Start-up	Başlangıç
+	Show the Start screen when WordCraft starts	WordCraft açılırken Başlangıç ekranını göster
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Açık: WordCraft, Dosya › Giriş sayfasında boş belge, şablonlar ve son belgelerinizle açılır. Kapalı: boş bir belge açar.
+	Typing	Yazma
+	Level 4	Düzey 4
+	Level 5	Düzey 5
+	Level 6	Düzey 6
+	Level 7	Düzey 7
+	Level 8	Düzey 8
+	Level 9	Düzey 9

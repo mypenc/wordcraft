@@ -368,6 +368,8 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         PartRels::default(),
     );
 
+    wr.embeds.font_table(&mut rels);
+
     // Media referenced by some drawing (orphan parts would make the package suspect).
     let mut media_types: BTreeMap<String, &str> = BTreeMap::new();
     for (key, file) in &wr.media_files {

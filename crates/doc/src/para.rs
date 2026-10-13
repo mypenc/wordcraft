@@ -831,6 +831,30 @@ impl Paragraph {
         }
         out
     }
+    /// [`Self::plain_text`] as it reads on screen: characters in runs set in a symbol font
+    /// (Symbol, Wingdings…) become their standard Unicode equivalents
+    /// ([`crate::symbol_fonts`]). For copying as text and plain-text export; the stored text is
+    /// unchanged.
+    pub fn shown_text(&self) -> String {
+        let mut out = String::with_capacity(self.text.len());
+        let mut k = 0;
+        let mut runs = self.run_ranges().peekable();
+        for (i, c) in self.text.char_indices() {
+            while runs.peek().is_some_and(|(r, _)| r.end <= i) {
+                runs.next();
+            }
+            if c == OBJ {
+                if let Some(o) = self.objects.get(k) {
+                    out.push_str(o.plain_text());
+                }
+                k += 1;
+                continue;
+            }
+            let font = runs.peek().filter(|(r, _)| r.contains(&i)).and_then(|(_, p)| p.font.as_deref());
+            out.push(font.and_then(|f| crate::symbol_fonts::symbol_char(f, c)).unwrap_or(c));
+        }
+        out
+    }
     /// [`Self::plain_text`] without tracked deletions: the text as it reads with every change accepted.
     pub fn final_text(&self) -> String {
         self.text_without(&self.deleted_ranges())
@@ -1040,7 +1064,12 @@ impl Paragraph {
         if self.runs.is_empty() || a == 0 {
             // Keep the formatting of what's deleted for the mark when emptying.
             if b == self.text.len() {
-                self.mark = self.props_of_char(a).clone();
+                // Formatting only: the mark is a tracked change of its own or it is not, whatever
+                // revision the deleted text was part of.
+                let revisions = (self.mark.ins, self.mark.del, self.mark.fmt_change.clone());
+                let mut mark = self.props_of_char(a).clone();
+                (mark.ins, mark.del, mark.fmt_change) = revisions;
+                self.mark = mark;
             }
         }
         let k0 = self.objects_before(a);
@@ -1410,6 +1439,24 @@ mod tests {
         let t = p.split_off(p.len()).unwrap();
         assert!(t.is_empty());
         assert_eq!(t.mark.bold, Some(true));
+    }
+
+    #[test]
+    fn emptying_a_paragraph_keeps_the_formatting_but_not_the_revisions_of_its_text() {
+        let mut props = bold();
+        props.ins = Some(3);
+        props.del = Some(4);
+        let mut p = Paragraph::with_text("Hello", props);
+        p.mark = bold();
+        p.delete(0, 5).unwrap();
+        assert!(p.is_empty());
+        assert_eq!(p.mark.bold, Some(true));
+        assert_eq!((p.mark.ins, p.mark.del), (None, None));
+        // A mark that is itself a tracked change keeps its own revision.
+        let mut p = Paragraph::with_text("Hello", bold());
+        p.mark.del = Some(7);
+        p.delete(0, 5).unwrap();
+        assert_eq!((p.mark.ins, p.mark.del), (None, Some(7)));
     }
 
     #[test]

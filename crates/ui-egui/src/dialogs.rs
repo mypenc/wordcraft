@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use wordcraft_engine::Password;
 
 use crate::WordApp;
+use crate::options::MeasureExt;
 use crate::theme::{Tokens, semibold};
 
 /// The Find and Replace dialog's search options beyond the first row (#543).
@@ -28,6 +29,25 @@ pub struct FindExtra {
     pub more: bool,
     /// Special ▾ inserts into Replace with (it last had the focus), not Find what.
     pub to_replace: bool,
+}
+
+/// The tabs of the Find and Replace dialog (#712).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FindTab {
+    #[default]
+    Find,
+    Replace,
+    GoTo,
+}
+
+/// What Go To moves to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GoToWhat {
+    #[default]
+    Page,
+    Bookmark,
 }
 
 /// The Special ▾ menu: (name, code) for Find what, without and with wildcards.
@@ -201,11 +221,14 @@ pub enum Dialog {
         regex: bool,
         /// Search options under "Search Options" (#543).
         extra: FindExtra,
-        replace_mode: bool,
+        /// Find, Replace or Go To, one dialog as in Word (#712).
+        tab: FindTab,
+        goto_what: GoToWhat,
+        /// Go To's box: a page number (`+2`, `-1` move from the current page) or a bookmark.
+        goto_target: String,
         message: String,
-    },
-    Goto {
-        page: String,
+        /// Put the caret in Find what on the first frame, so typing searches (#772).
+        focus: bool,
     },
     InsertTable {
         rows: u32,
@@ -298,6 +321,10 @@ pub enum Dialog {
     },
     Commands {
         query: String,
+        /// Opened by a shortcut that may also send its key's text (Alt+Q's "q", in the same frame
+        /// or the next): that text isn't typed into the box; the next key pressed ends this (#819).
+        #[serde(skip)]
+        swallow: bool,
     },
     /// Columns, Symbol and Field ([`crate::dialogs_insert`], #321).
     Insert(Box<crate::dialogs_insert::InsertDialog>),
@@ -317,6 +344,9 @@ pub enum Dialog {
         choice: usize,
         #[serde(skip)]
         payload: Value,
+        /// Shown when nothing can be pasted: what the clipboard holds, or that it is empty (#833).
+        #[serde(skip)]
+        note: String,
     },
     /// Tabs: 0 About, 1 Contributors, 2 Models.
     About {
@@ -842,9 +872,9 @@ impl Dialog {
             Dialog::Paragraph { .. } => "paragraph",
             Dialog::Tabs { .. } => "tabs",
             Dialog::Borders { .. } => "borders",
-            Dialog::Find { replace_mode: false, .. } => "find",
-            Dialog::Find { .. } => "replace",
-            Dialog::Goto { .. } => "goto",
+            Dialog::Find { tab: FindTab::Find, .. } => "find",
+            Dialog::Find { tab: FindTab::Replace, .. } => "replace",
+            Dialog::Find { tab: FindTab::GoTo, .. } => "goto",
             Dialog::InsertTable { .. } => "insertTable",
             Dialog::PageSetup { .. } => "pageSetup",
             Dialog::Link { .. } => "link",
@@ -1000,7 +1030,7 @@ impl Dialog {
                 };
                 Dialog::Borders { form: Box::new(crate::dialogs_para::BordersForm::read(app, tab)?) }
             }
-            "find" | "replace" => Dialog::Find {
+            "find" | "replace" | "goto" => Dialog::Find {
                 query: if app.session.sel.is_collapsed() { app.session.find.query.clone() } else { app.session.selected_text() },
                 replace: app.session.find.replace.clone(),
                 match_case: app.session.find.match_case,
@@ -1019,10 +1049,16 @@ impl Dialog {
                         || app.session.find.ignore_space,
                     to_replace: false,
                 },
-                replace_mode: name == "replace",
+                tab: match name {
+                    "replace" => FindTab::Replace,
+                    "goto" => FindTab::GoTo,
+                    _ => FindTab::Find,
+                },
+                goto_what: GoToWhat::Page,
+                goto_target: String::new(),
                 message: String::new(),
+                focus: true,
             },
-            "goto" => Dialog::Goto { page: String::new() },
             "insertTable" => Dialog::InsertTable { rows: 2, cols: 5 },
             "pageSetup" => {
                 let sp = wordcraft_engine::cmd::page::sect(&app.session);
@@ -1080,7 +1116,7 @@ impl Dialog {
                 let regions = table_regions(app, &id);
                 Dialog::TableStyle { id: Some(id), name, based_on, region: 0, basis: regions.clone(), regions }
             }
-            "commands" => Dialog::Commands { query: String::new() },
+            "commands" => Dialog::Commands { query: String::new(), swallow: true },
             "icons" => Dialog::Icons { query: String::new(), category: String::new(), selected: String::new() },
             "tableProperties" => {
                 let form = Box::new(TableForm::read(app)?);
@@ -1164,12 +1200,13 @@ impl Dialog {
     pub fn paste_special(app: &WordApp, payload: &Value) -> Dialog {
         let formats: Vec<String> = wordcraft_engine::cmd::paste::available(&app.session, payload).into_iter().map(str::to_string).collect();
         let mut kept = json!({});
-        for k in ["text", "html", "rtf"] {
+        for k in ["text", "html", "rtf", "picture"] {
             if let Some(t) = payload.get(k).and_then(Value::as_str) {
                 kept[k] = json!(t);
             }
         }
-        Dialog::PasteSpecial { formats, choice: 0, payload: kept }
+        let note = if formats.is_empty() { crate::system_clipboard::nothing_to_paste(app) } else { String::new() };
+        Dialog::PasteSpecial { formats, choice: 0, payload: kept, note }
     }
 
     pub fn modify_style(app: &WordApp, id: &str) -> Option<Dialog> {
@@ -1313,9 +1350,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         Dialog::Paragraph { .. } => "Paragraph",
         Dialog::Tabs { .. } => "Tabs",
         Dialog::Borders { .. } => "Borders and Shading",
-        Dialog::Find { replace_mode: false, .. } => "Find",
         Dialog::Find { .. } => "Find and Replace",
-        Dialog::Goto { .. } => "Go To",
         Dialog::InsertTable { .. } => "Insert Table",
         Dialog::PageSetup { .. } => "Page Setup",
         Dialog::Link { .. } => "Insert Hyperlink",
@@ -1598,14 +1633,14 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         ui.add(
                             egui::DragValue::new(left)
                                 .speed(3.6 / crate::options::unit().pt_per_unit())
-                                .suffix(crate::options::unit().suffix())
+                                .measure(crate::options::unit())
                                 .max_decimals(2),
                         );
                         ui.label(tl!(r_label));
                         ui.add(
                             egui::DragValue::new(right)
                                 .speed(3.6 / crate::options::unit().pt_per_unit())
-                                .suffix(crate::options::unit().suffix())
+                                .measure(crate::options::unit())
                                 .max_decimals(2),
                         );
                         ui.end_row();
@@ -1613,7 +1648,7 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         ui.add(
                             egui::DragValue::new(first)
                                 .speed(3.6 / crate::options::unit().pt_per_unit())
-                                .suffix(crate::options::unit().suffix())
+                                .measure(crate::options::unit())
                                 .max_decimals(2),
                         );
                         ui.end_row();
@@ -1685,22 +1720,31 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
         Dialog::Tabs { form } => crate::dialogs_para::tabs(app, ui, form),
         Dialog::Borders { form } => crate::dialogs_para::borders(app, ui, form),
-        Dialog::Find { query, replace, match_case, whole_word, regex, extra, replace_mode, message } => {
+        Dialog::Find { query, replace, match_case, whole_word, regex, extra, tab, goto_what, goto_target, message, focus } => {
             ui.horizontal(|ui| {
-                if ui.selectable_label(!*replace_mode, tl!("Find")).clicked() {
-                    *replace_mode = false;
-                }
-                if ui.selectable_label(*replace_mode, tl!("Replace")).clicked() {
-                    *replace_mode = true;
+                for (t, label) in [(FindTab::Find, "Find"), (FindTab::Replace, "Replace"), (FindTab::GoTo, "Go To")] {
+                    if ui.selectable_label(*tab == t, tl!(label)).clicked() && *tab != t {
+                        *tab = t;
+                        message.clear();
+                    }
                 }
             });
+            ui.separator();
+            if *tab == FindTab::GoTo {
+                return goto_body(app, ui, goto_what, goto_target, message);
+            }
+            let replace_mode = *tab == FindTab::Replace;
             ui.horizontal(|ui| {
                 ui.label(tl!("Find what:"));
-                if ui.add(egui::TextEdit::singleline(query).desired_width(240.0)).gained_focus() {
+                let r = ui.add(egui::TextEdit::singleline(query).id(egui::Id::new("find_what")).desired_width(240.0));
+                if std::mem::take(focus) {
+                    r.request_focus();
+                }
+                if r.gained_focus() {
                     extra.to_replace = false;
                 }
             });
-            if *replace_mode {
+            if replace_mode {
                 ui.horizontal(|ui| {
                     ui.label(tl!("Replace with:"));
                     if ui.add(egui::TextEdit::singleline(replace).desired_width(228.0)).gained_focus() {
@@ -1749,7 +1793,7 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 "ignorePunct": extra.ignore_punct,
                 "ignoreSpace": extra.ignore_space,
             });
-            if !*replace_mode {
+            if !replace_mode {
                 ui.horizontal(|ui| {
                     let lit = app.session.find.highlight;
                     if ui.selectable_label(lit, tl!("Reading Highlight")).clicked() {
@@ -1768,7 +1812,7 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             }
             let mut close = false;
             ui.horizontal(|ui| {
-                if *replace_mode {
+                if replace_mode {
                     if ui.button(tl!("Replace All")).clicked() {
                         match app.run("edit.replaceAll", opts.clone()) {
                             Ok(r) => *message = format!("All done. We made {} replacements.", r["replaced"]),
@@ -1791,17 +1835,6 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
             });
             close
-        }
-        Dialog::Goto { page } => {
-            ui.horizontal(|ui| {
-                ui.label(tl!("Enter page number:"));
-                ui.text_edit_singleline(page);
-            });
-            let (ok, cancel) = buttons(ui, tl!("Go To"));
-            if ok && let Ok(n) = page.trim().parse::<u64>() {
-                let _ = app.run("edit.goto", json!({"page": n}));
-            }
-            ok || cancel
         }
         Dialog::Enclose { style, text, shape } => {
             ui.label(egui::RichText::new(tl!("Style")).font(semibold(12.5)));
@@ -1863,34 +1896,16 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ui.label(egui::RichText::new(tl!("Margins")).font(semibold(12.5)));
             egui::Grid::new("ps").num_columns(4).show(ui, |ui| {
                 ui.label(tl!("Top:"));
-                ui.add(
-                    egui::DragValue::new(top)
-                        .speed(3.6 / crate::options::unit().pt_per_unit())
-                        .suffix(crate::options::unit().suffix())
-                        .max_decimals(2),
-                );
+                ui.add(egui::DragValue::new(top).speed(3.6 / crate::options::unit().pt_per_unit()).measure(crate::options::unit()).max_decimals(2));
                 ui.label(tl!("Bottom:"));
                 ui.add(
-                    egui::DragValue::new(bottom)
-                        .speed(3.6 / crate::options::unit().pt_per_unit())
-                        .suffix(crate::options::unit().suffix())
-                        .max_decimals(2),
+                    egui::DragValue::new(bottom).speed(3.6 / crate::options::unit().pt_per_unit()).measure(crate::options::unit()).max_decimals(2),
                 );
                 ui.end_row();
                 ui.label(tl!("Left:"));
-                ui.add(
-                    egui::DragValue::new(left)
-                        .speed(3.6 / crate::options::unit().pt_per_unit())
-                        .suffix(crate::options::unit().suffix())
-                        .max_decimals(2),
-                );
+                ui.add(egui::DragValue::new(left).speed(3.6 / crate::options::unit().pt_per_unit()).measure(crate::options::unit()).max_decimals(2));
                 ui.label(tl!("Right:"));
-                ui.add(
-                    egui::DragValue::new(right)
-                        .speed(3.6 / crate::options::unit().pt_per_unit())
-                        .suffix(crate::options::unit().suffix())
-                        .max_decimals(2),
-                );
+                ui.add(egui::DragValue::new(right).speed(3.6 / crate::options::unit().pt_per_unit()).measure(crate::options::unit()).max_decimals(2));
                 ui.end_row();
             });
             ui.label(egui::RichText::new(tl!("Orientation")).font(semibold(12.5)));
@@ -2245,41 +2260,57 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
         Dialog::Insert(f) => crate::dialogs_insert::body(app, ui, f),
         Dialog::Refs(f) => crate::dialogs_refs::body(app, ui, f),
-        Dialog::Commands { query } => {
+        Dialog::Commands { query, swallow } => {
+            if *swallow {
+                ui.ctx().input_mut(|i| i.events.retain(|e| !swallow_shortcut_text(swallow, e)));
+            }
             let r = ui.add(egui::TextEdit::singleline(query).hint_text(tl!("Type a command, e.g. \"insert table\"")).desired_width(380.0));
             r.request_focus();
-            let q = query.to_lowercase();
-            let localized_q = crate::i18n::lowercase(query);
             let reg = app.session.registry.clone();
-            let mut hits: Vec<&wordcraft_engine::CommandSpec> = reg
-                .all()
-                .iter()
-                .filter(|c| {
-                    !q.is_empty()
-                        && (c.label.to_lowercase().contains(&q)
-                            || crate::i18n::lowercase(tl!(c.label)).contains(&localized_q)
-                            || c.id.to_lowercase().contains(&q)
-                            || c.location.to_lowercase().contains(&q)
-                            || crate::i18n::lowercase(&crate::i18n::location(c.location)).contains(&localized_q))
-                })
-                .collect();
+            // An empty box suggests a few common commands, as Word's Search does.
+            let mut hits: Vec<&wordcraft_engine::CommandSpec> = if query.trim().is_empty() {
+                ui.label(egui::RichText::new(tl!("Suggested")).font(semibold(12.5)));
+                SEARCH_SUGGESTIONS.iter().filter_map(|id| reg.get(id)).collect()
+            } else {
+                reg.all().iter().filter(|c| command_matches(c, query)).collect()
+            };
             hits.truncate(14);
-            let mut close = false;
-            for c in hits {
+            let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let mut run: Option<&str> = enter.then(|| hits.first().map(|c| c.id)).flatten();
+            for c in &hits {
                 let sc = crate::widgets::shortcut_text(app, c.id);
                 let label = format!("{}   —   {}", tl!(c.label), crate::i18n::location(c.location));
                 if ui.add(egui::Button::new(label).shortcut_text(sc).min_size(vec2(380.0, 0.0))).clicked() {
-                    let _ = app.run(c.id, json!({}));
-                    close = true;
+                    run = Some(c.id);
                 }
             }
-            close || ui.input(|i| i.key_pressed(egui::Key::Escape))
+            // Search also finds the words in the document (the Navigation pane's results).
+            let text = query.trim().to_string();
+            let mut find = false;
+            if !text.is_empty() {
+                ui.separator();
+                let label = crate::i18n::fmt(tl!("Find “{text}” in the document"), &[("text", &text)]);
+                find = ui.add(egui::Button::new(label).min_size(vec2(380.0, 0.0))).clicked() || (enter && hits.is_empty());
+            }
+            if let Some(id) = run {
+                let _ = app.run(id, json!({}));
+            } else if find {
+                find_in_navigation_pane(app, ui.ctx(), &text);
+            }
+            run.is_some() || find || ui.input(|i| i.key_pressed(egui::Key::Escape))
         }
         Dialog::Icons { query, category, selected } => icons_body(app, ui, query, category, selected),
-        Dialog::PasteSpecial { formats, choice, payload } => {
+        Dialog::PasteSpecial { formats, choice, payload, note } => {
             ui.label(egui::RichText::new(tl!("Paste as:")).font(semibold(12.5)));
             if formats.is_empty() {
-                ui.label(egui::RichText::new(tl!("The clipboard is empty.")).weak());
+                // The engine's wording, sentence-cased; the format names in it aren't translated.
+                let text = if note.is_empty() || note == "the clipboard is empty" {
+                    tl!("The clipboard is empty.").to_string()
+                } else {
+                    let mut c = note.chars();
+                    c.next().map(|f| f.to_uppercase().chain(c).collect::<String>() + ".").unwrap_or_default()
+                };
+                ui.label(egui::RichText::new(text).weak());
             }
             for (i, f) in formats.iter().enumerate() {
                 let label = wordcraft_engine::cmd::paste::FORMATS.iter().find(|(id, _)| id == f).map(|(_, l)| *l).unwrap_or(f.as_str());
@@ -2292,6 +2323,7 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     "formatted" => "Keeps the fonts and formatting of the copied text.",
                     "rtf" => "Reads the clipboard's rich text and keeps its formatting.",
                     "html" => "Reads the clipboard's web content and keeps its formatting.",
+                    "picture" => "Pastes the clipboard's picture.",
                     _ => "Drops all formatting and pastes plain text.",
                 };
                 ui.label(egui::RichText::new(tl!(hint)).weak());
@@ -2354,6 +2386,14 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 .inner
             });
             let buttons = buttons.inner;
+            // The keyboard alone answers, as in Word (#861): Save has focus when the prompt opens,
+            // so Enter saves, and the arrow keys (egui's focus navigation) or Tab move between the
+            // buttons, shown as Save, Don't Save, Cancel.
+            if ui.memory(|m| m.focused().is_none())
+                && let Some((save, _)) = buttons.get(2)
+            {
+                save.request_focus();
+            }
             // Enter clicks the focused button; it means Save only when none of them has focus.
             let focused = buttons.iter().any(|(b, _)| b.has_focus());
             let answer = if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -2734,7 +2774,7 @@ fn recipient_list(app: &mut WordApp, ui: &mut Ui, fields: &mut Vec<String>, rows
 fn table_properties(ui: &mut Ui, f: &mut TableForm) {
     let unit = crate::options::unit();
     fn len(v: &mut f32, lo: f32, unit: wordcraft_geom::Unit) -> egui::DragValue<'_> {
-        egui::DragValue::new(v).speed(0.01).range(lo..=22.0).suffix(unit.suffix()).max_decimals(2)
+        egui::DragValue::new(v).speed(0.01).range(lo..=22.0).measure(unit).max_decimals(2)
     }
     let heading = |ui: &mut Ui, s: &str| {
         ui.add_space(4.0);
@@ -2753,7 +2793,7 @@ fn table_properties(ui: &mut Ui, f: &mut TableForm) {
         });
         ui.end_row();
         ui.label(tl!("Indent from left:"));
-        ui.add_enabled(f.align == "left", egui::DragValue::new(&mut f.indent).speed(0.01).range(-11.0..=22.0).suffix(unit.suffix()).max_decimals(2));
+        ui.add_enabled(f.align == "left", egui::DragValue::new(&mut f.indent).speed(0.01).range(-11.0..=22.0).measure(unit).max_decimals(2));
         ui.end_row();
         ui.label(tl!("Table direction:"));
         ui.horizontal(|ui| {
@@ -3016,6 +3056,145 @@ fn describe(st: &Value) -> String {
     parts.join(", ")
 }
 
+/// What Search lists before anything is typed: common commands (#819).
+const SEARCH_SUGGESTIONS: [&str; 3] = ["review.spelling", "review.wordCount", "file.print"];
+
+/// Search's "Find … in the document": the Navigation pane opens on its results for `text`.
+fn find_in_navigation_pane(app: &mut WordApp, ctx: &egui::Context, text: &str) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("nav_query"), text.to_string()));
+    app.ui.nav_tab = "results".into();
+    let _ = app.run("view.navigationPane", json!({"value": true}));
+    let _ = app.run("edit.find", json!({"text": text}));
+}
+
+/// Whether `e` is the text of the shortcut that opened a box (see `Dialog::Commands::swallow`):
+/// a plain key press first means the user is typing, and one swallowed text is all there is.
+fn swallow_shortcut_text(swallow: &mut bool, e: &egui::Event) -> bool {
+    match e {
+        egui::Event::Key { pressed: true, modifiers, .. } if !modifiers.alt => {
+            *swallow = false;
+            false
+        }
+        egui::Event::Text(_) if *swallow => {
+            *swallow = false;
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Search's filter: every word of the query is in the command's label, location or id, in English
+/// or in the interface language, so "insert table" finds Insert › Tables › Table (#819).
+fn command_matches(c: &wordcraft_engine::CommandSpec, query: &str) -> bool {
+    if query.trim().is_empty() {
+        return false;
+    }
+    let hay = format!(
+        "{} {} {} {} {}",
+        c.label.to_lowercase(),
+        c.location.to_lowercase(),
+        c.id.to_lowercase(),
+        crate::i18n::lowercase(tl!(c.label)),
+        crate::i18n::lowercase(&crate::i18n::location(c.location))
+    );
+    query.split_whitespace().all(|w| hay.contains(&w.to_lowercase()) || hay.contains(&crate::i18n::lowercase(w)))
+}
+
+/// The Find and Replace dialog's Go To tab (#712): a page (a number, or `+2` / `-1` from the
+/// current page; empty, Next and Previous step a page) or a bookmark. Returns true to close.
+fn goto_body(app: &mut WordApp, ui: &mut Ui, what: &mut GoToWhat, target: &mut String, message: &mut String) -> bool {
+    // The document's bookmarks, only while they are listed (finding them walks the document).
+    let bookmarks: Vec<String> = if *what == GoToWhat::Bookmark {
+        app.session.doc.bookmarks().into_iter().map(|(n, _)| n).filter(|n| !n.starts_with('_')).collect()
+    } else {
+        Vec::new()
+    };
+    ui.horizontal_top(|ui| {
+        ui.vertical(|ui| {
+            ui.label(tl!("Go to what:"));
+            for (w, label) in [(GoToWhat::Page, "Page"), (GoToWhat::Bookmark, "Bookmark")] {
+                if ui.selectable_label(*what == w, tl!(label)).clicked() && *what != w {
+                    *what = w;
+                    target.clear();
+                    message.clear();
+                }
+            }
+        });
+        ui.add_space(16.0);
+        ui.vertical(|ui| match what {
+            GoToWhat::Page => {
+                ui.label(tl!("Enter page number:"));
+                ui.add(egui::TextEdit::singleline(target).desired_width(220.0)).request_focus();
+                ui.label(egui::RichText::new(tl!("Type +2 or -1 to move from the page you are on.")).weak());
+            }
+            GoToWhat::Bookmark => {
+                ui.label(tl!("Enter bookmark name:"));
+                egui::ComboBox::from_id_salt("goto_bookmark").width(220.0).selected_text(target.as_str()).show_ui(ui, |ui| {
+                    for b in &bookmarks {
+                        ui.selectable_value(target, b.clone(), b.as_str());
+                    }
+                });
+                if bookmarks.is_empty() {
+                    ui.label(egui::RichText::new(tl!("This document has no bookmarks.")).weak());
+                }
+            }
+        });
+    });
+    if !message.is_empty() {
+        ui.label(egui::RichText::new(message.as_str()).weak());
+    }
+    let mut close = false;
+    let mut go: Option<Value> = None;
+    let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        let page_step = *what == GoToWhat::Page && target.trim().is_empty();
+        if page_step && ui.button(tl!("Previous")).clicked() {
+            go = Some(json!({"pageBy": -1}));
+        }
+        let label = if page_step { tl!("Next") } else { tl!("Go To") };
+        if ui.button(label).clicked() || enter {
+            go = match what {
+                GoToWhat::Page => match goto_page(target) {
+                    Some(p) => Some(p),
+                    None => {
+                        *message = tl!("Type a page number, or +2 / -1.").to_string();
+                        None
+                    }
+                },
+                GoToWhat::Bookmark if !target.is_empty() => Some(json!({"bookmark": target.clone()})),
+                GoToWhat::Bookmark => None,
+            };
+        }
+        if ui.button(tl!("Close")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            close = true;
+        }
+    });
+    if let Some(params) = go {
+        match app.run("edit.goto", params) {
+            Ok(_) => message.clear(),
+            Err(e) => *message = e,
+        }
+    }
+    close
+}
+
+/// Go To's page box as `edit.goto` params: empty steps one page on, `+n` / `-n` move from the
+/// current page, a number is that page. `None` for anything else.
+fn goto_page(text: &str) -> Option<Value> {
+    let t = text.trim().replace('\u{2212}', "-");
+    if t.is_empty() {
+        return Some(json!({"pageBy": 1}));
+    }
+    if let Some(rest) = t.strip_prefix('+') {
+        return rest.parse::<i64>().ok().filter(|n| *n >= 0).map(|n| json!({"pageBy": n}));
+    }
+    if t.starts_with('-') {
+        return t.parse::<i64>().ok().map(|n| json!({"pageBy": n}));
+    }
+    t.parse::<u64>().ok().filter(|n| *n >= 1).map(|n| json!({"page": n}))
+}
+
 /// path data; Insert (or a double click) runs `insert.icon`. Returns true to close.
 fn icons_body(app: &mut WordApp, ui: &mut Ui, query: &mut String, category: &mut String, selected: &mut String) -> bool {
     use wordcraft_render::icon_lib::{self, Category};
@@ -3128,6 +3307,31 @@ mod tests {
     use wordcraft_doc::props::Align;
     use wordcraft_engine::Session;
 
+    /// Go To's page box (#712): a number, +n / -n from the current page (a typographic minus
+    /// too), empty for the next page; anything else is refused.
+    #[test]
+    fn go_to_reads_its_page_box() {
+        assert_eq!(goto_page("7"), Some(json!({"page": 7})));
+        assert_eq!(goto_page(" +2 "), Some(json!({"pageBy": 2})));
+        assert_eq!(goto_page("-1"), Some(json!({"pageBy": -1})));
+        assert_eq!(goto_page("\u{2212}3"), Some(json!({"pageBy": -3})));
+        assert_eq!(goto_page(""), Some(json!({"pageBy": 1})));
+        for junk in ["0", "abc", "+x", "1.5", "99999999999999999999999"] {
+            assert_eq!(goto_page(junk), None, "{junk}");
+        }
+    }
+
+    /// Find, Replace and Go To are one dialog with three tabs (#712).
+    #[test]
+    fn find_replace_and_go_to_are_one_dialog() {
+        let mut app = app_with("One");
+        for (name, tab) in [("find", FindTab::Find), ("replace", FindTab::Replace), ("goto", FindTab::GoTo)] {
+            let _ = app.run("ui.dialog", json!({"name": name}));
+            assert!(matches!(&app.dialog, Some(Dialog::Find { tab: t, .. }) if *t == tab), "{name}");
+            assert_eq!(app.dialog.as_ref().map(|d| d.name()), Some(name));
+        }
+    }
+
     fn app_with(text: &str) -> WordApp {
         let mut app = WordApp::new(Session::new(wordcraft_doc::Document::new()), crate::Services::default());
         let _ = app.run("document.setText", json!({"text": text}));
@@ -3136,6 +3340,40 @@ mod tests {
 
     fn props(app: &WordApp) -> wordcraft_doc::props::ParaProps {
         app.session.doc.para_at(&app.session.sel.focus).map(|p| p.props.clone()).unwrap_or_default()
+    }
+
+    /// #819: the text a shortcut sends with its key isn't typed into the box it opened, whether it
+    /// comes in the same frame or the next; real typing (a key press first) is.
+    #[test]
+    fn shortcut_text_is_swallowed_once() {
+        let key = |key, alt| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers { alt, ..Default::default() },
+        };
+        let text = |t: &str| egui::Event::Text(t.into());
+        let run = |events: &[egui::Event]| {
+            let mut swallow = true;
+            events.iter().filter(|e| !swallow_shortcut_text(&mut swallow, e)).cloned().collect::<Vec<_>>()
+        };
+        assert_eq!(run(&[key(egui::Key::Q, true), text("q")]), vec![key(egui::Key::Q, true)], "Alt+Q's q, same frame");
+        assert_eq!(run(&[text("q"), text("b")]), vec![text("b")], "the q a frame late; then typing");
+        assert_eq!(run(&[key(egui::Key::B, false), text("b")]), vec![key(egui::Key::B, false), text("b")], "a click-opened box takes typing");
+    }
+
+    /// #819: Search matches every word anywhere in the label, location or id, in any order.
+    #[test]
+    fn command_search_matches_every_word() {
+        let app = app_with("");
+        let reg = app.session.registry.clone();
+        let table = reg.get("insert.table").unwrap();
+        assert!(command_matches(table, "insert table"), "the box's own example");
+        assert!(command_matches(table, "  Table   INSERT "), "any order, any case, extra spaces");
+        assert!(!command_matches(table, "insert chart"), "every word has to match");
+        assert!(!command_matches(table, ""), "an empty box lists nothing");
+        assert!(!command_matches(table, "   "));
     }
 
     /// Ordinary Turkish queries must find dotted-I labels, while canonical English labels and
@@ -3172,7 +3410,7 @@ mod tests {
             ("en", "INSERT.TABLE", "Table   —   Insert › Tables"),
         ] {
             h.state_mut().ui.language = language.into();
-            h.state_mut().dialog = Some(Dialog::Commands { query: query.into() });
+            h.state_mut().dialog = Some(Dialog::Commands { query: query.into(), swallow: false });
             h.run_steps(4);
             assert!(
                 h.query(egui_kittest::kittest::By::new().role(egui::accesskit::Role::Button).label_contains(expected)).is_some(),

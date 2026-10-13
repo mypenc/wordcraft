@@ -1060,6 +1060,7 @@ impl<'r> Builder<'r> {
                     covered: false,
                     header: name == "th",
                     shading,
+                    borders: None,
                 });
                 fmt.background = None;
                 self.containers.push(Vec::new());

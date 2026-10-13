@@ -8,6 +8,9 @@
 
 use serde::{Deserialize, Serialize};
 
+mod region;
+pub use region::Region;
+
 /// Points per inch.
 pub const PT_PER_IN: f32 = 72.0;
 /// Twips (1/20 pt) per point.
@@ -80,18 +83,27 @@ impl Unit {
     }
     /// Format `pt` in this unit the way Word's fields show it (`1"`, `2.54 cm`, `12 pt`).
     pub fn format(self, pt: f32) -> String {
+        self.format_with(pt, '.')
+    }
+    /// [`Unit::format`] with the region's decimal separator (`2,54 cm` with `,`).
+    pub fn format_with(self, pt: f32, decimal: char) -> String {
+        format!("{}{}", self.number(pt, decimal), self.suffix())
+    }
+    /// `pt` as a number in this unit, at most two decimals, without the unit (`2,54` with `,`).
+    pub fn number(self, pt: f32, decimal: char) -> String {
         let v = finite(pt) / self.pt_per_unit();
         let s = format!("{v:.2}");
-        let s = s.trim_end_matches('0').trim_end_matches('.');
+        let s = if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.') } else { &s };
         let s = if s == "-0" { "0" } else { s };
-        format!("{s}{}", self.suffix())
+        s.replace('.', &decimal.to_string())
     }
 }
 
 /// Parse a measurement typed by a user: `1"`, `1 in`, `2.5cm`, `12pt`, `3 pi`, `10 mm`, `1.5 li`
-/// (lines are 12 pt). A bare number is in `default`. Returns points.
+/// (lines are 12 pt). A bare number is in `default`. Returns points. Either decimal separator
+/// works (`2,5 cm` and `2.5 cm`), whatever the region.
 pub fn parse_measure(s: &str, default: Unit) -> Option<f32> {
-    let t = s.trim().to_ascii_lowercase();
+    let t = s.trim().to_ascii_lowercase().replace('\u{2212}', "-");
     if t.is_empty() {
         return None;
     }
@@ -305,6 +317,13 @@ mod tests {
         assert_eq!(parse_measure("abc", Unit::Inches), None);
         assert_eq!(parse_measure("", Unit::Inches), None);
         assert_eq!(parse_measure("1 furlong", Unit::Inches), None);
+        // Both decimal separators, whatever the region (#838).
+        let comma = parse_measure("2,54 cm", Unit::Inches).unwrap();
+        assert!((comma - 72.0).abs() < 0.01);
+        assert_eq!(parse_measure("1,5", Unit::Inches), Some(108.0));
+        assert_eq!(parse_measure("1.5\"", Unit::Centimeters), Some(108.0));
+        assert_eq!(parse_measure("\u{2212}1 in", Unit::Points), Some(-72.0));
+        assert_eq!(parse_measure("1,2,3", Unit::Inches), None);
     }
 
     #[test]
@@ -313,6 +332,10 @@ mod tests {
         assert_eq!(Unit::Inches.format(90.0), "1.25\"");
         assert_eq!(Unit::Points.format(12.0), "12 pt");
         assert_eq!(Unit::Centimeters.format(72.0), "2.54 cm");
+        assert_eq!(Unit::Centimeters.format_with(72.0, ','), "2,54 cm");
+        assert_eq!(Unit::Inches.format_with(108.0, ','), "1,5\"");
+        assert_eq!(Unit::Points.format_with(720.0, ','), "720 pt");
+        assert_eq!(Unit::Inches.format_with(f32::NAN, ','), "0\"");
     }
 
     #[test]

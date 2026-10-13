@@ -2,7 +2,7 @@
 //!
 //! Methods (JSON lines over the host's transport, see `docs/control-protocol.md`):
 //! - `engine.execute {command, params}`: run any command (engine or `ui.*`)
-//! - `engine.commands`: every command with its enablement
+//! - `engine.commands {search?}`: engine and app print commands with enablement and parameters
 //! - `document.inspect`: document structure; `ui.inspect`: UI state, canvas geometry, perf
 //! - `ui.click {x, y, button?, count?, shift?, cmd?}`, `ui.move {x, y}`, `ui.drag {x, y, toX, toY}`:
 //!   real pointer input in screen points (reaches every widget)
@@ -119,12 +119,19 @@ pub fn handle(app: &mut WordApp, ctx: &egui::Context, req: &ControlRequest) -> O
         }
         "engine.commands" => {
             let reg = app.session.registry.clone();
-            ok(Value::Array(
-                reg.all()
-                    .iter()
-                    .map(|c| json!({"id": c.id, "label": c.label, "location": c.location, "shortcut": c.shortcut, "params": c.params, "enabled": (c.enabled)(&app.session).is_none()}))
-                    .collect(),
-            ))
+            let mut commands: Vec<Value> = reg.all().iter()
+                .map(|c| json!({"id": c.id, "label": c.label, "location": c.location, "shortcut": c.shortcut, "params": c.params, "enabled": (c.enabled)(&app.session).is_none()}))
+                .collect();
+            commands.extend(crate::printing::commands(app));
+            let search = s("search").unwrap_or("").to_ascii_lowercase();
+            if !search.is_empty() {
+                commands.retain(|command| {
+                    ["id", "label", "location", "params"]
+                        .iter()
+                        .any(|field| command.get(field).and_then(Value::as_str).is_some_and(|text| text.to_ascii_lowercase().contains(&search)))
+                });
+            }
+            ok(Value::Array(commands))
         }
         "document.inspect" => match app.session.run("document.inspect", p) {
             Ok(v) => ok(v),

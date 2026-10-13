@@ -110,7 +110,7 @@ pub fn open_bytes_with(name: &str, bytes: &[u8], password: Option<&str>) -> Resu
         doc.ensure_nonempty();
         return Ok((doc, true));
     }
-    if ext.is_empty() {
+    if ext.is_empty() || signature_contradicts(&ext, bytes) {
         return open_by_content(name, &ext, bytes, password);
     }
     let mut doc = match ext.as_str() {
@@ -161,6 +161,31 @@ pub(crate) fn fit_pictures(doc: &mut Document) {
     for b in &mut doc.body {
         fit_block_pictures(std::sync::Arc::make_mut(b), max_w);
     }
+}
+
+/// Does the file hold a different document format than its Word or RTF extension says? An RTF
+/// file saved as `.doc` (as accounting systems and report generators often save their
+/// documents), a `.docx` package renamed `.doc` or a Word 97-2003 file renamed `.docx`: Word opens
+/// each by what it holds, so they go through [`open_by_content`] instead of failing.
+fn signature_contradicts(ext: &str, bytes: &[u8]) -> bool {
+    const ZIP: &[u8] = b"PK\x03\x04";
+    const OLE: &[u8] = &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+    let held = if bytes.starts_with(ZIP) {
+        "zip"
+    } else if bytes.starts_with(OLE) {
+        "ole"
+    } else if bytes.starts_with(b"{\\rtf") {
+        "rtf"
+    } else {
+        return false;
+    };
+    let expected = match ext {
+        "docx" | "docm" | "dotx" | "dotm" => "zip",
+        "doc" | "dot" => "ole",
+        "rtf" => "rtf",
+        _ => return false,
+    };
+    held != expected
 }
 
 /// A file whose extension names no format WordCraft knows (`.m3u`, `.log`, `.ini`, none…),

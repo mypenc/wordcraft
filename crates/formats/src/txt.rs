@@ -102,7 +102,7 @@ fn blocks_text(blocks: &[FBlock], out: &mut Vec<String>, lists: &mut ListCounter
                     }
                     None => lists.reset(),
                 }
-                line.push_str(&p.text().replace('\n', "\r\n").replace(['\u{000C}', '\u{000E}'], ""));
+                line.push_str(&p.shown_text().replace('\n', "\r\n").replace(['\u{000C}', '\u{000E}'], ""));
                 out.push(line);
             }
             FBlock::Table(t) => {

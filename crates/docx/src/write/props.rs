@@ -209,6 +209,35 @@ pub fn ppr_inner(w: &mut W, p: &ParaProps, framed: bool, num_change: Option<&Cha
             "w:framePr",
             &[("w:dropCap", "drop"), ("w:lines", &n(lines.min(10) as i64)), ("w:wrap", "around"), ("w:vAnchor", "text"), ("w:hAnchor", "text")],
         );
+    } else if let Some(f) = &p.frame {
+        let (fw, fh, fx, fy) = (f.w.map(twips), f.h.map(twips), twips(f.x), twips(f.y));
+        let (hs, vs) = (twips(f.h_space), twips(f.v_space));
+        let mut a: Vec<(&str, &str)> = Vec::new();
+        if let Some(v) = &fw {
+            a.push(("w:w", v));
+        }
+        if let Some(v) = &fh {
+            a.push(("w:h", v));
+            a.push(("w:hRule", if f.h_exact { "exact" } else { "atLeast" }));
+        }
+        if f.h_space > 0.0 {
+            a.push(("w:hSpace", &hs));
+        }
+        if f.v_space > 0.0 {
+            a.push(("w:vSpace", &vs));
+        }
+        a.push(("w:wrap", &f.wrap));
+        a.push(("w:vAnchor", &f.v_anchor));
+        a.push(("w:hAnchor", &f.h_anchor));
+        match &f.x_align {
+            Some(x) => a.push(("w:xAlign", x)),
+            None => a.push(("w:x", &fx)),
+        }
+        match &f.y_align {
+            Some(y) => a.push(("w:yAlign", y)),
+            None => a.push(("w:y", &fy)),
+        }
+        w.empty("w:framePr", &a);
     }
     toggle(w, "w:widowControl", p.widow_control);
     if let Some(nr) = p.numbering {
@@ -266,7 +295,12 @@ pub fn ppr_inner(w: &mut W, p: &ParaProps, framed: bool, num_change: Option<&Cha
     toggle(w, "w:autoSpaceDN", p.auto_space_dn);
     toggle(w, "w:bidi", p.bidi);
     toggle(w, "w:snapToGrid", p.snap_to_grid);
-    if p.space_before.is_some() || p.space_after.is_some() || p.line_spacing.is_some() {
+    if p.space_before.is_some()
+        || p.space_after.is_some()
+        || p.line_spacing.is_some()
+        || p.space_before_auto.is_some()
+        || p.space_after_auto.is_some()
+    {
         let before = p.space_before.map(|v| twips(v.max(0.0)));
         let after = p.space_after.map(|v| twips(v.max(0.0)));
         let line = p.line_spacing.map(|l| match l {
@@ -278,8 +312,14 @@ pub fn ppr_inner(w: &mut W, p: &ParaProps, framed: bool, num_change: Option<&Cha
         if let Some(b) = &before {
             a.push(("w:before", b));
         }
+        if let Some(on) = p.space_before_auto {
+            a.push(("w:beforeAutospacing", if on { "1" } else { "0" }));
+        }
         if let Some(x) = &after {
             a.push(("w:after", x));
+        }
+        if let Some(on) = p.space_after_auto {
+            a.push(("w:afterAutospacing", if on { "1" } else { "0" }));
         }
         if let Some((l, r)) = &line {
             a.push(("w:line", l));
@@ -496,6 +536,9 @@ fn tcpr_inner(w: &mut W, c: &CellProps) {
         VAlign::Top => {}
         VAlign::Center => w.val("w:vAlign", "center"),
         VAlign::Bottom => w.val("w:vAlign", "bottom"),
+    }
+    if c.hide_mark {
+        w.empty("w:hideMark", &[]);
     }
 }
 

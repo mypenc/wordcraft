@@ -524,38 +524,50 @@ impl Writer<'_> {
                 w.close("w:r");
                 self.rev_close(w, props);
             }
-            // A chart or diagram read from a file: its frame from the object's size and position,
-            // the graphic inside as read. Ones made some other way have nothing to write, except
-            // charts and SmartArt with a model (made or edited in WordCraft): their parts are
-            // written from it.
+            // Editable charts and SmartArt keep main's model writer; opaque graphics and native
+            // ink keep their original source and related parts.
             InlineObject::Graphic { w: gw, h: gh, alt, float, graphic } => {
-                let inner = match (graphic.chart.as_deref(), graphic.smart_art.as_deref(), graphic.source.as_deref()) {
-                    // A chart WordCraft can edit: a chart part written from its model.
-                    (Some(spec), _, _) => self.chart_graphic(spec, rels),
-                    (None, Some(spec), _) => self.smart_art_graphic(spec, *gw, *gh, rels),
-                    (None, None, Some(src)) => {
-                        let Some(inner) = self.embedded_xml(src, rels, None) else { return };
-                        inner
-                    }
-                    (None, None, None) => return,
+                let ink = graphic.kind == wordcraft_doc::graphic::GraphicKind::Ink;
+                let root = match (graphic.chart.as_deref(), graphic.smart_art.as_deref(), graphic.source.as_deref()) {
+                    (Some(spec), _, _) => crate::xml::parse(self.chart_graphic(spec, rels).as_bytes()).ok(),
+                    (None, Some(spec), _) => crate::xml::parse(self.smart_art_graphic(spec, *gw, *gh, rels).as_bytes()).ok(),
+                    (None, None, Some(src)) => self.embedded_tree(src, rels, ink.then_some((*gw, *gh, float, alt.as_str()))),
+                    (None, None, None) => None,
                 };
-                if inner.is_empty() {
+                let Some(mut root) = root else { return };
+                if ink {
+                    Self::ink_transform(&mut root, (graphic.w, graphic.h), (*gw, *gh), float, 0);
+                }
+                let alternate = (ink && root.name == "mc:AlternateContent").then_some(&root);
+                let fallback = alternate.and_then(|e| e.child("mc:Fallback"));
+                let native = alternate.and_then(|e| e.child("mc:Choice")).and_then(|e| e.find("a:graphic"));
+                if alternate.is_some() && native.is_none() {
                     return;
                 }
                 self.rev_open(w, props);
                 w.open("w:r", &[]);
                 self.rpr(w, props);
+                if fallback.is_some() {
+                    w.open("mc:AlternateContent", &[]);
+                    w.open("mc:Choice", &[("Requires", "wpi")]);
+                }
                 w.open("w:drawing", &[]);
                 let docpr = self.next_docpr();
                 let name = match graphic.kind {
                     wordcraft_doc::graphic::GraphicKind::Chart => format!("Chart {docpr}"),
                     wordcraft_doc::graphic::GraphicKind::Diagram => format!("Diagram {docpr}"),
+                    wordcraft_doc::graphic::GraphicKind::Ink => format!("Ink {docpr}"),
                 };
                 self.drawing_open(w, float, *gw, *gh, &docpr, &name, alt);
                 w.empty("wp:cNvGraphicFramePr", &[]);
-                w.raw(&inner);
+                w.raw(&native.unwrap_or(&root).to_xml());
                 w.close(if float.wrap == Wrap::Inline { "wp:inline" } else { "wp:anchor" });
                 w.close("w:drawing");
+                if let Some(fallback) = fallback {
+                    w.close("mc:Choice");
+                    w.raw(&fallback.to_xml());
+                    w.close("mc:AlternateContent");
+                }
                 w.close("w:r");
                 self.rev_close(w, props);
             }
@@ -1019,13 +1031,25 @@ impl Writer<'_> {
         if body.anchor != wordcraft_doc::props::VAlign::Top {
             attrs.push(("anchor", wordcraft_doc::props::anchor_ooxml(body.anchor)));
         }
-        match extra.warp.as_ref().and_then(|t| t.sanitized()) {
-            Some(warp) => {
-                w.open("wps:bodyPr", &attrs);
-                text_warp(w, &warp);
-                w.close("wps:bodyPr");
+        // Internal margins, when the box has its own.
+        let inset = body.inset.map(|i| i.map(|v| v.min(wordcraft_doc::MAX_TEXT_BOX_INSET).to_string()));
+        if let Some(inset) = &inset {
+            for (n, v) in ["lIns", "tIns", "rIns", "bIns"].into_iter().zip(inset) {
+                attrs.push((n, v));
             }
-            None => w.empty("wps:bodyPr", &attrs),
+        }
+        let warp = extra.warp.as_ref().and_then(|t| t.sanitized());
+        if warp.is_none() && !body.auto_fit {
+            w.empty("wps:bodyPr", &attrs);
+        } else {
+            w.open("wps:bodyPr", &attrs);
+            if let Some(warp) = &warp {
+                text_warp(w, warp);
+            }
+            if body.auto_fit {
+                w.empty("a:spAutoFit", &[]);
+            }
+            w.close("wps:bodyPr");
         }
         w.close("wps:wsp");
     }

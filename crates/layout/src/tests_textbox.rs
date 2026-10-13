@@ -133,3 +133,48 @@ fn hostile_link_chains_stay_bounded() {
         assert_eq!(lines(&l, id).len(), 1, "box {id} shows its own text");
     }
 }
+
+#[test]
+fn own_margins_and_resize_to_fit_keep_the_text_in_view() {
+    // #743: a cover page's two-line box with no margins (`lIns="0"`…) is just tall enough for
+    // its text; with Word's default margins its second line would be cut.
+    let two = |h: f32, body: TextBody| {
+        let mut d = Document::from_text("x");
+        let id = text_box(&mut d, 0, "One", 144.0, h, body);
+        d.parts.get_mut(&id).unwrap().blocks =
+            vec![para_block(Paragraph::with_text("One", Default::default())), para_block(Paragraph::with_text("Two", Default::default()))];
+        let l = lay(&d);
+        let shown: usize = lines(&l, id).iter().map(|(.., l0, l1)| l1 - l0).sum();
+        (shown, lines(&l, id).first().map(|(x, y, ..)| (*x, *y)), frame_of(&l, id))
+    };
+    // How deep the two lines reach without margins, from a box with room to spare.
+    let zero = TextBody { inset: Some([0; 4]), ..Default::default() };
+    let mut d = Document::from_text("x");
+    let id = text_box(&mut d, 0, "One", 144.0, 400.0, zero);
+    d.parts.get_mut(&id).unwrap().blocks =
+        vec![para_block(Paragraph::with_text("One", Default::default())), para_block(Paragraph::with_text("Two", Default::default()))];
+    let l = lay(&d);
+    let r = frame_of(&l, id);
+    let need = l.pages[0]
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Placed::Lines { story: StoryRef::Part(s), para, l0, l1, y, .. } if *s == id => {
+                let (first, last) = (para.lines.get(*l0)?, para.lines.get(l1.checked_sub(1)?)?);
+                Some(y + last.top + last.height - first.top - r.y)
+            }
+            _ => None,
+        })
+        .fold(0.0f32, f32::max);
+    assert!(need > 10.0, "{need}");
+    let (shown, at, r) = two(need + 1.0, zero);
+    assert_eq!(shown, 2, "both lines fit without margins");
+    let (x, y) = at.unwrap();
+    assert!((x - r.x).abs() < 0.5 && (y - r.y).abs() < 0.5, "text starts at the box's corner: {x},{y} in {r:?}");
+    assert_eq!(two(need + 1.0, TextBody::default()).0, 1, "Word's default margins cut the second line");
+    let (shown, ..) = two(need / 2.0, TextBody { auto_fit: true, ..Default::default() });
+    assert_eq!(shown, 2, "a box that resizes to fit its text shows it all");
+    // Hostile margins wider than the box still lay out.
+    let (shown, ..) = two(20.0, TextBody { inset: Some([u32::MAX; 4]), ..Default::default() });
+    assert!(shown >= 1);
+}

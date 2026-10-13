@@ -4,6 +4,7 @@ use egui::{Align2, Rect, Sense, Stroke, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::colors::{Remember, Target};
+use crate::options::MeasureExt;
 use crate::theme::{Tokens, medium, regular, semibold};
 use crate::widgets::{CONTENT_H, LABEL_H, big, big_toggle, combo, font_combo, group, menu_button, small, split};
 use crate::{WordApp, icons};
@@ -409,8 +410,8 @@ fn mi_text(ui: &mut Ui, app: &mut WordApp, text: &str, id: &str, params: Value) 
 }
 
 /// The proofing languages the Language menu offers: tag and English name (translated when drawn).
-pub(crate) const PROOFING_LANGUAGES: [(&str, &str); 3] =
-    [("en-US", "English (United States)"), ("en-GB", "English (United Kingdom)"), ("pl-PL", "Polish")];
+pub(crate) const PROOFING_LANGUAGES: [(&str, &str); 4] =
+    [("en-US", "English (United States)"), ("en-GB", "English (United Kingdom)"), ("pl-PL", "Polish"), ("pt-BR", "Portuguese (Brazil)")];
 
 /// The English name of a proofing language tag, as the status bar shows it (no tag: WordCraft's
 /// default, US English; a tag without a name here: the tag).
@@ -421,6 +422,7 @@ pub(crate) fn language_name(tag: Option<&str>) -> String {
     }
     match wordcraft_engine::proof::ProofLang::from_tag(Some(tag)) {
         wordcraft_engine::proof::ProofLang::Pl => "Polish".into(),
+        wordcraft_engine::proof::ProofLang::Pt => "Portuguese (Brazil)".into(),
         wordcraft_engine::proof::ProofLang::En if tag.eq_ignore_ascii_case("en") => "English (United States)".into(),
         _ => tag.to_string(),
     }
@@ -441,7 +443,9 @@ pub(crate) fn language_menu(ui: &mut Ui, app: &mut WordApp) {
     let current = st.get("lang").and_then(Value::as_str).unwrap_or("").to_string();
     let no_proof = st.get("noProof").and_then(Value::as_bool).unwrap_or(false);
     for (tag, name) in PROOFING_LANGUAGES {
-        let on = current.eq_ignore_ascii_case(tag) || (tag == "pl-PL" && current.eq_ignore_ascii_case("pl"));
+        let on = current.eq_ignore_ascii_case(tag)
+            || (tag == "pl-PL" && current.eq_ignore_ascii_case("pl"))
+            || (tag == "pt-BR" && current.eq_ignore_ascii_case("pt"));
         mi_check(ui, app, name, on, "review.language", json!({"lang": tag}));
     }
     ui.separator();
@@ -734,7 +738,8 @@ fn home(app: &mut WordApp, ui: &mut Ui) {
     group(ui, "Editing", None, app, |ui, app| {
         stack(ui, |ui| {
             menu_button(ui, app, "find", Some("Find"), "Find", false, "edit.find", |ui, app| {
-                mi(ui, app, "Find", "ui.dialog", json!({"name": "find"}));
+                // As in Word: Find searches in the Navigation pane; Advanced Find is the dialog (#712).
+                mi(ui, app, "Find", "edit.find", json!({}));
                 mi(ui, app, "Advanced Find…", "edit.advancedFind", json!({}));
                 mi(ui, app, "Go To…", "ui.dialog", json!({"name": "goto"}));
             });
@@ -1135,7 +1140,8 @@ fn layout(app: &mut WordApp, ui: &mut Ui) {
         });
         menu_button(ui, app, "size", Some("Size"), "Size", true, "layout.size", |ui, app| {
             for (n, w, h) in wordcraft_geom::PAPER_SIZES {
-                mi(ui, app, &format!("{n}   {:.2}\" × {:.2}\"", w / 72.0, h / 72.0), "layout.size", json!({"name": n}));
+                // In the measurement unit, written the region's way (`21 cm × 29,7 cm`, #838).
+                mi(ui, app, &format!("{n}   {} × {}", crate::options::length(*w), crate::options::length(*h)), "layout.size", json!({"name": n}));
             }
         });
         menu_button(ui, app, "columns", Some("Columns"), "Columns", true, "layout.columns", |ui, app| {
@@ -1181,15 +1187,23 @@ fn layout(app: &mut WordApp, ui: &mut Ui) {
     group(ui, "Paragraph", Some("para.dialog"), app, |ui, app| {
         let rp = app.session.doc.para_at(&app.session.sel.focus).map(|p| app.session.doc.styles.resolve_para(&p.props));
         let Some(rp) = rp else { return };
-        // #654: header + two rows of 20 px fields fit the content height above the group title;
-        // labels and fields sit on shared columns, every field the same width.
+        // #654: header + two rows of 20 px fields fit the content height above the group title
+        // (1.5 pt between rows; 3 ran 2.5 pt into it); labels and fields sit on shared columns,
+        // every field the same width.
         const FIELD: egui::Vec2 = egui::Vec2::new(64.0, 20.0);
         ui.spacing_mut().interact_size.y = FIELD.y;
-        egui::Grid::new("layout_para").spacing(vec2(4.0, 3.0)).min_row_height(FIELD.y).show(ui, |ui| {
+        // The gap before the Spacing column sits inside its cells: `add_space` in a grid moves the
+        // next cell in release builds but trips a debug assertion.
+        let spaced = |ui: &mut Ui, text: egui::RichText| {
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
+                ui.label(text);
+            });
+        };
+        egui::Grid::new("layout_para").spacing(vec2(4.0, 1.5)).min_row_height(FIELD.y).show(ui, |ui| {
             ui.label(egui::RichText::new(tl!("Indent")).small().strong());
             ui.label("");
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new(tl!("Spacing")).small().strong());
+            spaced(ui, egui::RichText::new(tl!("Spacing")).small().strong());
             ui.end_row();
             // Indents in the File › Options unit.
             let u = crate::options::unit();
@@ -1197,14 +1211,10 @@ fn layout(app: &mut WordApp, ui: &mut Ui) {
             let mut l = rp.indent_left / k;
             let mut b = rp.space_before;
             ui.label(egui::RichText::new(tl!("Left:")).small());
-            if ui
-                .add_sized(FIELD, egui::DragValue::new(&mut l).speed(3.6 / k).range(-792.0 / k..=1584.0 / k).suffix(u.suffix()).max_decimals(2))
-                .changed()
-            {
+            if ui.add_sized(FIELD, egui::DragValue::new(&mut l).speed(3.6 / k).range(-792.0 / k..=1584.0 / k).measure(u).max_decimals(2)).changed() {
                 let _ = app.run("para.indents", json!({"left": l * k}));
             }
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new(tl!("Before:")).small());
+            spaced(ui, egui::RichText::new(tl!("Before:")).small());
             if ui.add_sized(FIELD, egui::DragValue::new(&mut b).speed(1.0).range(0.0..=1584.0).suffix(format!(" {}", tl!("pt")))).changed() {
                 let _ = app.run("para.spacing", json!({"before": b}));
             }
@@ -1212,14 +1222,10 @@ fn layout(app: &mut WordApp, ui: &mut Ui) {
             let mut r = rp.indent_right / k;
             let mut a = rp.space_after;
             ui.label(egui::RichText::new(tl!("Right:")).small());
-            if ui
-                .add_sized(FIELD, egui::DragValue::new(&mut r).speed(3.6 / k).range(-792.0 / k..=1584.0 / k).suffix(u.suffix()).max_decimals(2))
-                .changed()
-            {
+            if ui.add_sized(FIELD, egui::DragValue::new(&mut r).speed(3.6 / k).range(-792.0 / k..=1584.0 / k).measure(u).max_decimals(2)).changed() {
                 let _ = app.run("para.indents", json!({"right": r * k}));
             }
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new(tl!("After:")).small());
+            spaced(ui, egui::RichText::new(tl!("After:")).small());
             if ui.add_sized(FIELD, egui::DragValue::new(&mut a).speed(1.0).range(0.0..=1584.0).suffix(format!(" {}", tl!("pt")))).changed() {
                 let _ = app.run("para.spacing", json!({"after": a}));
             }
@@ -1578,6 +1584,7 @@ fn developer(app: &mut WordApp, ui: &mut Ui) {
                 ("ccRepeat", "Repeating Section Content Control", "developer.repeatingSection"),
             ],
         ];
+        // Three rows of small buttons fill the group's height, like every other stack.
         stack(ui, |ui| {
             for row in rows {
                 crate::widgets::row(ui, |ui| {
@@ -1585,7 +1592,6 @@ fn developer(app: &mut WordApp, ui: &mut Ui) {
                         small(ui, app, icon, None, tip, id, json!({}), false);
                     }
                 });
-                ui.add_space(3.0);
             }
         });
         stack(ui, |ui| {
@@ -1615,6 +1621,7 @@ fn view(app: &mut WordApp, ui: &mut Ui) {
         big(ui, app, "sideToSide", "Side\nto Side", "view.sideToSide", json!({}), false);
     });
     group(ui, "Show", None, app, |ui, app| {
+        // Three rows fill the group's height; a fourth check box would run into its label.
         stack(ui, |ui| {
             let mut r = v.ruler;
             if ui.checkbox(&mut r, tl!("Ruler")).changed() {
@@ -1628,6 +1635,8 @@ fn view(app: &mut WordApp, ui: &mut Ui) {
             if ui.checkbox(&mut n, tl!("Navigation Pane")).changed() {
                 let _ = app.run("view.navigationPane", json!({"value": n}));
             }
+        });
+        stack(ui, |ui| {
             let mut w = v.hide_white_space;
             if ui.checkbox(&mut w, tl!("Hide White Space")).changed() {
                 let _ = app.run("view.hideWhiteSpace", json!({"value": w}));
@@ -2289,7 +2298,7 @@ fn cell_size_boxes(ui: &mut Ui, app: &mut WordApp) {
         crate::widgets::row(ui, |ui| {
             ui.add_sized(vec2(48.0, 18.0), egui::Label::new(egui::RichText::new(tl!(label)).small()));
             let mut v = pt / k;
-            let r = ui.add_sized(vec2(72.0, 18.0), egui::DragValue::new(&mut v).speed(0.01).range(0.02..=22.0).suffix(unit.suffix()).max_decimals(2));
+            let r = ui.add_sized(vec2(72.0, 18.0), egui::DragValue::new(&mut v).speed(0.01).range(0.02..=22.0).measure(unit).max_decimals(2));
             if r.changed() {
                 out = Some((v * k, r.dragged() && !r.drag_started()));
             }
@@ -2318,6 +2327,7 @@ fn table_layout(app: &mut WordApp, ui: &mut Ui) {
         stack(ui, |ui| {
             menu_button(ui, app, "selectTable", Some("Select"), "Select", false, "table.selectTable", |ui, app| {
                 mi(ui, app, "Select Cell", "table.selectCell", json!({}));
+                mi(ui, app, "Select Column", "table.selectColumn", json!({}));
                 mi(ui, app, "Select Row", "table.selectRow", json!({}));
                 mi(ui, app, "Select Table", "table.selectTable", json!({}));
             });
@@ -2443,6 +2453,14 @@ mod tests {
     }
 
     #[test]
+    fn portuguese_has_a_name_in_the_language_menu() {
+        assert!(PROOFING_LANGUAGES.iter().any(|(t, _)| *t == "pt-BR"));
+        assert_eq!(language_name(Some("pt-BR")), "Portuguese (Brazil)");
+        assert_eq!(language_name(Some("pt")), "Portuguese (Brazil)");
+        assert_eq!(language_name(Some("PT-BR".to_string().as_str())), "Portuguese (Brazil)");
+    }
+
+    #[test]
     fn picture_format_tab_appears_when_picture_selected() {
         let mut s = Session::new(wordcraft_doc::Document::new());
         assert!(!has_picture_selected(&s));
@@ -2513,6 +2531,37 @@ mod tests {
         app.session.run("select.collapse", &json!({"end": true})).unwrap();
         app.session.run("text.insert", &json!({"text": "x"})).unwrap();
         assert!(!contextual_tabs(&app.session).contains(&"Chart Design"));
+    }
+
+    /// No group's content runs into its label: View › Show stacked four check boxes in a column
+    /// made for three, so "Hide White Space" was drawn under "Show". Every tab, every language.
+    #[test]
+    fn ribbon_groups_fit_above_their_labels() {
+        let app = WordApp::new(Session::new(wordcraft_engine::sample::sample_document()), crate::Services::default());
+        // Wide enough that no tab hides groups behind its scroll arrows.
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(2560.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            app,
+        );
+        let mut tall = Vec::new();
+        for lang in crate::i18n::Lang::all() {
+            h.state_mut().run("ui.language", json!({"value": lang.code()})).unwrap();
+            for tab in TABS.iter().filter(|t| **t != "File") {
+                h.state_mut().run("ui.tab", json!({"tab": tab})).unwrap();
+                h.run_steps(2);
+                crate::widgets::TALL_GROUPS.with(|g| g.borrow_mut().clear());
+                h.run_steps(1);
+                let found = crate::widgets::TALL_GROUPS.with(|g| g.take());
+                tall.extend(found.into_iter().map(|g| format!("{} {tab} › {g}", lang.code())));
+            }
+        }
+        tall.sort();
+        tall.dedup();
+        assert!(tall.is_empty(), "groups taller than the ribbon: {tall:#?}");
     }
 
     #[test]

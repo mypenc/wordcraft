@@ -50,7 +50,8 @@ and set `WORDCRAFT_CONTROL_KEY` to that app's key.
 
 | Method | Params | Result |
 |---|---|---|
-| `engine.execute` | `command`, `params` | the command's result (any id from `engine.commands`, including UI commands `ui.tab`, `ui.dialog`, `ui.backstage`, `ui.zotero.*` (see `docs/zotero.md`), `ui.language` (`{"value": "auto"|"en"|"zh-hans"|"zh-hant"|"ja"|"pt-br"|"es"|"uk"|"sr"|"sr-latn"|"et"|"tr"|"ru"|"pl"|"de"|"it"|"cs"|"hu"|"fr"}`), `ui.theme` (`{"value": "system"|"light"|"dark"}`; `system` follows the OS appearance, light when it reports none), `ui.interfaceSize` (`{"percent": 80–200}`, clamped; no value reads it; scales the interface on top of the system display scale, document zoom stays `view.zoom`), `ui.animations` (`{"value": "system"|"on"|"off"}`; no value reads it; `system` follows the system's animation setting, which the desktop app reads on Windows, macOS, Linux and the BSDs and the web app from `prefers-reduced-motion`, and means on where the system doesn't say; the result's `enabled` is what the setting comes to and `system` what the system reports, `null` when it doesn't say), `ui.fileBrowser` (desktop: `{"purpose": "document"|"picture"|"recipients"|"save"}` opens WordCraft's own file browser, for when the system file dialog doesn't show up, #576), `ui.caretAnimation` (`{"value": true|false}`; no value reads it; off, the caret jumps and blinks on and off instead of gliding and fading)…) |
+| `engine.execute` | `command`, `params` | the command's result (any id from `engine.commands`, including UI commands `ui.tab`, `ui.dialog`, `ui.backstage`, `ui.zotero.*` (see `docs/zotero.md`), `ui.language` (`{"value": "auto"|"en"|"zh-hans"|"zh-hant"|"ja"|"pt-br"|"es"|"uk"|"sr"|"sr-latn"|"et"|"tr"|"ru"|"pl"|"de"|"it"|"cs"|"hu"|"fr"}`), `ui.theme` (`{"value": "system"|"light"|"dark"}`; `system` follows the OS appearance, light when it reports none), `ui.interfaceSize` (`{"percent": 80–200}`, clamped; no value reads it; scales the interface on top of the system display scale, document zoom stays `view.zoom`), `ui.animations` (`{"value": "system"|"on"|"off"}`; no value reads it; `system` follows the system's animation setting, which the desktop app reads on Windows, macOS, Linux and the BSDs and the web app from `prefers-reduced-motion`, and means on where the system doesn't say; the result's `enabled` is what the setting comes to and `system` what the system reports, `null` when it doesn't say), `ui.fileBrowser` (desktop: `{"purpose": "document"|"picture"|"recipients"|"save"}` opens WordCraft's own file browser, for when the system file dialog doesn't show up, #576), `ui.caretAnimation` (`{"value": true|false}`; no value reads it; off, the caret jumps and blinks on and off instead of gliding and fading), `ui.startScreen` (`{"value": true|false}`; no value reads it; on, the default, the desktop and web apps start on File › Home when launched with nothing to open, #766)…) |
+| `engine.execute` | `command`, `params` | the command's result (any id from `engine.commands`, including UI commands `ui.tab`, `ui.dialog`, `ui.backstage`, `ui.zotero.*` (see `docs/zotero.md`), `ui.language` (`{"value": "auto"|"en"|"zh-hans"|"zh-hant"|"ja"|"pt-br"|"es"|"uk"|"sr"|"sr-latn"|"et"|"tr"|"ru"}`), `ui.theme` (`{"value": "system"|"light"|"dark"}`; `system` follows the OS appearance, light when it reports none), `ui.interfaceSize` (`{"percent": 80–200}`, clamped; no value reads it; scales the interface on top of the system display scale, document zoom stays `view.zoom`), `ui.animations` (`{"value": "system"|"on"|"off"}`; no value reads it; `system` follows the system's animation setting, which the desktop app reads on Windows, macOS, Linux and the BSDs and the web app from `prefers-reduced-motion`, and means on where the system doesn't say; the result's `enabled` is what the setting comes to and `system` what the system reports, `null` when it doesn't say), `ui.fileBrowser` (desktop: `{"purpose": "document"|"picture"|"recipients"|"save"}` opens WordCraft's own file browser, for when the system file dialog doesn't show up, #576), `ui.caretAnimation` (`{"value": true|false}`; no value reads it; off, the caret jumps and blinks on and off instead of gliding and fading), `ui.contextMenu` (opens the page's context menu below the caret, as Shift+F10 does)…) |
 | `engine.commands` | — | every command: id, label, location, shortcut, params, enabled |
 | `document.inspect` | `text?` | blocks (text, style, runs, lists, tables), parts, sections, selection, pages |
 | `ui.inspect` | — | UI state, view, dialog, window size, page rects on screen, caret, comment balloons (`balloons`: id + screen rect; `balloon`: the selected one), perf |
@@ -67,4 +68,31 @@ and set `WORDCRAFT_CONTROL_KEY` to that app's key.
 
 Any other method name is treated as a command id: `{"method": "format.bold"}` works.
 
+The `CharProps` and `ParaProps` that `format.set`, `para.set` and `styles.modify` take are listed
+in [MCP server](mcp.md#character-and-paragraph-properties).
+
 Positions are `{"story": "body" | {"part": n}, "path": [block, row, cell, block, …], "off": byteOffset}`.
+
+### Native printing
+
+`engine.execute` can call `ui.printSettings` with `{}` to inspect the printer list, selected
+printer, copies, duplex, grayscale, discovery/submission status and backend receipt/error.
+`{"refresh":true}` starts background discovery; poll the same command until `discovering` is
+false. Set `printer` to a discovered name, integer `copies` from 1 to 999, `duplex` to
+`printerDefault`, `off`, `longEdge` or `shortEdge`, and boolean `grayscale`. Invalid updates are
+rejected without changing earlier settings. `ui.printSubmit` explicitly submits the current
+print-ready PDF without opening a dialog; inspect `ui.printSettings` until `busy` becomes false
+and check `status`/`detail`. The browser keeps its own print hook. PDF export remains separate.
+
+`ui.printSubmit` / `ui.print` also accept the upstream PDF page settings (`range`, `pages`,
+`parity`, `copies`, `collate`). Native printing renders the selected pages once and passes
+copies/collation to the spooler; the browser and `file.printPdf` keep copies in the PDF.
+Omitting native `copies` uses the configured `ui.printSettings` value. `collate` defaults to
+File › Print's setting; invalid ranges submit no job.
+
+`engine.commands {"search":"print"}` lists the engine print commands and the app-owned
+`ui.printSettings`, `ui.printSubmit`, and legacy `ui.print` alias, with current enablement
+and their parameter documentation. Search is case-insensitive across IDs, labels, locations
+and parameter descriptions. Listing commands never discovers printers, submits a job or opens
+a dialog. Settings inspection is always available; submission becomes enabled when the native
+printer is ready, or when the browser host provides its print flow.

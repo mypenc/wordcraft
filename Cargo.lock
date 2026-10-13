@@ -241,6 +241,7 @@ dependencies = [
  "parking_lot",
  "percent-encoding",
  "windows-sys 0.60.2",
+ "wl-clipboard-rs",
  "x11rb",
 ]
 
@@ -843,6 +844,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-print"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=d27646a5f7c8b4fc85d9dd3213b8c88b58e0088d#d27646a5f7c8b4fc85d9dd3213b8c88b58e0088d"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
+name = "craft-ui"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=d27646a5f7c8b4fc85d9dd3213b8c88b58e0088d#d27646a5f7c8b4fc85d9dd3213b8c88b58e0088d"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1316,6 +1333,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
 
 [[package]]
+name = "fixedbitset"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
+
+[[package]]
 name = "flate2"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1351,6 +1374,12 @@ name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+
+[[package]]
+name = "foldhash"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
 name = "foldhash"
@@ -1539,7 +1568,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed4a1bb24121291d27230c1b1b44e07d6a9b28cefdb32fe1581dfb84e14f940a"
 dependencies = [
  "bytemuck",
- "foldhash",
+ "foldhash 0.2.0",
  "hashbrown 0.17.1",
  "log",
  "peniko",
@@ -1555,7 +1584,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282a26c1e23de04bdab3e34a21b6f877a479b96737792516b9b8b8f69b6661be"
 dependencies = [
  "bytemuck",
- "foldhash",
+ "foldhash 0.2.0",
  "hashbrown 0.17.1",
  "log",
  "peniko",
@@ -1705,13 +1734,22 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+dependencies = [
+ "foldhash 0.1.5",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 dependencies = [
  "allocator-api2",
  "equivalent",
- "foldhash",
+ "foldhash 0.2.0",
 ]
 
 [[package]]
@@ -1720,7 +1758,7 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
- "foldhash",
+ "foldhash 0.2.0",
 ]
 
 [[package]]
@@ -2400,6 +2438,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bf50223579dc7cdcfb3bfcacf7069ff68243f8c363f62ffa99cf000a6b9c451"
 
 [[package]]
+name = "nom"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2797,6 +2844,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "os_pipe"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
+dependencies = [
+ "libc",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2855,6 +2912,17 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "petgraph"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8701b58ea97060d5e5b155d383a69952a60943f0e6dfe30b04c287beb0b27455"
+dependencies = [
+ "fixedbitset",
+ "hashbrown 0.15.5",
+ "indexmap",
+]
 
 [[package]]
 name = "phf"
@@ -3795,7 +3863,10 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
 dependencies = [
+ "js-sys",
  "libc",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -3994,6 +4065,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "tree_magic_mini"
+version = "3.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8765b90061cba6c22b5831f675da109ae5561588290f9fa2317adab2714d5a6"
+dependencies = [
+ "memchr",
+ "nom",
+ "petgraph",
 ]
 
 [[package]]
@@ -4997,10 +5079,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
+name = "wl-clipboard-rs"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d7888ccd4896447b2d14d3a9350a85df2aeb6f181e2e7a31349d104ac46cac1"
+dependencies = [
+ "libc",
+ "log",
+ "os_pipe",
+ "rustix 1.1.5",
+ "thiserror 2.0.21",
+ "tree_magic_mini",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+]
+
+[[package]]
 name = "wordcraft"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "arboard",
+ "clipboard-win",
+ "craft-print",
  "dispatch2",
  "eframe",
  "egui",
@@ -5016,6 +5118,7 @@ dependencies = [
  "windows",
  "winit",
  "winresource",
+ "wl-clipboard-rs",
  "wordcraft-control-key",
  "wordcraft-doc",
  "wordcraft-engine",
@@ -5027,7 +5130,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-cli"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde_json",
  "wordcraft-doc",
@@ -5039,11 +5142,11 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-control-key"
-version = "0.6.0"
+version = "0.6.1"
 
 [[package]]
 name = "wordcraft-doc"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "proptest",
  "serde",
@@ -5055,7 +5158,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-docbin"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "cfb",
  "image",
@@ -5070,7 +5173,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-docx"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "aes",
  "base64",
@@ -5092,7 +5195,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-engine"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "image",
  "js-sys",
@@ -5118,7 +5221,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-fonts"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "harfrust 0.13.3",
  "kurbo",
@@ -5131,7 +5234,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-formats"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "image",
  "log",
@@ -5144,14 +5247,14 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-geom"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "wordcraft-layout"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "image",
  "js-sys",
@@ -5170,7 +5273,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-mcp"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "log",
  "serde_json",
@@ -5182,7 +5285,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-metafile"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "kurbo",
  "thiserror 2.0.21",
@@ -5190,7 +5293,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-pdf"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "hayro-cmap",
  "hayro-interpret",
@@ -5210,7 +5313,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-proof"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "log",
  "miniz_oxide 0.8.9",
@@ -5219,7 +5322,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-render"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "image",
  "log",
@@ -5233,8 +5336,9 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-ui-egui"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
+ "craft-ui",
  "egui",
  "egui_kittest",
  "image",
@@ -5257,7 +5361,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-web"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "eframe",
  "egui",
@@ -5276,7 +5380,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-zotero"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "log",
  "proptest",
@@ -5389,7 +5493,7 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xtask"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde_json",
 ]

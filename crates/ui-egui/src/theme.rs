@@ -346,7 +346,8 @@ pub fn install_fonts_with(ctx: &egui::Context, prefer_hans: bool, system_cjk: bo
 }
 
 /// [`install_fonts_with`], also adding document-font `faces` as last-resort fallbacks (#565): the
-/// faces that cover the text an input method is composing.
+/// faces that cover text the interface fonts cannot draw (an input method's composition, or a
+/// file name in the window caption).
 pub fn install_fonts_extra(ctx: &egui::Context, prefer_hans: bool, system_cjk: bool, faces: &[Arc<wordcraft_fonts::FontFace>]) {
     let mut fonts = font_definitions(prefer_hans, system_cjk);
     add_fallback_faces(&mut fonts, faces);
@@ -368,10 +369,17 @@ pub fn add_fallback_faces(fonts: &mut FontDefinitions, faces: &[Arc<wordcraft_fo
     }
 }
 
-/// Document faces needed to draw `text` (the input method's composition), one for each character
-/// the interface fonts cannot draw, skipping faces in `have` (#565). Characters of the embedded
-/// interface fonts are not looked up; very large faces (system CJK collections) are left to the CJK
-/// fallback.
+/// A character the window caption can already draw without a document fallback: the Latin range
+/// the interface faces cover, or CJK, which uses the CJK UI font ([`install_fonts_with`]) rather
+/// than a document face. System CJK collections are larger than [`faces_for_preedit`] will load.
+pub fn caption_char_covered(c: char) -> bool {
+    (c as u32) < 0x250 || wordcraft_fonts::is_cjk(c)
+}
+
+/// Document faces needed to draw `text` (the input method's composition, or a file name in the
+/// window caption), one for each character the interface fonts cannot draw, skipping faces in
+/// `have` (#565). Characters of the embedded interface fonts are not looked up; very large faces
+/// (system CJK collections) are left to the CJK fallback.
 pub fn faces_for_preedit(
     text: &str,
     have: &[Arc<wordcraft_fonts::FontFace>],
@@ -687,6 +695,29 @@ mod tests {
         super::add_fallback_faces(&mut defs, &got);
         assert_eq!(defs.font_data.len(), before + 1);
         assert!(defs.families[&egui::FontFamily::Proportional].last().is_some_and(|n| n.starts_with("fallback ")));
+    }
+
+    /// A file name in a script Inter lacks (Hebrew, Arabic, …) is drawn in the window caption,
+    /// which uses the semibold face. egui paints a missing glyph as `?`, so the caption borrows
+    /// one document fallback face. CJK stays with the CJK UI font: those files are too large to
+    /// add here.
+    #[test]
+    fn caption_borrows_one_fallback_face_for_hebrew() {
+        let face = wordcraft_fonts::FontDb::global().face("Source Sans 3", "Regular");
+        let lookup = |c: char| {
+            assert!(!super::caption_char_covered(c), "{c} is already drawn by the interface fonts");
+            Some(face.clone())
+        };
+        let hebrew = "מסמך";
+        let got = super::faces_for_preedit(hebrew, &[], super::caption_char_covered, lookup);
+        assert_eq!(got.len(), 1, "one face for the whole file name");
+        assert!(super::faces_for_preedit(hebrew, &got, super::caption_char_covered, lookup).is_empty(), "already added");
+        assert!(super::faces_for_preedit("文档", &[], super::caption_char_covered, lookup).is_empty(), "CJK uses the CJK UI font");
+        assert!(super::faces_for_preedit("report", &[], super::caption_char_covered, lookup).is_empty(), "Latin needs nothing");
+        let mut defs = super::font_definitions(false, false);
+        super::add_fallback_faces(&mut defs, &got);
+        let semi = &defs.families[&egui::FontFamily::Name("semibold".into())];
+        assert!(semi.iter().any(|n| n.starts_with("fallback ")), "the caption is painted with semibold");
     }
 
     /// #656: dialog primary buttons, the Discord pill, the table eraser and the Navigation search

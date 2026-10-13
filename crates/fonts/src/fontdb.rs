@@ -168,6 +168,17 @@ impl FontFace {
     pub fn id(&self) -> u32 {
         self.id
     }
+    /// Glyph `gid`'s outline in font units, y-down (flipped), uncached: for faces the database
+    /// doesn't keep (font list previews); others go through [`FontDb::outline`]'s cache.
+    pub fn glyph_outline(&self, gid: u32) -> BezPath {
+        let mut pen = FlipPen(BezPath::new());
+        if let Some(f) = self.skrifa()
+            && let Some(g) = f.outline_glyphs().get(GlyphId::new(gid))
+        {
+            let _ = g.draw(DrawSettings::unhinted(Size::unscaled(), self.location()), &mut pen);
+        }
+        pen.0
+    }
     /// Is `family` this face's typographic or legacy family name?
     pub fn named(&self, family: &str) -> bool {
         self.family.eq_ignore_ascii_case(family) || self.legacy_family.eq_ignore_ascii_case(family)
@@ -858,11 +869,12 @@ fn style_italic(style: &str) -> bool {
 
 impl FontDb {
     /// A database holding the bundled fonts, then the craft-fonts Japanese faces (Mincho first,
-    /// so they are the fallback for Japanese text after the requested and bundled fonts; empty
+    /// so they are the fallback for Japanese text after the requested and bundled fonts), then the
+    /// craft-fonts Simplified Chinese faces, for the ideographs the Japanese fonts lack (both empty
     /// without `CRAFT_FONTS_DIR`), whose system font scan reads `font_dirs`.
     pub fn with_font_dirs(font_dirs: Vec<std::path::PathBuf>) -> Self {
         let mut faces = Vec::new();
-        let craft = crate::japanese_document_fonts().into_iter().map(|f| f.bytes);
+        let craft = crate::japanese_document_fonts().into_iter().chain(crate::chinese_fonts()).map(|f| f.bytes);
         for data in BUNDLED.iter().copied().chain(craft) {
             for f in enumerate_faces(data) {
                 if let Some(mut face) = make_face(FontBytes::Static(data), f.index, f.family, f.style, f.legacy, f.coords) {
@@ -1199,6 +1211,71 @@ impl FontDb {
             .unwrap_or_else(last_resort_face)
     }
 
+    /// The face a font list entry draws `family`'s name in: its Regular face (or the closest
+    /// style), without loading the family (#848). A loaded family's face is shared; an installed
+    /// one is read into a face of its own that the database doesn't keep, so its data is freed when
+    /// the caller drops it. Browsing the font list (hundreds of families) then costs no lasting
+    /// memory; only fonts actually used load for good. `None` when no font has that name, or its
+    /// file is too large to read just for a preview.
+    pub fn preview_face(&self, family: &str) -> Option<Arc<FontFace>> {
+        if let Some(f) = self.find(family, "Regular") {
+            return Some(f);
+        }
+        let english = self.english_family(family).filter(|en| !en.eq_ignore_ascii_case(family));
+        if let Some(f) = english.as_deref().and_then(|en| self.find(en, "Regular")) {
+            return Some(f);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(f) = self.unshared_face(family).or_else(|| english.as_deref().and_then(|en| self.unshared_face(en))) {
+            return Some(f);
+        }
+        None
+    }
+
+    /// The installed `family`'s face closest to Regular, read from its file into a face the
+    /// database doesn't keep (see [`FontDb::preview_face`]).
+    #[cfg(not(target_arch = "wasm32"))]
+    fn unshared_face(&self, family: &str) -> Option<Arc<FontFace>> {
+        let (path, fam, style) = {
+            let cat = self.read_catalog();
+            let mut cands: Vec<&CatalogEntry> = cat.iter().filter(|c| c.family.eq_ignore_ascii_case(family)).collect();
+            if cands.is_empty() {
+                cands = cat.iter().filter(|c| c.legacy.eq_ignore_ascii_case(family)).collect();
+            }
+            let score = |c: &CatalogEntry| {
+                if matches!(norm(&c.style).as_str(), "regular" | "normal" | "book" | "roman") {
+                    -1.0
+                } else {
+                    (style_weight(&c.style) - 400.0).abs() + if style_italic(&c.style) { 1000.0 } else { 0.0 }
+                }
+            };
+            let best = cands.into_iter().min_by(|a, b| score(a).total_cmp(&score(b)))?;
+            (best.path.clone(), best.family.clone(), best.style.clone())
+        };
+        let data = Arc::new(read_fallback_file(&path)?);
+        let found = enumerate_faces(&data).into_iter().find(|f| f.family.eq_ignore_ascii_case(&fam) && f.style.eq_ignore_ascii_case(&style))?;
+        let mut face = make_face(FontBytes::Owned(data), found.index, found.family, found.style, found.legacy, found.coords)?;
+        face.local_names = found.local;
+        Some(Arc::new(face))
+    }
+
+    /// Bytes of font data held by loaded faces (each file once; compiled-in fonts not counted).
+    /// It grows as families load for use; font list previews leave it as is (#848).
+    pub fn loaded_font_bytes(&self) -> usize {
+        let mut seen: Vec<*const Vec<u8>> = Vec::new();
+        let mut total = 0usize;
+        for f in self.read_faces().iter() {
+            if let FontBytes::Owned(d) = &f.bytes {
+                let p = Arc::as_ptr(d);
+                if !seen.contains(&p) {
+                    seen.push(p);
+                    total = total.saturating_add(d.len());
+                }
+            }
+        }
+        total
+    }
+
     /// Is `family` available (loaded, or installed on the system)? English and localized family
     /// names both count.
     pub fn has_family(&self, family: &str) -> bool {
@@ -1213,7 +1290,7 @@ impl FontDb {
     }
 
     /// Is a face named `family` (its typographic or legacy family) loaded?
-    fn is_loaded(&self, family: &str) -> bool {
+    pub fn is_loaded(&self, family: &str) -> bool {
         self.read_faces().iter().any(|f| f.named(family))
     }
 
@@ -1571,13 +1648,7 @@ impl FontDb {
         if let Some(p) = self.outlines.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
             return p.clone();
         }
-        let mut pen = FlipPen(BezPath::new());
-        if let Some(f) = face.skrifa()
-            && let Some(g) = f.outline_glyphs().get(GlyphId::new(gid))
-        {
-            let _ = g.draw(DrawSettings::unhinted(Size::unscaled(), face.location()), &mut pen);
-        }
-        let p = Arc::new(pen.0);
+        let p = Arc::new(face.glyph_outline(gid));
         let mut cache = self.outlines.lock().unwrap_or_else(|e| e.into_inner());
         if cache.len() >= OUTLINE_CACHE_MAX {
             cache.clear();

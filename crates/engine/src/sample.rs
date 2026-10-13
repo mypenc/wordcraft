@@ -209,6 +209,7 @@ mod tests {
 
     #[test]
     fn samples_are_valid() {
+        assert_eq!(sample_document().word_count(), 361);
         for d in [sample_document(), letter(), resume(), report()] {
             assert!(d.word_count() > 5);
             let l = wordcraft_layout::layout(&d, &mut wordcraft_layout::LayoutCache::new(), &Default::default());

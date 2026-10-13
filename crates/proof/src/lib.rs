@@ -12,20 +12,29 @@
 //!   spelling marks), read by the affix engine ([`affix`]), suggestions tuned for Polish
 //!   (diacritics, `ż`/`rz`, `u`/`ó`, missing spaces), and Polish grammar rules with Polish
 //!   messages.
+//! - **Bulgarian** ([`ProofLang::Bg`], module [`bg`]): hyphenation by the Bulgarian syllable
+//!   rules; no spelling or grammar marks yet.
+//! - **Portuguese** ([`ProofLang::Pt`], module [`pt`]): spelling against the Hunspell `pt_BR`
+//!   dictionary installed on the system (VERO and friends; not bundled), suggestions tuned for
+//!   Portuguese (missing accents, `seje`/`seja` confusions, missing spaces), conservative
+//!   grammar rules with Portuguese messages, and `hyph-utf8`'s Portuguese patterns.
 //! - **Other languages** ([`ProofLang::Other`]): no spelling or grammar marks, like Word without
 //!   the language's proofing tools.
-//! - **Hyphenation** ([`hyphen`]): dictionary, Liang patterns (English, Polish), heuristic.
+//! - **Hyphenation** ([`hyphen`]): dictionary, Liang patterns (English, Polish, Portuguese),
+//!   Bulgarian syllable rules, heuristic.
 //!
 //! [`check_text`] checks a paragraph whose runs are in different languages.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod affix;
+pub mod bg;
 pub mod dict;
 pub mod hunspell;
 pub mod hyphen;
 pub mod lang;
 pub mod patterns;
 pub mod pl;
+pub mod pt;
 
 use std::collections::HashSet;
 use std::ops::Range;
@@ -306,7 +315,7 @@ fn known_core(w: &str) -> bool {
 /// document default, which is en-US. Runs in a language without one are skipped (#100) instead
 /// of flagging every word against another language's dictionary; see [`ProofLang::from_tag`].
 pub fn has_dictionary(lang: Option<&str>) -> bool {
-    ProofLang::from_tag(lang) != ProofLang::Other
+    ProofLang::from_tag(lang).is_proofed()
 }
 
 /// Is `word` spelled correctly in the run's proofing language? A language without a dictionary
@@ -489,6 +498,7 @@ fn spelling_issue(text: &str, a: usize, b: usize, lang: ProofLang, opts: &Option
     }
     let message = match lang {
         ProofLang::Pl => "Możliwy błąd pisowni",
+        ProofLang::Pt => "Possível erro de ortografia",
         _ => "Possible spelling mistake",
     };
     Some(Issue { start: a, end: b, kind: IssueKind::Spelling, message: message.into(), suggestions: Vec::new(), lang })
@@ -504,7 +514,8 @@ pub fn is_correct_in_with(word: &str, lang: ProofLang, opts: &Options) -> bool {
     match lang {
         ProofLang::En => is_correct_with(word, opts),
         ProofLang::Pl => accepted_by_options(word, opts) || pl::is_correct(word),
-        ProofLang::Other => true,
+        ProofLang::Pt => accepted_by_options(word, opts) || pt::is_correct(word),
+        ProofLang::Bg | ProofLang::Other => true,
     }
 }
 
@@ -513,17 +524,20 @@ pub fn suggest_in(word: &str, max: usize, lang: ProofLang) -> Vec<String> {
     match lang {
         ProofLang::En => suggest(word, max),
         ProofLang::Pl => pl::suggest(word, max),
-        ProofLang::Other => Vec::new(),
+        ProofLang::Pt => pt::suggest(word, max),
+        ProofLang::Bg | ProofLang::Other => Vec::new(),
     }
 }
 
 /// Grammar issues in a paragraph of text in `lang`: the English rules, the Polish ones
-/// ([`pl::grammar`]), or none for a language WordCraft doesn't proof.
+/// ([`pl::grammar`]), the Portuguese ones ([`pt::grammar`]), or none for a language WordCraft
+/// doesn't proof.
 pub fn check_grammar_in(text: &str, lang: ProofLang) -> Vec<Issue> {
     match lang {
         ProofLang::En => check_grammar(text),
         ProofLang::Pl => pl::grammar::check(text),
-        ProofLang::Other => Vec::new(),
+        ProofLang::Pt => pt::grammar::check(text),
+        ProofLang::Bg | ProofLang::Other => Vec::new(),
     }
 }
 
@@ -994,6 +1008,12 @@ mod tests {
         assert_eq!(flagged("helo świat", &check_text("helo świat", &[(5..12, ProofLang::Pl)])), ["helo"]);
         // A language without tools: nothing flagged there.
         assert!(check_text("Bonjour mes amis", &[(0..16, ProofLang::Other)]).is_empty());
+        // Portuguese checks in their span only, with the Portuguese message.
+        pt::test_dict::install();
+        let t = "Ele disse que coraçao e frequencia existem.";
+        let v = check_text(t, &[(0..t.len(), ProofLang::Pt)]);
+        assert_eq!(flagged(t, &v), ["coraçao", "frequencia"], "{v:?}");
+        assert!(v.iter().all(|i| i.lang == ProofLang::Pt && i.message == "Possível erro de ortografia"), "{v:?}");
     }
 
     proptest::proptest! {
@@ -1005,7 +1025,7 @@ mod tests {
             let _ = has_dictionary(Some(&s));
             let _ = is_correct_for(&s, Some(&s));
             let _ = hyphen::hyphen_points(&s, &hyphen::Limits::default());
-            for lang in [ProofLang::En, ProofLang::Pl, ProofLang::Other] {
+            for lang in [ProofLang::En, ProofLang::Pl, ProofLang::Pt, ProofLang::Other] {
                 let _ = check_spelling_in(&s, lang);
                 let _ = check_grammar_in(&s, lang);
                 let _ = is_correct_in(&s, lang);
@@ -1021,9 +1041,14 @@ mod tests {
         }
 
         #[test]
-        fn mixed_spans_never_panic(s in "\\PC{0,60}", cuts in proptest::collection::vec((0usize..80, 0usize..80, 0u8..3), 0..6)) {
-            let langs = [ProofLang::En, ProofLang::Pl, ProofLang::Other];
-            let spans: Vec<(Range<usize>, ProofLang)> = cuts.iter().map(|&(a, b, l)| (a.min(b)..a.max(b), langs[l as usize % 3])).collect();
+        fn portuguese_suggestions_never_panic(s in "[a-záàâãéêíóôõúüçA-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ'’ -]{0,14}") {
+            let _ = suggest_in(&s, 4, ProofLang::Pt);
+        }
+
+        #[test]
+        fn mixed_spans_never_panic(s in "\\PC{0,60}", cuts in proptest::collection::vec((0usize..80, 0usize..80, 0u8..4), 0..6)) {
+            let langs = [ProofLang::En, ProofLang::Pl, ProofLang::Pt, ProofLang::Other];
+            let spans: Vec<(Range<usize>, ProofLang)> = cuts.iter().map(|&(a, b, l)| (a.min(b)..a.max(b), langs[l as usize % 4])).collect();
             for i in check_text(&s, &spans) {
                 proptest::prop_assert!(i.start <= i.end && i.end <= s.len());
             }

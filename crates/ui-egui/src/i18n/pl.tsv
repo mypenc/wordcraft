@@ -336,6 +336,7 @@
 	Insert Above	Wstaw powyżej
 	Insert Below	Wstaw poniżej
 	Insert Caption	Wstaw podpis
+	Insert Caption…	Wstaw podpis…
 	Insert Citation	Wstaw cytat
 	Insert Endnote	Wstaw przypis końcowy
 	Insert Footnote	Wstaw przypis dolny
@@ -551,6 +552,8 @@
 	Read\nMode	Tryb\nczytania
 	Reads the clipboard's rich text and keeps its formatting.	Odczytuje sformatowany tekst ze schowka i zachowuje jego formatowanie.
 	Reads the clipboard's web content and keeps its formatting.	Odczytuje zawartość internetową ze schowka i zachowuje jej formatowanie.
+	Picture	Obraz
+	Pastes the clipboard's picture.	Wkleja obraz ze schowka.
 	Reading Highlight	Wyróżnienie wyników
 	Recent	Ostatnie
 	Record Macro	Zarejestruj makro
@@ -717,6 +720,7 @@
 	Table Design	Projekt tabeli
 	Table Layout	Układ tabeli
 	Table Properties	Właściwości tabeli
+	Table Properties…	Właściwości tabeli…
 	Table Row Height	Wysokość wiersza tabeli
 	Table Style Options	Opcje stylu tabeli
 	Table Styles	Style tabeli
@@ -1944,6 +1948,11 @@
 	Reset Graphic	Resetuj grafikę
 	Reset\nGraphic	Resetuj\ngrafikę
 	Resize Table by Dragging	Zmień rozmiar tabeli przeciąganiem
+	Select Column	Zaznacz kolumnę tabeli
+	Select Table Cells by Clicking	Zaznacz komórki tabeli kliknięciem
+	Insert Row or Column by Clicking	Wstaw wiersz lub kolumnę kliknięciem
+	Move Table by Dragging	Przenieś tabelę przeciąganiem
+	AutoFit Column by Double-Clicking	Dopasuj kolumnę dwukrotnym kliknięciem
 	Revised document	Dokument poprawiony
 	Rich Text Content Control	Formant zawartości tekstu sformatowanego
 	Sat:	Nasycenie:
@@ -2053,6 +2062,13 @@
 	{name} already exists. Choose Save again to replace it.	Plik {name} już istnieje. Wybierz ponownie Zapisz, aby go zastąpić.
 	{name} wasn't found.	Nie znaleziono: {name}.
 	“{text}” ({row}, {series}) isn't a number.	„{text}” ({row}, {series}) nie jest liczbą.
+	Undo Actions	Cofnij kilka akcji
+	Undo History	Historia cofania
+	Undo 1 Action	Cofnij 1 akcję
+	Undo {n} Actions	Cofnij akcje: {n}
+	Start-up	Uruchamianie
+	Show the Start screen when WordCraft starts	Pokazuj ekran startowy po uruchomieniu programu WordCraft
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Włączone: WordCraft otwiera się na karcie Plik › Start z pustym dokumentem, szablonami i ostatnimi dokumentami. Wyłączone: otwiera pusty dokument.
 	Couldn't make WordCraft the default: {error}	Nie udało się ustawić WordCraft jako domyślnego: {error}
 	In Default apps, choose WordCraft for the document types you want it to open.	W Aplikacjach domyślnych wybierz WordCraft dla typów dokumentów, które ma otwierać.
 	Make WordCraft the default for Word documents…	Ustaw WordCraft jako domyślny dla dokumentów Word…
@@ -2094,3 +2110,361 @@
 	Reading Column Width	Szerokość kolumny do czytania
 	Reading Line Spacing	Interlinia do czytania
 	Reading Text Size	Rozmiar tekstu do czytania
+	Correct TWo INitial CApitals	Poprawiaj DWie POczątkowe WIelkie litery
+	Correct accidental usage of cAPS LOCK key	Poprawiaj przypadkowe użycie klawisza cAPS LOCK
+	Region:	Region:
+	Automatic ({region})	Automatycznie ({region})
+
+# Style, table style, watermark, paper size and equation gallery names, from #750 by @olekkut
+	AaBbCcDd	AaBbCcDd
+	Annotation Reference	Odwołanie do adnotacji
+	Annotation Subject	Temat adnotacji
+	Annotation Text	Tekst adnotacji
+	Body text in a short paragraph to show spacing.	Treść dokumentu w krótkim akapicie pokazującym odstępy.
+	Default Paragraph Font	Domyślna czcionka akapitu
+	Envelope Address	Adres na kopercie
+	Envelope Return	Adres zwrotny na kopercie
+	Index Heading	Nagłówek indeksu
+	Index {n}	Indeks {n}
+	Line Number	Numer wiersza
+	Normal	Normalny
+	Normal Indent	Normalny z wcięciem
+	Normal Table	Normalna tabela
+	Table Grid	Siatka tabeli
+	Table of Figures	Spis ilustracji
+preview	Title	Tytuł
+	TOA Heading	Nagłówek spisu źródeł
+	Good evening	Dobry wieczór
+	Good morning	Dzień dobry
+	Good afternoon	Dzień dobry
+	tOGGLE cASE	oDWRÓĆ wIELKOŚĆ lITER
+	Change to Level 1	Zmień na poziom 1
+	Change to Level 2	Zmień na poziom 2
+	Change to Level 3	Zmień na poziom 3
+	Change to Level 4	Zmień na poziom 4
+	Change to Level 5	Zmień na poziom 5
+	Level 1	Poziom 1
+	Level 2	Poziom 2
+	Level 3	Poziom 3
+	ASAP	JAK NAJSZYBCIEJ
+	CONFIDENTIAL	POUFNE
+	DO NOT COPY	NIE KOPIOWAĆ
+	DRAFT	WERSJA ROBOCZA
+	SAMPLE	WZÓR
+	URGENT	PILNE
+	Letter   8.50" × 11.00"	Letter   8,50" × 11,00"
+	Legal   8.50" × 14.00"	Legal   8,50" × 14,00"
+	Executive   7.25" × 10.50"	Executive   7,25" × 10,50"
+	Statement   5.50" × 8.50"	Statement   5,50" × 8,50"
+	Tabloid   11.00" × 17.00"	Tabloid   11,00" × 17,00"
+	B4 (JIS)   10.12" × 14.33"	B4 (JIS)   10,12" × 14,33"
+	B5 (JIS)   7.17" × 10.12"	B5 (JIS)   7,17" × 10,12"
+	Envelope #10   4.12" × 9.50"	Koperta nr 10   4,12" × 9,50"
+	Envelope DL   4.33" × 8.66"	Koperta DL   4,33" × 8,66"
+	Plain Table 1	Prosta tabela 1
+	Grid Table 1 Light	Tabela z siatką 1 — jasna
+	Grid Table 4 – Blue	Tabela z siatką 4 — niebieska
+	Grid Table 4 – Green	Tabela z siatką 4 — zielona
+	Grid Table 4 – Orange	Tabela z siatką 4 — pomarańczowa
+	Grid Table 4 – Purple	Tabela z siatką 4 — fioletowa
+	List Table 3 – Blue	Tabela listy 3 — niebieska
+	List Table 3 – Green	Tabela listy 3 — zielona
+	List Table 3 – Orange	Tabela listy 3 — pomarańczowa
+	List Table 3 – Purple	Tabela listy 3 — fioletowa
+	Convert between built-up and linear form	Konwertuj między postacią profesjonalną a liniową
+	Justification of a display equation	Wyrównanie równania wyświetlanego w osobnym wierszu
+	Number the equation; the number sits at the right margin (or type # then the number)	Numeruj równanie; numer jest umieszczany przy prawym marginesie (lub wpisz # i numer)
+	Show the equation in the line of text	Wyświetl równanie w wierszu tekstu
+	Show the equation on a line of its own	Wyświetl równanie w osobnym wierszu
+	Type equations in LaTeX	Wpisuj równania w notacji LaTeX
+	Type equations in the linear format (UnicodeMath)	Wpisuj równania w formacie liniowym (UnicodeMath)
+	Type normal (non-math) text in the equation	Wpisz zwykły (niematematyczny) tekst w równaniu
+	Sides of a right triangle	Boki trójkąta prostokątnego
+	Circle area from its radius	Pole koła na podstawie promienia
+	Roots of ax²+bx+c	Pierwiastki równania ax²+bx+c
+	Binomial expansion of (x+a)ⁿ	Rozwinięcie dwumianu (x+a)ⁿ
+	Power series of (1+x)ⁿ	Szereg potęgowy (1+x)ⁿ
+	Euler's identity	Tożsamość Eulera
+	Derivative as a limit	Pochodna jako granica
+	Exponential series	Szereg wykładniczy
+	Integral of e^(−x²)	Całka z e^(−x²)
+	Sine and cosine series of f(x)	Szereg sinusów i cosinusów funkcji f(x)
+	Sum or difference of sines	Suma lub różnica sinusów
+	Sum of cosines	Suma cosinusów
+	Normal probability density	Gęstość rozkładu normalnego
+	Bayes' rule	Twierdzenie Bayesa
+	Accents	Akcenty
+	Basic Math	Podstawowa matematyka
+	Boxed Formulas	Wzory w ramce
+	Cases and Stacks	Układy klamrowe i piętrowe
+	Common Accent Objects	Typowe obiekty z akcentem
+	Common Brackets	Typowe nawiasy
+	Common Fractions	Typowe ułamki
+	Common Functions	Typowe funkcje
+	Common Large Operators	Typowe duże operatory
+	Common Operator Structures	Typowe struktury operatorów
+	Common Operators	Typowe operatory
+	Common Radicals	Typowe pierwiastki
+	Common Subscripts and Superscripts	Typowe indeksy dolne i górne
+	Contour Integrals	Całki okrężne
+	Differentials	Różniczki
+	Dots	Kropki
+	Empty Matrices	Puste macierze
+	Functions	Funkcje
+	Geometry	Geometria
+	Greek Letters	Litery greckie
+	Hyperbolic Functions	Funkcje hiperboliczne
+	Identity Matrices	Macierze jednostkowe
+	Integrals	Całki
+	Inverse Functions	Funkcje odwrotne
+	Inverse Hyperbolic Functions	Odwrotne funkcje hiperboliczne
+	Letter-Like Symbols	Symbole literopodobne
+	Matrices with Brackets	Macierze w nawiasach
+	Negated Relations	Relacje zanegowane
+	Operator Structures	Struktury operatorów
+	Operators	Operatory
+	Other Large Operators	Inne duże operatory
+	Overbars and Underbars	Kreski górne i dolne
+	Products and Coproducts	Iloczyny i koprodukty
+	Radicals	Pierwiastki
+	Scripts	Indeksy
+	Single Brackets	Pojedyncze nawiasy
+	Sparse Matrices	Macierze rzadkie
+	Subscripts and Superscripts	Indeksy dolne i górne
+	Summations	Sumy
+	Trigonometric Functions	Funkcje trygonometryczne
+	Unions and Intersections	Sumy i iloczyny zbiorów
+	1×2 Empty Matrix	Pusta macierz 1×2
+	1×3 Empty Matrix	Pusta macierz 1×3
+	2×1 Empty Matrix	Pusta macierz 2×1
+	2×2 Empty Matrix	Pusta macierz 2×2
+	2×3 Empty Matrix	Pusta macierz 2×3
+	3×1 Empty Matrix	Pusta macierz 3×1
+	3×2 Empty Matrix	Pusta macierz 3×2
+	3×3 Empty Matrix	Pusta macierz 3×3
+	2×2 Determinant	Wyznacznik 2×2
+	2×2 Identity Matrix	Macierz jednostkowa 2×2
+	2×2 Identity Matrix (sparse)	Macierz jednostkowa 2×2 (rzadka)
+	3×3 Identity Matrix	Macierz jednostkowa 3×3
+	3×3 Identity Matrix (sparse)	Macierz jednostkowa 3×3 (rzadka)
+	2×2 Matrix in Brackets	Macierz 2×2 w nawiasach kwadratowych
+	2×2 Matrix in Double Bars	Macierz 2×2 w podwójnych kreskach pionowych
+	2×2 Matrix in Parentheses	Macierz 2×2 w nawiasach okrągłych
+	n×n Identity Matrix	Macierz jednostkowa n×n
+	n×n Matrix	Macierz n×n
+	A xor B	A xor B
+	Absolute value cases	Przypadki wartości bezwzględnej
+	Acute	Akcent ostry
+	Angle Brackets	Nawiasy kątowe
+	Angle Brackets with Separator	Nawiasy kątowe z separatorem
+	Angle Brackets with Two Separators	Nawiasy kątowe z dwoma separatorami
+	Baseline Dots	Kropki na linii bazowej
+	Binomial Coefficient	Współczynnik dwumianowy
+	Binomial Coefficient (angle)	Współczynnik dwumianowy (nawiasy kątowe)
+	Binomial Coefficient with Angle Brackets	Współczynnik dwumianowy w nawiasach kątowych
+	Boxed Formula	Wzór w ramce
+	Boxed Formula (example)	Wzór w ramce (przykład)
+	Braces	Nawiasy klamrowe
+	Braces with Separator	Nawiasy klamrowe z separatorem
+	Brackets	Nawiasy kwadratowe
+	Brackets with Separators	Nawiasy kwadratowe z separatorami
+	Breve	Brewis
+	Cases (Three Conditions)	Układ warunków (trzy warunki)
+	Cases (Two Conditions)	Układ warunków (dwa warunki)
+	Ceiling	Sufit
+	Change in y over change in x	Przyrost y przez przyrost x
+	Check	Daszek odwrócony
+	Circled Dot	Kropka w okręgu
+	Circled Plus	Plus w okręgu
+	Circled Times	Znak mnożenia w okręgu
+	Colon Equal	Dwukropek i znak równości
+	Contour Integral	Całka okrężna
+	Contour Integral with Limits	Całka okrężna z granicami
+	Contour Integral with Stacked Limits	Całka okrężna z granicami u góry i u dołu
+	Coproduct	Koprodukt
+	Coproduct with Limits	Koprodukt z granicami
+	Coproduct with Lower Limit	Koprodukt z dolną granicą
+	Coproduct with Subscript-Superscript Limits	Koprodukt z granicami w indeksach
+	Cosecant Function	Funkcja cosecans
+	Cosine 2x	Cosinus 2x
+	Cosine Function	Funkcja cosinus
+	Cotangent Function	Funkcja cotangens
+	Cube Root	Pierwiastek sześcienny
+	Delta Equal To	Równe z deltą
+	Delta over arrow	Delta nad strzałką
+	Diagonal Dots	Kropki ukośne
+	Differential	Różniczka
+	Differential theta	Różniczka theta
+	Differential x	Różniczka x
+	Differential y	Różniczka y
+	Dot	Kropka nad znakiem
+	Double Bar	Podwójna kreska nad znakiem
+	Double Dot	Dwie kropki nad znakiem
+	Double Integral	Całka podwójna
+	Double Integral with Limits	Całka podwójna z granicami
+	Double Integral with Stacked Limits	Całka podwójna z granicami u góry i u dołu
+	Double Left Arrow with Text Above	Podwójna strzałka w lewo z tekstem powyżej
+	Double Left Arrow with Text Below	Podwójna strzałka w lewo z tekstem poniżej
+	Double Left Right Arrow with Text Above	Podwójna strzałka w lewo i prawo z tekstem powyżej
+	Double Left Right Arrow with Text Below	Podwójna strzałka w lewo i prawo z tekstem poniżej
+	Double Right Arrow with Text Above	Podwójna strzałka w prawo z tekstem powyżej
+	Double Right Arrow with Text Below	Podwójna strzałka w prawo z tekstem poniżej
+	Double Square Brackets	Podwójne nawiasy kwadratowe
+	Double Vertical Bars	Podwójne kreski pionowe
+	Double summation	Suma podwójna
+	Equal Equal	Podwójny znak równości
+	Equal by Definition	Równe z definicji
+	Exponential	Funkcja wykładnicza
+	Floor	Podłoga
+	Grave	Akcent ciężki
+	Grouping Character Above	Znak grupujący powyżej
+	Grouping Character Below	Znak grupujący poniżej
+	Hat	Daszek
+	Hyperbolic Cosecant Function	Funkcja cosecans hiperboliczny
+	Hyperbolic Cosine Function	Funkcja cosinus hiperboliczny
+	Hyperbolic Cotangent Function	Funkcja cotangens hiperboliczny
+	Hyperbolic Secant Function	Funkcja secans hiperboliczny
+	Hyperbolic Sine Function	Funkcja sinus hiperboliczny
+	Hyperbolic Tangent Function	Funkcja tangens hiperboliczny
+	Hypotenuse	Przeciwprostokątna
+	Integral with Limits	Całka z granicami
+	Integral with Stacked Limits	Całka z granicami u góry i u dołu
+	Intersection	Iloczyn zbiorów
+	Intersection with Limits	Iloczyn zbiorów z granicami
+	Intersection with Lower Limit	Iloczyn zbiorów z dolną granicą
+	Intersection with Subscript-Superscript Limits	Iloczyn zbiorów z granicami w indeksach
+	Inverse Cosecant Function	Funkcja arcus cosecans
+	Inverse Cosine Function	Funkcja arcus cosinus
+	Inverse Cotangent Function	Funkcja arcus cotangens
+	Inverse Hyperbolic Cosecant Function	Funkcja area cosecans hiperboliczny
+	Inverse Hyperbolic Cosine Function	Funkcja area cosinus hiperboliczny
+	Inverse Hyperbolic Cotangent Function	Funkcja area cotangens hiperboliczny
+	Inverse Hyperbolic Secant Function	Funkcja area secans hiperboliczny
+	Inverse Hyperbolic Sine Function	Funkcja area sinus hiperboliczny
+	Inverse Hyperbolic Tangent Function	Funkcja area tangens hiperboliczny
+	Inverse Secant Function	Funkcja arcus secans
+	Inverse Sine Function	Funkcja arcus sinus
+	Inverse Tangent Function	Funkcja arcus tangens
+	Left Arrow with Text Above	Strzałka w lewo z tekstem powyżej
+	Left Arrow with Text Below	Strzałka w lewo z tekstem poniżej
+	Left Bracket Twice	Podwójny lewy nawias kwadratowy
+	Left Right Arrow Above	Strzałka w lewo i prawo powyżej
+	Left Right Arrow with Text Above	Strzałka w lewo i prawo z tekstem powyżej
+	Left Right Arrow with Text Below	Strzałka w lewo i prawo z tekstem poniżej
+	Left Subscript-Superscript	Lewy indeks dolny i górny
+	Leftwards Arrow Above	Strzałka w lewo powyżej
+	Leftwards Harpoon Above	Harpun w lewo powyżej
+	Limit	Granica
+	Limit Example	Przykład granicy
+	Linear Fraction	Ułamek liniowy
+	Logarithm	Logarytm
+	Logarithm with Base	Logarytm o podanej podstawie
+	Logical AND	Koniunkcja logiczna
+	Logical AND with Limits	Koniunkcja logiczna z granicami
+	Logical OR	Alternatywa logiczna
+	Logical OR with Limits	Alternatywa logiczna z granicami
+	Maximum	Maksimum
+	Maximum Example	Przykład maksimum
+	Measured By	Mierzone przez
+	Midline Dots	Kropki środkowe
+	Minimum	Minimum
+	Minus Equal	Minus i znak równości
+	Natural Logarithm	Logarytm naturalny
+	One half	Jedna druga
+	Outward Brackets	Nawiasy kwadratowe skierowane na zewnątrz
+	Overbar	Kreska górna
+	Overbrace	Klamra górna
+	Parentheses	Nawiasy okrągłe
+	Parentheses with Separator	Nawiasy okrągłe z separatorem
+	Partial Differential	Różniczka cząstkowa
+	Pi Over 2	Pi przez 2
+	Plus Equal	Plus i znak równości
+	Product	Iloczyn
+	Product of A	Iloczyn A
+	Product with Limits	Iloczyn z granicami
+	Product with Lower Limit	Iloczyn z dolną granicą
+	Product with Subscript-Superscript Limits	Iloczyn z granicami w indeksach
+	Quadratic Root	Pierwiastek równania kwadratowego
+	Radical with Degree	Pierwiastek ze stopniem
+	Right Arrow with Text Above	Strzałka w prawo z tekstem powyżej
+	Right Arrow with Text Below	Strzałka w prawo z tekstem poniżej
+	Right Bracket Twice	Podwójny prawy nawias kwadratowy
+	Rightwards Arrow Above	Strzałka w prawo powyżej
+	Rightwards Harpoon Above	Harpun w prawo powyżej
+	Secant Function	Funkcja secans
+	Sine Function	Funkcja sinus
+	Sine theta	Sinus theta
+	Single Left Angle	Pojedynczy lewy nawias kątowy
+	Single Left Bar	Pojedyncza lewa kreska pionowa
+	Single Left Brace	Pojedynczy lewy nawias klamrowy
+	Single Left Bracket	Pojedynczy lewy nawias kwadratowy
+	Single Left Parenthesis	Pojedynczy lewy nawias okrągły
+	Single Right Brace	Pojedynczy prawy nawias klamrowy
+	Single Right Bracket	Pojedynczy prawy nawias kwadratowy
+	Single Right Parenthesis	Pojedynczy prawy nawias okrągły
+	Skewed Fraction	Ułamek ukośny
+	Small change	Mały przyrost
+	Square Root	Pierwiastek kwadratowy
+	Square Root with Degree	Pierwiastek dowolnego stopnia
+	Square Union	Kwadratowa suma zbiorów
+	Stack Object	Obiekt piętrowy
+	Stack Object (Three)	Obiekt piętrowy (trzy poziomy)
+	Stacked Fraction	Ułamek piętrowy
+	Stacked, no bar	Układ piętrowy bez kreski
+	Subscript-Superscript	Indeks dolny i górny
+	Summation	Suma
+	Summation from 0 to n	Suma od 0 do n
+	Summation over binomials	Suma po dwumianach
+	Summation with Limits	Suma z granicami
+	Summation with Lower Limit	Suma z dolną granicą
+	Summation with Subscript Limit	Suma z granicą w indeksie dolnym
+	Summation with Subscript-Superscript Limits	Suma z granicami w indeksach
+	Surface Integral	Całka powierzchniowa
+	Surface Integral with Limits	Całka powierzchniowa z granicami
+	Surface Integral with Stacked Limits	Całka powierzchniowa z granicami u góry i u dołu
+	Tangent Function	Funkcja tangens
+	Tangent formula	Wzór na tangens
+	Text over Colon Equal	Tekst nad znakiem przypisania
+	Text over Equal	Tekst nad znakiem równości
+	Tilde	Tylda
+	Triple Dot	Trzy kropki nad znakiem
+	Triple Integral	Całka potrójna
+	Triple Integral with Limits	Całka potrójna z granicami
+	Triple Integral with Stacked Limits	Całka potrójna z granicami u góry i u dołu
+	Underbar	Kreska dolna
+	Underbrace	Klamra dolna
+	Union	Suma zbiorów
+	Union of intersections	Suma iloczynów zbiorów
+	Union with Limits	Suma zbiorów z granicami
+	Union with Lower Limit	Suma zbiorów z dolną granicą
+	Union with Plus	Suma zbiorów z plusem
+	Union with Subscript-Superscript Limits	Suma zbiorów z granicami w indeksach
+	Up Diagonal Dots	Kropki ukośne w górę
+	Vector A	Wektor A
+	Vector AB	Wektor AB
+	Vertical Bars	Kreski pionowe
+	Vertical Dots	Kropki pionowe
+	Volume Integral	Całka objętościowa
+	Volume Integral with Limits	Całka objętościowa z granicami
+	Volume Integral with Stacked Limits	Całka objętościowa z granicami u góry i u dołu
+	Yields	Daje w wyniku
+	x bar	x z kreską
+	All - Linear	Wszystkie — liniowe
+	All - Professional	Wszystkie — profesjonalne
+	Current - Linear	Bieżące — liniowe
+	Current - Professional	Bieżące — profesjonalne
+	Centered as Group	Wyśrodkowane jako grupa
+	✓ None	✓ Brak
+	Change to Level 6	Zmień na poziom 6
+	Change to Level 7	Zmień na poziom 7
+	Change to Level 8	Zmień na poziom 8
+	Change to Level 9	Zmień na poziom 9
+	Level 4	Poziom 4
+	Level 5	Poziom 5
+	Level 6	Poziom 6
+	Level 7	Poziom 7
+	Level 8	Poziom 8
+	Level 9	Poziom 9
+	Typing	Pisanie
+	Search	Wyszukaj
+	Title Bar	Pasek tytułu

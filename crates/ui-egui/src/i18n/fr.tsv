@@ -101,7 +101,7 @@
 	Number format	Format des numéros
 	Number style for this level:	Style de numéros pour ce niveau :
 	Outside border	Bordure extérieure
-	Overtype	Remplacement
+	Overtype	Refrappe
 	Outside:	Extérieur :
 	Restart list after:	Redémarrer la liste après :
 	Right border	Bordure droite
@@ -1627,8 +1627,8 @@
 	SmartArt Design	Création SmartArt
 	SmartArt Styles	Styles SmartArt
 	Text Pane	Volet Texte
-	Promote to Heading 1	Promouvoir en Titre 1
-	Demote to Body Text	Abaisser en corps de texte
+	Promote to Heading 1	Élever au niveau Titre 1
+	Demote to Body Text	Abaisser au niveau Corps de texte
 	Move Up	Monter
 	Move Down	Descendre
 	Collapse	Réduire
@@ -1649,7 +1649,7 @@
 	Show Text Formatting	Afficher la mise en forme du texte
 	Close Outline View	Fermer le mode Plan
 	Outline State	État du plan
-	Outlining	Plan
+	Outlining	Mode Plan
 	Outline Tools	Outils Plan
 	A, B, C, …	A, B, C, …
 	Above the item	Au-dessus de l’élément
@@ -1862,7 +1862,7 @@
 # Interface strings added on main since this catalog was first written.
 	As you type	Pendant la frappe
 	Asian text font:	Police du texte asiatique :
-	AutoSave writes your changes to the file a moment after you stop typing.	L’enregistrement automatique écrit vos modifications dans le fichier peu après que vous arrêtez de taper.
+	AutoSave writes your changes to the file a moment after you stop typing.	L’enregistrement automatique écrit vos modifications dans le fichier peu après que vous avez cessé de taper.
 	Centimeters	Centimètres
 	Check spelling as you type	Vérifier l’orthographe pendant la frappe
 	Click to switch back to inserting	Cliquez pour revenir au mode insertion
@@ -1882,8 +1882,8 @@
 	Millimeters	Millimètres
 	New comments and tracked changes are recorded under this name and these initials.	Les nouveaux commentaires et les modifications suivies sont enregistrés sous ce nom et ces initiales.
 	New word	Nouveau mot
-	No words yet. Add to Dictionary on a misspelled word puts it here.	Aucun mot pour l’instant. Les mots ajoutés avec Ajouter au dictionnaire sur un mot mal orthographié apparaissent ici.
-	Overtype (typing replaces the characters after the caret)	Remplacement (la frappe remplace les caractères situés après le curseur)
+	No words yet. Add to Dictionary on a misspelled word puts it here.	Aucun mot pour l’instant. Utilisez Ajouter au dictionnaire sur un mot mal orthographié pour l’ajouter ici.
+	Overtype (typing replaces the characters after the caret)	Refrappe (la frappe remplace les caractères situés après le curseur)
 	Page display	Affichage de la page
 	Paragraph marks	Marques de paragraphe
 	Personalize	Personnaliser
@@ -1902,7 +1902,7 @@
 	These marks show even when Show/Hide ¶ is off.	Ces marques s’affichent même lorsque Afficher/Masquer ¶ est désactivé.
 	Typing replaces selected text	La frappe remplace le texte sélectionné
 	Update fields before printing	Mettre à jour les champs avant l’impression
-	Use the Insert key to switch overtype on and off	Utiliser la touche Inser pour activer ou désactiver le mode Remplacement
+	Use the Insert key to switch overtype on and off	Utiliser la touche Inser pour activer ou désactiver le mode Refrappe
 	Extend Selection by Units	Étendre la sélection par unités
 	Animation	Animation
 	Animate the caret (it glides and fades)	Animer le curseur (il glisse et s’estompe)
@@ -1929,7 +1929,7 @@
 	Lum:	Lum. :
 	Hex:	Hex :
 	Document template:	Modèle de document :
-	Attach…	Joindre…
+	Attach…	Attacher…
 	Automatically update document styles	Mettre à jour automatiquement les styles du document
 	Organizer…	Organiseur…
 	Documents	Documents
@@ -1968,13 +1968,13 @@
 	Hierarchy	Hiérarchie
 	Relationship	Relation
 	Pyramid	Pyramide
-	Basic List	Liste simple
-	Basic Process	Processus simple
-	Basic Cycle	Cycle simple
-	Basic Pyramid	Pyramide simple
-	Basic Radial	Radial simple
-	Basic Matrix	Matrice simple
-	Basic Venn	Venn simple
+	Basic List	Liste de base
+	Basic Process	Processus de base
+	Basic Cycle	Cycle de base
+	Basic Pyramid	Pyramide de base
+	Basic Radial	Radial de base
+	Basic Matrix	Matrice de base
+	Basic Venn	Venn de base
 	Shows items of equal weight as blocks in rows.	Affiche des éléments de même importance sous forme de blocs en lignes.
 	Shows steps in order, left to right, with arrows between them.	Affiche des étapes dans l’ordre, de gauche à droite, reliées par des flèches.
 	Shows steps that repeat, around a circle.	Affiche des étapes qui se répètent, disposées en cercle.
@@ -2021,14 +2021,14 @@
 	Expression	Expression
 	Not	Non
 	Num Occurrences	Nombre d’occurrences
-	Previous 1 or More	1 ou plusieurs du précédent
+	Previous 1 or More	1 occurrence ou plus du précédent
 	0 or More Characters	0 caractère ou plus
 	Fix Position on Page	Fixer la position sur la page
 	Visual effects	Effets visuels
 	Animation effects:	Effets d’animation :
 	On	Activés
 	Off	Désactivés
-	Smooth scrolling and zooming, and menus and buttons that fade in. Off shows every change at once.	Défilement et zoom fluides, et menus et boutons qui apparaissent en fondu. Avec Désactivés, chaque changement s’affiche immédiatement.
+	Smooth scrolling and zooming, and menus and buttons that fade in. Off shows every change at once.	Défilement et zoom fluides, et menus et boutons qui apparaissent en fondu. Désactivés : chaque changement s’affiche immédiatement.
 	Your system has animation effects turned on.	Les effets d’animation sont activés sur votre système.
 	Your system has animation effects turned off.	Les effets d’animation sont désactivés sur votre système.
 	Your system doesn't report an animation setting, so animation effects stay on.	Votre système n’indique aucun réglage d’animation, les effets d’animation restent donc activés.
@@ -2061,3 +2061,25 @@
 	Reading Column Width	Largeur de colonne de lecture
 	Reading Line Spacing	Interligne de lecture
 	Reading Text Size	Taille du texte de lecture
+	Undo Actions	Annuler plusieurs actions
+	Undo History	Historique des annulations
+	Undo 1 Action	Annuler 1 action
+	Undo {n} Actions	Annuler {n} actions
+	Start-up	Démarrage
+	Show the Start screen when WordCraft starts	Afficher l'écran d'accueil au démarrage de WordCraft
+	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Activé : WordCraft s'ouvre sur Fichier › Accueil, avec un document vierge, les modèles et vos documents récents. Désactivé : il ouvre un document vierge.
+	Correct TWo INitial CApitals	Corriger DEux MAjuscules EN début de mot
+	Correct accidental usage of cAPS LOCK key	Corriger l’utilisation accidentelle de la touche vERR. mAJ
+	Region:	Région :
+	Automatic ({region})	Automatique ({region})
+	Picture	Image
+	Pastes the clipboard's picture.	Colle l'image du Presse-papiers.
+	Select Column	Sélectionner la colonne
+	Select Table Cells by Clicking	Sélectionner des cellules du tableau en cliquant
+	Insert Row or Column by Clicking	Insérer une ligne ou une colonne en cliquant
+	Move Table by Dragging	Déplacer le tableau en le faisant glisser
+	AutoFit Column by Double-Clicking	Ajuster la colonne en double-cliquant
+	Insert Caption…	Insérer une légende…
+	Table Properties…	Propriétés du tableau…
+	Search	Rechercher
+	Title Bar	Barre de titre
