@@ -193,14 +193,9 @@ impl eframe::App for AndroidHost {
         self.app.ui(ui);
         let ctx = ui.ctx().clone();
         self.app.touch_frame(&ctx);
-        self.app.touch.show_keyboard_toggle(&ctx);
-        // Focusing the page raises the keyboard by itself; this button also lets the user hide it.
-        if std::mem::take(&mut self.app.touch.keyboard_request) {
-            match bridge::soft_keyboard_visible(&self.android) {
-                Some(true) => bridge::hide_soft_keyboard(&self.android),
-                Some(false) => self.android.show_soft_input(false),
-                None => log::warn!("could not determine whether the Android keyboard is visible"),
-            }
+        // Help ▸ Block Keyboard: focusing the page raises the keyboard by itself; close it again.
+        if self.app.touch.block_keyboard && bridge::soft_keyboard_visible(&self.android) == Some(true) {
+            bridge::hide_soft_keyboard(&self.android);
         }
         // Copy / Cut → the system clipboard.
         let copied = ctx.output(|o| {

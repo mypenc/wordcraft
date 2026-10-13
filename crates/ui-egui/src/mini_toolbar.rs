@@ -44,6 +44,18 @@ pub const BAR_H: f32 = PAD_Y * 2.0 + ROW_H * 2.0 + ROW_GAP;
 /// Where the bar sits for a selection line and viewport; `None` for degenerate inputs (NaN
 /// rects must never reach egui). Pure geometry, unit tested without a window.
 pub fn anchor_rect(selection_top: f32, selection_left: f32, viewport: Rect) -> Option<Rect> {
+    anchor_rect_h(selection_top, selection_left, viewport, BAR_H)
+}
+
+/// The height of one row: the ribbon's 24 pt, or more where the theme's controls are taller
+/// (touch devices enlarge combo boxes), so the bar always contains both rows.
+fn row_height(ctx: &egui::Context) -> f32 {
+    let h = ctx.global_style().spacing.interact_size.y;
+    if h.is_finite() { (h + 2.0).clamp(ROW_H, 64.0) } else { ROW_H }
+}
+
+/// [`anchor_rect`] for a bar of height `bar_h`.
+pub fn anchor_rect_h(selection_top: f32, selection_left: f32, viewport: Rect, bar_h: f32) -> Option<Rect> {
     if !selection_top.is_finite() || !selection_left.is_finite() || !viewport.is_finite() || !viewport.is_positive() {
         return None;
     }
@@ -51,9 +63,9 @@ pub fn anchor_rect(selection_top: f32, selection_left: f32, viewport: Rect) -> O
     let cx = (selection_left + ANCHOR_INSET).clamp(viewport.left(), viewport.right());
     let x = (cx - BAR_W / 2.0).clamp(viewport.left(), (viewport.right() - BAR_W).max(viewport.left()));
     // Vertical: above the selection, unless there is no room, then below it.
-    let above = selection_top - VGAP - BAR_H;
+    let above = selection_top - VGAP - bar_h;
     let y = if above >= viewport.top() { above } else { selection_top + VGAP };
-    Some(Rect::from_min_size(pos2(x, y), Vec2::new(BAR_W, BAR_H)))
+    Some(Rect::from_min_size(pos2(x, y), Vec2::new(BAR_W, bar_h)))
 }
 
 /// Where the bar and the controls in it were drawn last frame (`[bar, controls]`), kept in the
@@ -95,7 +107,9 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, selection: Rect, viewport: R
     if !visible(app) {
         return;
     }
-    let Some(bar) = anchor_rect(selection.min.y, selection.min.x, viewport) else { return };
+    let row_h = row_height(ctx);
+    let bar_h = PAD_Y * 2.0 + row_h * 2.0 + ROW_GAP;
+    let Some(bar) = anchor_rect_h(selection.min.y, selection.min.x, viewport, bar_h) else { return };
     let t = Tokens::get(ctx);
     // The bar sits above the document but below every popup, and is not movable: it is an overlay
     // pinned to the selection, so moving it would lose the association.
@@ -111,7 +125,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, selection: Rect, viewport: R
         let inner = bar.shrink2(Vec2::new(PAD_X, PAD_Y));
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(Layout::top_down(Align::Min)));
         child.spacing_mut().item_spacing = Vec2::new(SPACING, ROW_GAP);
-        content(app, &mut child, &t);
+        content(app, &mut child, &t, row_h);
         let used = child.min_rect();
         ctx.data_mut(|d| d.insert_temp(shown_id(), [bar, used]));
     });
@@ -119,13 +133,13 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, selection: Rect, viewport: R
 
 /// The controls in two rows like Word's mini toolbar, reusing the ribbon's widgets so the bar
 /// matches the ribbon exactly.
-fn content(app: &mut WordApp, ui: &mut egui::Ui, t: &Tokens) {
+fn content(app: &mut WordApp, ui: &mut egui::Ui, t: &Tokens, row_h: f32) {
     let st: Value = app.session.run("format.state", &json!({})).unwrap_or_default();
     let flag = |k: &str| st.get(k).and_then(Value::as_bool).unwrap_or(false);
     let align = app.session.doc.para_at(&app.session.sel.focus).map(|p| app.session.doc.styles.resolve_para(&p.props).align).unwrap_or_default();
     let row = |ui: &mut egui::Ui, app: &mut WordApp, add: &dyn Fn(&mut egui::Ui, &mut WordApp)| {
-        ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), ROW_H), Layout::left_to_right(Align::Center), |ui| {
-            ui.set_min_height(ROW_H);
+        ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), row_h), Layout::left_to_right(Align::Center), |ui| {
+            ui.set_min_height(row_h);
             add(ui, app);
         });
     };

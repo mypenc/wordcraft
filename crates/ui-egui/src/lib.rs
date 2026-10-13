@@ -165,7 +165,7 @@ pub struct UiState {
     /// Interface theme: light, dark, or follow the OS appearance (#115).
     pub theme: theme::Appearance,
     /// Interface size in percent (#475): scales the whole interface on top of the system's
-    /// display scale. Junk or out-of-range saved values read as 100 % or are clamped to 80–200 %.
+    /// display scale. Junk or out-of-range saved values read as 100 % or are clamped to 75–200 %.
     pub interface_size: theme::InterfaceSize,
     /// Animation effects (smooth scrolling, fades): on, off, or follow the system's setting, which
     /// is the default. An unknown saved value reads as the default.
@@ -976,7 +976,7 @@ impl WordApp {
                 json!({"theme": self.ui.theme.code(), "dark": self.ui_is_dark()})
             }
             "ui.interfaceSize" => {
-                // Interface size in percent, 80–200 (clamped); no value reads it. Document zoom is
+                // Interface size in percent, 75–200 (clamped); no value reads it. Document zoom is
                 // `view.zoom` and stays as it is.
                 if let Some(v) = p.get("percent").or_else(|| p.get("value")) {
                     match v.as_f64().and_then(theme::InterfaceSize::from_percent) {
@@ -1051,6 +1051,12 @@ impl WordApp {
                 let on = p.get("value").and_then(Value::as_bool).unwrap_or(!self.touch.bar_visible);
                 self.touch.bar_visible = on;
                 json!({"touchBar": on})
+            }
+            // Help ▸ Block Keyboard: keep the on-screen keyboard from opening (touch devices).
+            "ui.blockKeyboard" => {
+                let on = p.get("value").and_then(Value::as_bool).unwrap_or(!self.touch.block_keyboard);
+                self.touch.block_keyboard = on;
+                json!({"blockKeyboard": on})
             }
             // File › Options › General › Make WordCraft the default… changes the user's system
             // default apps (Linux) or opens system settings (Windows), so only a click on that
@@ -3439,7 +3445,7 @@ mod tests {
         let mut b = app();
         b.apply_prefs(serde_json::from_str(&saved).unwrap());
         assert_eq!(b.ui.interface_size.percent(), 150);
-        for (raw, want) in [("1000", 200), ("10", 80), ("-5", 80), ("124.6", 125), (r#""big""#, 100), ("null", 100), ("[1]", 100)] {
+        for (raw, want) in [("1000", 200), ("10", 75), ("-5", 75), ("75", 75), ("124.6", 125), (r#""big""#, 100), ("null", 100), ("[1]", 100)] {
             let ui: UiState = serde_json::from_str(&format!(r#"{{"interfaceSize": {raw}, "tab": "Insert"}}"#)).unwrap();
             assert_eq!((ui.interface_size.percent(), ui.tab.as_str()), (want, "Insert"), "{raw}");
         }
@@ -3447,6 +3453,16 @@ mod tests {
         assert!(a.run("ui.interfaceSize", json!({"percent": "huge"})).is_err());
         assert!(a.run("ui.interfaceSize", json!({"percent": null})).is_err());
         assert_eq!(a.ui.interface_size.percent(), 200, "a rejected value keeps the setting");
+    }
+
+    /// Help ▸ Block Keyboard toggles, and reads back, without a value.
+    #[test]
+    fn block_keyboard_toggles() {
+        let mut a = app();
+        assert!(!a.touch.block_keyboard);
+        assert_eq!(a.run("ui.blockKeyboard", json!({})).unwrap()["blockKeyboard"], true);
+        assert!(a.touch.block_keyboard);
+        assert_eq!(a.run("ui.blockKeyboard", json!({"value": false})).unwrap()["blockKeyboard"], false);
     }
 
     /// #475: the interface size multiplies the display scale the system reports (egui's zoom

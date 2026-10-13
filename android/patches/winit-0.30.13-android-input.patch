@@ -1,6 +1,6 @@
 diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
---- a/src/platform_impl/android/mod.rs	2026-10-12 23:21:01.703995452 +0000
-+++ b/src/platform_impl/android/mod.rs	2026-10-13 01:09:22.533579902 +0000
+--- a/src/platform_impl/android/mod.rs	2026-10-13 08:56:04.430750017 +0000
++++ b/src/platform_impl/android/mod.rs	2026-10-13 08:56:04.433194619 +0000
 @@ -6,7 +6,10 @@
  use std::sync::{mpsc, Arc, Mutex};
  use std::time::{Duration, Instant};
@@ -21,7 +21,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
  use crate::event_loop::{self, ActiveEventLoop as RootAEL, ControlFlow, DeviceEvents};
  use crate::platform::pump_events::PumpStatus;
  use crate::platform_impl::Fullscreen;
-@@ -143,6 +147,15 @@
+@@ -143,6 +147,55 @@
      cause: StartCause,
      ignore_volume_keys: bool,
      combining_accent: Option<char>,
@@ -32,12 +32,52 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 +    ime_text: String,
 +    // Selection offsets reported by Android for the last text state.
 +    ime_selection: (usize, usize),
-+    /// Backspace/Delete key presses already applied by real key events, not yet seen in the IME text.
-+    key_deletes: usize,
++    /// Backspace/Delete/Enter presses from real key events not yet matched by an IME text change,
++    /// and the reverse. Android may deliver the key event and the text edit in either order, so
++    /// each side is remembered briefly and whichever arrives second is dropped as an echo.
++    key_deletes: PendingKeys,
++    text_deletes: PendingKeys,
++    key_enters: PendingKeys,
++    text_enters: PendingKeys,
++    /// The key-up of an echoed key-down is dropped too.
++    swallow_up: bool,
++}
++
++/// A short-lived count of key presses waiting for their echo from the other input path.
++#[derive(Debug, Default)]
++struct PendingKeys {
++    count: usize,
++    stamp: Option<Instant>,
++}
++
++impl PendingKeys {
++    const TTL: Duration = Duration::from_millis(250);
++
++    fn live(&mut self) -> usize {
++        if self.stamp.is_some_and(|t| t.elapsed() > Self::TTL) {
++            self.count = 0;
++            self.stamp = None;
++        }
++        self.count
++    }
++
++    fn add(&mut self, n: usize) {
++        if n > 0 {
++            self.live();
++            self.count += n;
++            self.stamp = Some(Instant::now());
++        }
++    }
++
++    fn take(&mut self, n: usize) -> usize {
++        let m = self.live().min(n);
++        self.count -= m;
++        m
++    }
  }
  
  #[derive(Debug, Clone, PartialEq)]
-@@ -192,6 +205,11 @@
+@@ -192,6 +245,15 @@
              cause: StartCause::Init,
              ignore_volume_keys: attributes.ignore_volume_keys,
              combining_accent: None,
@@ -45,11 +85,15 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 +            modifiers: ModifiersState::empty(),
 +            ime_text: String::new(),
 +            ime_selection: (0, 0),
-+            key_deletes: 0,
++            key_deletes: PendingKeys::default(),
++            text_deletes: PendingKeys::default(),
++            key_enters: PendingKeys::default(),
++            text_enters: PendingKeys::default(),
++            swallow_up: false,
          })
      }
  
-@@ -362,6 +380,207 @@
+@@ -362,6 +424,228 @@
          self.pending_redraw = pending_redraw;
      }
  
@@ -166,10 +210,14 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 +            .count();
 +        let removed_total = old_chars.len() - prefix - suffix;
 +        // A real Backspace/Delete key already removed some of these characters; don't remove them twice.
-+        let already = removed_total.min(self.key_deletes);
-+        self.key_deletes = 0;
++        let already = self.key_deletes.take(removed_total);
 +        let removed = removed_total - already;
-+        // Enter arrives as a key event (text.newParagraph); a newline from the IME must not add a second one.
++        self.text_deletes.add(removed);
++        // A newline is Enter. If a real Enter key event already made the paragraph, drop the
++        // echo; if the IME delivered it alone (a hardware keyboard), send the Enter key here.
++        let newlines = new_chars[prefix..new_chars.len() - suffix].iter().filter(|c| **c == '\n').count();
++        let extra_enters = newlines - self.key_enters.take(newlines);
++        self.text_enters.add(extra_enters);
 +        let added: String = new_chars[prefix..new_chars.len() - suffix].iter().filter(|c| **c != '\n' && **c != '\r').collect();
 +
 +        let old_cursor = Self::utf16_char_offset(&old, self.ime_selection.1);
@@ -197,6 +245,23 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 +        }
 +        if !added.is_empty() {
 +            self.dispatch_window_event(callback, event::WindowEvent::Ime(event::Ime::Commit(added)));
++        }
++        for _ in 0..extra_enters.min(64) {
++            for state in [event::ElementState::Pressed, event::ElementState::Released] {
++                self.dispatch_window_event(callback, event::WindowEvent::KeyboardInput {
++                    device_id: event::DeviceId(DeviceId(0)),
++                    event: event::KeyEvent {
++                        state,
++                        physical_key: PhysicalKey::Code(KeyCode::Enter),
++                        logical_key: Key::Named(NamedKey::Enter),
++                        location: KeyLocation::Standard,
++                        repeat: false,
++                        text: None,
++                        platform_specific: KeyEventExtra {},
++                    },
++                    is_synthetic: true,
++                });
++            }
 +        }
 +
 +        let selection = (state.selection.start, state.selection.end);
@@ -257,7 +322,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
      fn handle_input_event<F>(
          &mut self,
          android_app: &AndroidApp,
-@@ -377,17 +596,25 @@
+@@ -377,17 +661,25 @@
                  let window_id = window::WindowId(WindowId);
                  let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
  
@@ -288,18 +353,37 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
                  if let Some(phase) = phase {
                      let pointers: Box<dyn Iterator<Item = android_activity::input::Pointer<'_>>> =
                          match phase {
-@@ -423,6 +650,10 @@
+@@ -423,7 +715,29 @@
                  }
              },
              InputEvent::KeyEvent(key) => {
 +                self.sync_modifiers(key.meta_state(), callback);
-+                if matches!(key.action(), KeyAction::Down) && matches!(key.key_code(), Keycode::Del | Keycode::ForwardDel) {
-+                    self.key_deletes += 1;
++                let is_delete = matches!(key.key_code(), Keycode::Del | Keycode::ForwardDel);
++                let is_enter = matches!(key.key_code(), Keycode::Enter | Keycode::NumpadEnter);
++                let mut echo = false;
++                if is_delete || is_enter {
++                    match key.action() {
++                        KeyAction::Down => {
++                            let seen = if is_delete { &mut self.text_deletes } else { &mut self.text_enters };
++                            echo = seen.take(1) == 1;
++                            self.swallow_up = echo;
++                            if !echo {
++                                if is_delete { self.key_deletes.add(1) } else { self.key_enters.add(1) }
++                            }
++                        },
++                        KeyAction::Up => {
++                            echo = std::mem::take(&mut self.swallow_up);
++                        },
++                        _ => {},
++                    }
 +                }
                  match key.key_code() {
++                    // The IME already sent this key as a text edit: don't apply it twice.
++                    _ if echo => {},
                      // Flag keys related to volume as unhandled. While winit does not have a way for
                      // applications to configure what keys to flag as handled,
-@@ -473,6 +704,9 @@
+                     // this appears to be a good default until winit
+@@ -473,6 +787,9 @@
                      },
                  }
              },
@@ -309,7 +393,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
              _ => {
                  warn!("Unknown android_activity input event {event:?}")
              },
-@@ -777,6 +1011,8 @@
+@@ -777,6 +1094,8 @@
  pub(crate) struct Window {
      app: AndroidApp,
      redraw_requester: RedrawRequester,
@@ -318,7 +402,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
  }
  
  impl Window {
-@@ -786,7 +1022,7 @@
+@@ -786,7 +1105,7 @@
      ) -> Result<Self, error::OsError> {
          // FIXME this ignores requested window attributes
  
@@ -327,7 +411,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
      }
  
      pub(crate) fn maybe_queue_on_main(&self, f: impl FnOnce(&Self) + Send + 'static) {
-@@ -916,6 +1152,9 @@
+@@ -916,6 +1235,9 @@
      pub fn set_ime_cursor_area(&self, _position: Position, _size: Size) {}
  
      pub fn set_ime_allowed(&self, allowed: bool) {

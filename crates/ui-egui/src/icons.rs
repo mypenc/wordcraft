@@ -1267,6 +1267,16 @@ pub fn paint(p: &Painter, r: Rect, name: &str, c: Color32, accent: Color32) {
             pen.frect(9.5, 13.0, 13.0, 15.0, a);
             pen.frect(14.5, 13.0, 16.0, 15.0, a);
         }
+        // Block keyboard: a keyboard struck through.
+        "blockKeyboard" => {
+            pen.rect(2.5, 5.5, 17.5, 14.5, c);
+            pen.frect(5.0, 8.0, 6.0, 9.0, a);
+            pen.frect(8.0, 8.0, 9.0, 9.0, a);
+            pen.frect(11.0, 8.0, 12.0, 9.0, a);
+            pen.frect(14.0, 8.0, 15.0, 9.0, a);
+            pen.frect(6.0, 11.5, 14.0, 12.5, a);
+            pen.line_c(&[(3.0, 17.5), (17.0, 2.5)], a);
+        }
         "discord" => {
             pen.fill(&[(3.0, 6.0), (7.0, 3.5), (13.0, 3.5), (17.0, 6.0), (17.5, 14.0), (13.5, 16.5), (6.5, 16.5), (2.5, 14.0)], a);
             pen.fcircle(7.5, 10.5, 1.5, Color32::WHITE);

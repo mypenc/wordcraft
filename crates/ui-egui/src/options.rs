@@ -372,7 +372,7 @@ fn theme_picker(app: &mut WordApp, ui: &mut Ui) {
     });
 }
 
-/// Interface size: 80–200 %, on top of the system's display scale (#475).
+/// Interface size: 75–200 %, on top of the system's display scale (#475).
 fn interface_size_picker(app: &mut WordApp, ui: &mut Ui) {
     use crate::theme::InterfaceSize;
     let current = app.ui.interface_size.percent();

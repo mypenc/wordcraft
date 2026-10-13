@@ -44,8 +44,9 @@ pub struct Touch {
     pub enabled: bool,
     /// Show the on-screen modifier bar.
     pub bar_visible: bool,
-    /// The user asked to toggle the soft keyboard.
-    pub keyboard_request: bool,
+    /// Help ▸ Block Keyboard: keep the on-screen keyboard (Gboard…) from opening. A hardware
+    /// keyboard still types.
+    pub block_keyboard: bool,
     rec: Recognizer,
     queue: VecDeque<Event>,
     shift: Sticky,
@@ -297,21 +298,6 @@ impl Touch {
                         }
                     });
                 });
-            });
-    }
-
-    /// Keep a keyboard toggle visible above the system IME, which can cover the bottom bar.
-    pub fn show_keyboard_toggle(&mut self, ctx: &egui::Context) {
-        if !self.enabled {
-            return;
-        }
-        egui::Area::new(egui::Id::new("wordcraft_touch_keyboard"))
-            .order(egui::Order::Foreground)
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, 72.0))
-            .show(ctx, |ui| {
-                if ui.button("Keyboard").on_hover_text("Show or hide the on-screen keyboard").clicked() {
-                    self.keyboard_request = true;
-                }
             });
     }
 }

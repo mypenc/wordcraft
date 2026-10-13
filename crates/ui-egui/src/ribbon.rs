@@ -1738,6 +1738,8 @@ fn help(app: &mut WordApp, ui: &mut Ui) {
         if app.touch.enabled {
             let shown = app.touch.bar_visible;
             big_toggle(ui, app, "touchBar", "Touch\nBar", "ui.touchBar", shown);
+            let blocked = app.touch.block_keyboard;
+            big_toggle(ui, app, "blockKeyboard", "Block\nKeyboard", "ui.blockKeyboard", blocked);
         }
     });
     group(ui, "Agents", None, app, |ui, app| {
