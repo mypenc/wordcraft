@@ -1115,6 +1115,18 @@ impl WordApp {
                 self.touch.bar_visible = on;
                 json!({"touchBar": on})
             }
+            // Help ▸ Full Screen: hide the status bar and the notch area (Android).
+            "ui.fullscreen" => {
+                let on = p.get("value").and_then(Value::as_bool).unwrap_or(!self.touch.fullscreen);
+                self.touch.fullscreen = on;
+                json!({"fullscreen": on})
+            }
+            // Help ▸ Documents Folder: choose (or forget) the folder new documents are saved to.
+            "ui.documentsFolder" => {
+                let on = p.get("value").and_then(Value::as_bool).unwrap_or(!self.touch.docs_folder);
+                self.touch.docs_folder_request = Some(on);
+                json!({"documentsFolder": on})
+            }
             // Help ▸ Block Keyboard: keep the on-screen keyboard from opening (touch devices).
             "ui.blockKeyboard" => {
                 let on = p.get("value").and_then(Value::as_bool).unwrap_or(!self.touch.block_keyboard);

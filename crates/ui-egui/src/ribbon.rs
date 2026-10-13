@@ -1749,6 +1749,10 @@ fn help(app: &mut WordApp, ui: &mut Ui) {
             big_toggle(ui, app, "touchBar", "Touch\nBar", "ui.touchBar", shown);
             let blocked = app.touch.block_keyboard;
             big_toggle(ui, app, "blockKeyboard", "Block\nKeyboard", "ui.blockKeyboard", blocked);
+            let full = app.touch.fullscreen;
+            big_toggle(ui, app, "fullscreen", "Full\nScreen", "ui.fullscreen", full);
+            let folder = app.touch.docs_folder;
+            big_toggle(ui, app, "docsFolder", "Documents\nFolder", "ui.documentsFolder", folder);
         }
     });
     group(ui, "Agents", None, app, |ui, app| {

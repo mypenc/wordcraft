@@ -1267,6 +1267,19 @@ pub fn paint(p: &Painter, r: Rect, name: &str, c: Color32, accent: Color32) {
             pen.frect(9.5, 13.0, 13.0, 15.0, a);
             pen.frect(14.5, 13.0, 16.0, 15.0, a);
         }
+        // Full screen: four corner brackets pointing out.
+        "fullscreen" => {
+            pen.line_c(&[(3.0, 7.5), (3.0, 3.0), (7.5, 3.0)], c);
+            pen.line_c(&[(12.5, 3.0), (17.0, 3.0), (17.0, 7.5)], c);
+            pen.line_c(&[(17.0, 12.5), (17.0, 17.0), (12.5, 17.0)], c);
+            pen.line_c(&[(7.5, 17.0), (3.0, 17.0), (3.0, 12.5)], c);
+            pen.frect(7.5, 7.5, 12.5, 12.5, a);
+        }
+        // Documents folder: a folder.
+        "docsFolder" => {
+            pen.closed(&[(2.5, 5.0), (7.5, 5.0), (9.0, 6.5), (17.5, 6.5), (17.5, 16.0), (2.5, 16.0)], c);
+            pen.frect(5.0, 10.0, 15.0, 13.5, a);
+        }
         // Block keyboard: a keyboard struck through.
         "blockKeyboard" => {
             pen.rect(2.5, 5.5, 17.5, 14.5, c);

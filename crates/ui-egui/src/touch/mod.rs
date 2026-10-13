@@ -44,6 +44,12 @@ pub struct Touch {
     pub enabled: bool,
     /// Show the on-screen modifier bar.
     pub bar_visible: bool,
+    /// Help ▸ Full Screen: hide the status bar and the notch area (the host applies it).
+    pub fullscreen: bool,
+    /// Help ▸ Documents Folder: a folder for saved documents is chosen (the host reports it).
+    pub docs_folder: bool,
+    /// The user flipped the Documents Folder switch: `true` to choose one, `false` to forget it.
+    pub docs_folder_request: Option<bool>,
     /// Help ▸ Block Keyboard: keep the on-screen keyboard (Gboard…) from opening. A hardware
     /// keyboard still types.
     pub block_keyboard: bool,

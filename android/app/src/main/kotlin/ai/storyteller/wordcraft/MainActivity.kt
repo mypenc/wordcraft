@@ -4,8 +4,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
+import android.view.WindowManager
+import android.webkit.MimeTypeMap
+import androidx.core.graphics.Insets
+import androidx.core.view.WindowInsetsControllerCompat
 import android.provider.OpenableColumns
 import android.util.Log
 import android.view.HapticFeedbackConstants
@@ -33,6 +40,8 @@ class MainActivity : GameActivity() {
     private val io = Executors.newSingleThreadExecutor()
     private lateinit var exports: Exports
     @Volatile private var softKeyboardVisible = false
+    @Volatile private var fullscreen = false
+    private val prefs by lazy { getSharedPreferences("wordcraft", MODE_PRIVATE) }
 
     private class Request(val id: Long, val arg: String)
 
@@ -40,9 +49,38 @@ class MainActivity : GameActivity() {
     private val queue = ArrayDeque<Pair<Boolean, Request>>() // (isSave, request)
     private var active: Pair<Boolean, Request>? = null
 
-    private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        finish(uri) { u, req -> copyIn(u, req.id) }
+    /** Open with write access kept across restarts, so Save can write back to the picked file. */
+    private class OpenWritable : ActivityResultContracts.OpenDocument() {
+        override fun createIntent(context: Context, input: Array<String>): Intent =
+            super.createIntent(context, input).addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
     }
+
+    private val openDocument = registerForActivityResult(OpenWritable()) { uri ->
+        if (uri != null) runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        } // read-only providers refuse the write grant; opening still works
+        finish(uri) { u, req -> copyIn(u, req) }
+    }
+
+    /** The documents folder: asked for once, kept (with write access) until the user clears it. */
+    private val openTree = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                prefs.edit().putString(PREF_WORKSPACE, uri.toString()).apply()
+            }.onFailure { Log.w("WordCraft", "could not keep access to $uri", it) }
+        }
+        val pending = pendingSave
+        pendingSave = null
+        if (pending != null) launchSave(pending) // the Save that asked for the folder carries on
+        else { active = null; next() }
+    }
+    private var pendingSave: Request? = null
     private val createDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         finish(uri) { u, req -> stage(u, req.id) }
     }
@@ -55,7 +93,9 @@ class MainActivity : GameActivity() {
         super.onCreate(savedInstanceState)
         val content = findViewById<View>(android.R.id.content)
         ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            // Fullscreen: the app draws under the (hidden) status bar and the notch.
+            val bars = if (fullscreen) Insets.NONE
+                else insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             softKeyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
             WindowInsetsCompat.CONSUMED
@@ -64,6 +104,29 @@ class MainActivity : GameActivity() {
         exports = Exports(applicationContext)
         DebugLog.install(this)
         handleViewIntent(intent)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && fullscreen) applyFullscreen(true) // the system shows the bars again after a dialog
+    }
+
+    private fun applyFullscreen(on: Boolean) {
+        fullscreen = on
+        if (Build.VERSION.SDK_INT >= 28) {
+            val lp = window.attributes
+            lp.layoutInDisplayCutoutMode = if (on) WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+            window.attributes = lp
+        }
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (on) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+        ViewCompat.requestApplyInsets(findViewById(android.R.id.content))
     }
 
     override fun onDestroy() {
@@ -85,6 +148,25 @@ class MainActivity : GameActivity() {
     /** Save As / Export: [name] is the suggested file name. */
     @Suppress("unused")
     fun saveDialog(id: Long, name: String) = runOnUiThread { enqueue(true, Request(id, name)) }
+
+    /** Help ▸ Full Screen: hide the status / navigation bars and draw into the notch area. */
+    @Suppress("unused")
+    fun setFullscreen(on: Boolean) = runOnUiThread { applyFullscreen(on) }
+
+    /** Whether a documents folder is chosen and still accessible. */
+    @Suppress("unused")
+    fun documentsFolderSet(): Boolean = workspaceUri() != null
+
+    /** Help ▸ Documents Folder: `true` asks the user to pick the folder, `false` forgets it. */
+    @Suppress("unused")
+    fun setDocumentsFolder(on: Boolean) = runOnUiThread {
+        if (on) {
+            enqueueFolder()
+        } else {
+            workspaceUri()?.let { runCatching { contentResolver.releasePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) } }
+            prefs.edit().remove(PREF_WORKSPACE).apply()
+        }
+    }
 
     @Suppress("unused")
     fun showLog() = runOnUiThread { DebugLog.show(this) }
@@ -127,13 +209,49 @@ class MainActivity : GameActivity() {
         next()
     }
 
+    private fun enqueueFolder() {
+        if (active != null) return // a dialog is open; ask again once it is done
+        active = false to Request(-1, "folder")
+        openTree.launch(null)
+    }
+
+    /** The chosen documents folder, if its access is still granted. */
+    private fun workspaceUri(): Uri? {
+        val uri = prefs.getString(PREF_WORKSPACE, null)?.let(Uri::parse) ?: return null
+        val held = contentResolver.persistedUriPermissions.any { it.uri == uri && it.isWritePermission }
+        return if (held) uri else null
+    }
+
+    /** Save: into the documents folder when there is one; the first time, ask for it. */
+    private fun launchSave(request: Request) {
+        val tree = workspaceUri()
+        when {
+            tree != null -> {
+                val created = runCatching {
+                    val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+                    val ext = request.arg.substringAfterLast('.', "").lowercase()
+                    val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+                    DocumentsContract.createDocument(contentResolver, parent, mime, request.arg)
+                }.getOrNull()
+                if (created != null) finish(created) { u, req -> stage(u, req.id) }
+                else createDocument.launch(request.arg) // the folder went away: let the user pick
+            }
+            !prefs.getBoolean(PREF_ASKED, false) -> {
+                prefs.edit().putBoolean(PREF_ASKED, true).apply()
+                pendingSave = request
+                openTree.launch(null)
+            }
+            else -> createDocument.launch(request.arg)
+        }
+    }
+
     private fun next() {
         if (active != null) return
         val item = queue.removeFirstOrNull() ?: return
         active = item
         val (isSave, request) = item
         if (isSave) {
-            createDocument.launch(request.arg)
+            launchSave(request)
         } else {
             openDocument.launch(
                 when (request.arg) {
@@ -153,12 +271,15 @@ class MainActivity : GameActivity() {
     }
 
     /** Open: copy the document into the app's folder (off the UI thread) and answer with its path. */
-    private fun copyIn(uri: Uri, id: Long) = io.execute {
+    private fun copyIn(uri: Uri, request: Request) = io.execute {
+        val id = request.id
         val dir = File(filesDir, "imports/${System.currentTimeMillis()}").apply { mkdirs() }
         val path = try {
             val target = File(dir, displayName(uri))
             contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { input.copyTo(it, 1 shl 20) } }
                 ?: error("cannot open $uri")
+            // Save writes the app's copy; mirror it back to the picked file when we may write there.
+            if (request.arg == "document") mirrorBack(target, uri)
             target.absolutePath
         } catch (t: Throwable) {
             Log.w("WordCraft", "could not read $uri", t)
@@ -180,6 +301,13 @@ class MainActivity : GameActivity() {
         NativeBridge.onDialogAnswer(id, staged.absolutePath)
     }
 
+    /** Keep [uri] in step with the app's copy [file] after every save, if write access was granted. */
+    private fun mirrorBack(file: File, uri: Uri) {
+        val writable = checkUriPermission(uri, android.os.Process.myPid(), android.os.Process.myUid(), Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (writable) exports.watch(file, uri, true, alreadySynced = true)
+    }
+
     private fun handleViewIntent(intent: Intent?) {
         val uri = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data ?: return
         io.execute {
@@ -188,11 +316,17 @@ class MainActivity : GameActivity() {
                 val target = File(dir, displayName(uri))
                 contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { input.copyTo(it, 1 shl 20) } }
                     ?: return@execute
+                mirrorBack(target, uri)
                 NativeBridge.onOpenIntent(target.absolutePath)
             } catch (t: Throwable) {
                 Log.w("WordCraft", "could not open $uri", t)
             }
         }
+    }
+
+    private companion object {
+        const val PREF_WORKSPACE = "documents_folder"
+        const val PREF_ASKED = "asked_documents_folder"
     }
 
     private fun displayName(uri: Uri): String {

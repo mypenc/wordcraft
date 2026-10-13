@@ -1,6 +1,6 @@
 diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 --- a/src/platform_impl/android/mod.rs	2026-10-13 08:56:04.430750017 +0000
-+++ b/src/platform_impl/android/mod.rs	2026-10-13 08:56:04.433194619 +0000
++++ b/src/platform_impl/android/mod.rs	2026-10-13 09:33:28.011646426 +0000
 @@ -6,7 +6,10 @@
  use std::sync::{mpsc, Arc, Mutex};
  use std::time::{Duration, Instant};
@@ -21,7 +21,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
  use crate::event_loop::{self, ActiveEventLoop as RootAEL, ControlFlow, DeviceEvents};
  use crate::platform::pump_events::PumpStatus;
  use crate::platform_impl::Fullscreen;
-@@ -143,6 +147,55 @@
+@@ -143,6 +147,59 @@
      cause: StartCause,
      ignore_volume_keys: bool,
      combining_accent: Option<char>,
@@ -42,6 +42,10 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 +    /// The key-up of an echoed key-down is dropped too.
 +    swallow_up: bool,
 +}
++
++/// Blank characters kept on each side of the IME cursor, and the margin that triggers a top-up.
++const IME_PAD: usize = 64;
++const IME_PAD_MIN: usize = 8;
 +
 +/// A short-lived count of key presses waiting for their echo from the other input path.
 +#[derive(Debug, Default)]
@@ -77,7 +81,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
  }
  
  #[derive(Debug, Clone, PartialEq)]
-@@ -192,6 +245,15 @@
+@@ -192,6 +249,15 @@
              cause: StartCause::Init,
              ignore_volume_keys: attributes.ignore_volume_keys,
              combining_accent: None,
@@ -93,7 +97,16 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
          })
      }
  
-@@ -362,6 +424,228 @@
+@@ -224,6 +290,8 @@
+                 },
+                 MainEvent::GainedFocus => {
+                     HAS_FOCUS.store(true, Ordering::Relaxed);
++                    let app = self.android_app.clone();
++                    self.pad_ime_buffer(&app);
+                     callback(
+                         event::Event::WindowEvent {
+                             window_id: window::WindowId(WindowId),
+@@ -362,6 +430,239 @@
          self.pending_redraw = pending_redraw;
      }
  
@@ -293,16 +306,27 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
 +        }
 +        self.ime_selection = selection;
 +
-+        // Keep the IME's local buffer bounded without repeatedly resetting it during typing.
-+        if self.ime_text.chars().count() > 4096 {
-+            self.ime_text.clear();
-+            self.ime_selection = (0, 0);
-+            android_app.set_text_input_state(TextInputState {
-+                text: String::new(),
-+                selection: TextSpan { start: 0, end: 0 },
-+                compose_region: None,
-+            });
++        // The IME only moves its cursor inside its own buffer, which is not the document: with
++        // the cursor at an edge, arrow keys and Gboard's space-bar slide would send nothing. Keep
++        // blank room on both sides, topped up whenever the cursor nears an edge (never while a
++        // word is being composed) or the buffer grows large.
++        let cursor = Self::utf16_char_offset(&self.ime_text, selection.1);
++        let total = self.ime_text.chars().count();
++        let near_edge = cursor < IME_PAD_MIN || total.saturating_sub(cursor) < IME_PAD_MIN;
++        if state.compose_region.is_none() && (near_edge || total > 4096) {
++            self.pad_ime_buffer(android_app);
 +        }
++    }
++
++    /// Reset the IME's buffer to blank padding with the cursor in the middle.
++    fn pad_ime_buffer(&mut self, android_app: &AndroidApp) {
++        self.ime_text = " ".repeat(IME_PAD * 2);
++        self.ime_selection = (IME_PAD, IME_PAD);
++        android_app.set_text_input_state(TextInputState {
++            text: self.ime_text.clone(),
++            selection: TextSpan { start: IME_PAD, end: IME_PAD },
++            compose_region: None,
++        });
 +    }
 +
 +    fn utf16_char_offset(text: &str, offset: usize) -> usize {
@@ -322,7 +346,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
      fn handle_input_event<F>(
          &mut self,
          android_app: &AndroidApp,
-@@ -377,17 +661,25 @@
+@@ -377,17 +678,25 @@
                  let window_id = window::WindowId(WindowId);
                  let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
  
@@ -353,7 +377,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
                  if let Some(phase) = phase {
                      let pointers: Box<dyn Iterator<Item = android_activity::input::Pointer<'_>>> =
                          match phase {
-@@ -423,7 +715,29 @@
+@@ -423,7 +732,29 @@
                  }
              },
              InputEvent::KeyEvent(key) => {
@@ -383,7 +407,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
                      // Flag keys related to volume as unhandled. While winit does not have a way for
                      // applications to configure what keys to flag as handled,
                      // this appears to be a good default until winit
-@@ -473,6 +787,9 @@
+@@ -473,6 +804,9 @@
                      },
                  }
              },
@@ -393,7 +417,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
              _ => {
                  warn!("Unknown android_activity input event {event:?}")
              },
-@@ -777,6 +1094,8 @@
+@@ -777,6 +1111,8 @@
  pub(crate) struct Window {
      app: AndroidApp,
      redraw_requester: RedrawRequester,
@@ -402,7 +426,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
  }
  
  impl Window {
-@@ -786,7 +1105,7 @@
+@@ -786,7 +1122,7 @@
      ) -> Result<Self, error::OsError> {
          // FIXME this ignores requested window attributes
  
@@ -411,7 +435,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
      }
  
      pub(crate) fn maybe_queue_on_main(&self, f: impl FnOnce(&Self) + Send + 'static) {
-@@ -916,6 +1235,9 @@
+@@ -916,6 +1252,9 @@
      pub fn set_ime_cursor_area(&self, _position: Position, _size: Size) {}
  
      pub fn set_ime_allowed(&self, allowed: bool) {

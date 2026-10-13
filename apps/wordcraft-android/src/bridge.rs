@@ -81,6 +81,21 @@ pub fn show_log(app: &AndroidApp) {
     with_activity(app, |env, activity| env.call_method(activity, "showLog", "()V", &[]).map(|_| ()));
 }
 
+/// Help ▸ Full Screen: hide the status and navigation bars and draw into the notch area.
+pub fn set_fullscreen(app: &AndroidApp, on: bool) {
+    with_activity(app, |env, activity| env.call_method(activity, "setFullscreen", "(Z)V", &[JValue::Bool(u8::from(on))]).map(|_| ()));
+}
+
+/// Whether a documents folder is chosen and still accessible.
+pub fn documents_folder_set(app: &AndroidApp) -> Option<bool> {
+    with_activity(app, |env, activity| env.call_method(activity, "documentsFolderSet", "()Z", &[])?.z())
+}
+
+/// Help ▸ Documents Folder: `true` opens the folder picker, `false` forgets the folder.
+pub fn set_documents_folder(app: &AndroidApp, on: bool) {
+    with_activity(app, |env, activity| env.call_method(activity, "setDocumentsFolder", "(Z)V", &[JValue::Bool(u8::from(on))]).map(|_| ()));
+}
+
 /// A short vibration (the long press that opens a context menu).
 pub fn haptic(app: &AndroidApp) {
     with_activity(app, |env, activity| env.call_method(activity, "haptic", "()V", &[]).map(|_| ()));

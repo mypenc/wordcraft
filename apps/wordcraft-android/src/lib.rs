@@ -27,6 +27,7 @@ mod bridge;
 mod logging;
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use android_activity::AndroidApp;
 use android_activity::input::Axis;
@@ -66,9 +67,17 @@ fn android_main(app: AndroidApp) {
             bridge::set_context(cc.egui_ctx.clone());
             let mut word = WordApp::new(Session::new(wordcraft_doc::Document::new()), services(&host));
             load_prefs(&mut word);
+            recover_backup(&mut word);
             let h = host.clone();
             word.touch.haptic = Some(Box::new(move || bridge::haptic(&h)));
-            Ok(Box::new(AndroidHost { app: word, android: host, last_copied: String::new() }))
+            Ok(Box::new(AndroidHost {
+                app: word,
+                android: host,
+                last_copied: String::new(),
+                fullscreen_applied: false,
+                folder_poll: 0,
+                last_backup: Instant::now(),
+            }))
         }),
     );
     if let Err(e) = result {
@@ -120,6 +129,58 @@ fn services(host: &AndroidApp) -> Services {
     }
 }
 
+// ---- crash recovery ----------------------------------------------------------------------
+// While there are unsaved changes, a copy of the document is kept in the app's own folder every
+// few seconds. A normal exit deletes it; if the app crashes or is killed it is still there at the
+// next start and reopens with the changes marked unsaved.
+
+const BACKUP_EVERY: Duration = Duration::from_secs(15);
+
+fn backup_file() -> Option<std::path::PathBuf> {
+    Some(prefs_path()?.parent()?.join("recovery").join("backup.docx"))
+}
+
+fn clear_backup() {
+    if let Some(f) = backup_file() {
+        let _ = std::fs::remove_file(f);
+    }
+}
+
+fn recover_backup(app: &mut WordApp) {
+    let Some(file) = backup_file().filter(|f| f.exists()) else { return };
+    match app.run("file.open", serde_json::json!({"path": file.to_string_lossy()})) {
+        Ok(_) => {
+            // The copy is not the user's file: Save asks where it goes (the documents folder).
+            app.session.path = None;
+            app.session.dirty = true;
+            app.status("Recovered your unsaved changes from the last session. Save to keep them.");
+            log::info!("recovered {}", file.display());
+        }
+        Err(e) => log::warn!("could not recover {}: {e}", file.display()),
+    }
+}
+
+impl AndroidHost {
+    fn backup_if_due(&mut self) {
+        if self.last_backup.elapsed() < BACKUP_EVERY {
+            return;
+        }
+        self.last_backup = Instant::now();
+        let session = &self.app.session;
+        // Password-protected documents are not copied out unencrypted.
+        if !session.dirty || session.password.is_some() {
+            return;
+        }
+        let Some(file) = backup_file() else { return };
+        if let Some(dir) = file.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Err(e) = wordcraft_engine::io::save_path_with(&file, &session.doc, None, &wordcraft_engine::io::ExportOptions::default()) {
+            log::warn!("crash-recovery copy failed: {e}");
+        }
+    }
+}
+
 // ---- preferences (the desktop app's `main.rs` helpers; they are private there) ---------------
 
 fn prefs_path() -> Option<std::path::PathBuf> {
@@ -165,6 +226,12 @@ struct AndroidHost {
     android: AndroidApp,
     /// The last text mirrored to the system clipboard (so an unchanged copy isn't sent twice).
     last_copied: String,
+    /// Whether Help ▸ Full Screen is what Android was last told.
+    fullscreen_applied: bool,
+    /// Frames until the documents folder state is read from Android again.
+    folder_poll: u32,
+    /// When the crash-recovery copy was last written.
+    last_backup: Instant,
 }
 
 impl eframe::App for AndroidHost {
@@ -180,6 +247,7 @@ impl eframe::App for AndroidHost {
             }
         }
         self.app.logic(ctx);
+        self.backup_if_due();
         // The window's back/close request: with unsaved changes, ask first.
         let closing = ctx.input(|i| i.viewport().close_requested());
         if closing && !self.app.close_requested() {
@@ -193,6 +261,23 @@ impl eframe::App for AndroidHost {
         self.app.ui(ui);
         let ctx = ui.ctx().clone();
         self.app.touch_frame(&ctx);
+        // Help ▸ Full Screen and Help ▸ Documents Folder.
+        if self.app.touch.fullscreen != self.fullscreen_applied {
+            self.fullscreen_applied = self.app.touch.fullscreen;
+            bridge::set_fullscreen(&self.android, self.fullscreen_applied);
+        }
+        if let Some(on) = self.app.touch.docs_folder_request.take() {
+            bridge::set_documents_folder(&self.android, on);
+            self.folder_poll = 0;
+        }
+        // The folder picker answers later, so ask Android now and then what the state is.
+        if self.folder_poll == 0 {
+            if let Some(set) = bridge::documents_folder_set(&self.android) {
+                self.app.touch.docs_folder = set;
+            }
+            self.folder_poll = 120;
+        }
+        self.folder_poll -= 1;
         // Help ▸ Block Keyboard: focusing the page raises the keyboard by itself; close it again.
         if self.app.touch.block_keyboard && bridge::soft_keyboard_visible(&self.android) == Some(true) {
             bridge::hide_soft_keyboard(&self.android);
@@ -211,6 +296,8 @@ impl eframe::App for AndroidHost {
     }
 
     fn on_exit(&mut self) {
+        // A normal exit (after any "Save changes?" answer) leaves nothing to recover.
+        clear_backup();
         save_prefs(&self.app);
     }
 }

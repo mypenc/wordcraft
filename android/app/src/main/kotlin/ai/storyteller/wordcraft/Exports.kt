@@ -22,11 +22,12 @@ import java.io.File
  * write could be copied early; a later change is copied again only for `keepSyncing` entries.
  */
 class Exports(private val context: Context) {
-    private class Entry(val staged: File, val uri: Uri, val keepSyncing: Boolean) {
+    private class Entry(val staged: File, val uri: Uri, val keepSyncing: Boolean, alreadySynced: Boolean) {
         var lastSize = -1L
         var lastModified = -1L
         var stablePolls = 0
-        var copiedModified = -1L
+        // A file just copied in from `uri` is already in step with it: only later saves are copied back.
+        var copiedModified = if (alreadySynced) staged.lastModified() else -1L
         val created = System.currentTimeMillis()
     }
 
@@ -36,10 +37,10 @@ class Exports(private val context: Context) {
     private val entries = mutableListOf<Entry>()
     private var polling = false
 
-    fun watch(staged: File, uri: Uri, keepSyncing: Boolean) {
+    fun watch(staged: File, uri: Uri, keepSyncing: Boolean, alreadySynced: Boolean = false) {
         handler.post {
             entries.removeAll { it.staged == staged }
-            entries.add(Entry(staged, uri, keepSyncing))
+            entries.add(Entry(staged, uri, keepSyncing, alreadySynced))
             if (!polling) {
                 polling = true
                 handler.postDelayed(::poll, POLL_MS)
