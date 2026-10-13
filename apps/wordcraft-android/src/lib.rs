@@ -30,7 +30,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use android_activity::AndroidApp;
-use android_activity::input::Axis;
+use android_activity::input::{Axis, ImeOptions, InputType, TextInputAction};
 use wordcraft_engine::Session;
 use wordcraft_ui_egui::{Services, UiState, WordApp};
 
@@ -68,6 +68,12 @@ fn android_main(app: AndroidApp) {
             let mut word = WordApp::new(Session::new(wordcraft_doc::Document::new()), services(&host));
             load_prefs(&mut word);
             recover_backup(&mut word);
+            // Multi-line text field: Gboard shows Enter (new line), not the ✓ Done button.
+            host.set_ime_editor_info(
+                InputType::from_bits_retain(0x1 | 0x4000 | 0x2_0000),
+                TextInputAction::None,
+                ImeOptions::from_bits_retain(0x4000_0000 | 0x1000_0000),
+            );
             let h = host.clone();
             word.touch.haptic = Some(Box::new(move || bridge::haptic(&h)));
             Ok(Box::new(AndroidHost {
