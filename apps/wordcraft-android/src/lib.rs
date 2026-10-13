@@ -68,9 +68,10 @@ fn android_main(app: AndroidApp) {
             let mut word = WordApp::new(Session::new(wordcraft_doc::Document::new()), services(&host));
             load_prefs(&mut word);
             recover_backup(&mut word);
-            // Multi-line text field: Gboard shows Enter (new line), not the ✓ Done button.
+            // Multi-line text field: Gboard shows Enter (new line), not the ✓ Done button. No-suggestions keeps
+            // Gboard from composing words, which made it re-send each word (many Backspaces) per keystroke.
             host.set_ime_editor_info(
-                InputType::from_bits_retain(0x1 | 0x4000 | 0x2_0000),
+                InputType::from_bits_retain(0x1 | 0x4000 | 0x2_0000 | 0x8_0000),
                 TextInputAction::None,
                 ImeOptions::from_bits_retain(0x4000_0000 | 0x1000_0000),
             );
