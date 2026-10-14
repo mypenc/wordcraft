@@ -435,7 +435,7 @@ diff -ruN a/src/platform_impl/android/mod.rs b/src/platform_impl/android/mod.rs
      }
  
      pub(crate) fn maybe_queue_on_main(&self, f: impl FnOnce(&Self) + Send + 'static) {
-@@ -916,6 +1252,15 @@
+@@ -916,6 +1252,16 @@
      pub fn set_ime_cursor_area(&self, _position: Position, _size: Size) {}
  
      pub fn set_ime_allowed(&self, allowed: bool) {
