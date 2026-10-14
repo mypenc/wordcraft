@@ -200,6 +200,18 @@ pub fn join_next_para(s: &mut Session, story: StoryRef, path: &wordcraft_doc::Pa
     Ok(true)
 }
 
+/// Remove the paragraph at `path` when it is empty, carries no section break and another
+/// paragraph follows in the same container: the next paragraph keeps its own properties. Returns
+/// `false`, changing nothing, otherwise.
+pub fn remove_empty_para(s: &mut Session, story: StoryRef, path: &wordcraft_doc::Path) -> Result<bool, CmdError> {
+    let empty = s.doc.para(story, path).is_some_and(|p| p.is_empty() && p.section.is_none());
+    if !empty || !has_next_para(s, story, path) {
+        return Ok(false);
+    }
+    s.doc.remove_block(story, path)?;
+    Ok(true)
+}
+
 /// Tracked deletion: own insertions are removed, other text is marked deleted.
 pub(crate) fn track_delete(s: &mut Session, a: &Pos, b: &Pos) -> Result<Pos, CmdError> {
     let rid = new_revision(s, RevisionKind::Delete);
@@ -267,6 +279,9 @@ pub fn paste_text(s: &mut Session, text: &str) -> Result<(), CmdError> {
 
 fn insert_text(s: &mut Session, text: &str, enter: bool) -> Result<(), CmdError> {
     let mut props = s.typing_props();
+    if s.sel.is_collapsed() {
+        s.sel = crate::Selection::caret(s.doc.past_field_ends(&s.sel.focus));
+    }
     // Content controls: a placeholder is replaced, locked ones refuse.
     if let Some(p) = controls::prepare_edit(s)? {
         props = p;

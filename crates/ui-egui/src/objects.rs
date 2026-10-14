@@ -8,18 +8,23 @@
 //! drag starts (#1010: a cut of the page would carry along whatever is behind it). The drop is
 //! one command, one relayout.
 //!
+//! Moving one snaps it to alignment guides ([`crate::guides`]): the page's edges and centre, the
+//! margins and the other floating objects on the page, shown as thin lines while dragging. Alt
+//! moves freely; File › Options › Advanced turns them off (`ui.alignmentGuides`).
+//!
 //! A selected connector shows a handle at each end instead of a frame: dragging one onto a shape
 //! glues it to the nearest connection site there (`shape.connect`), elsewhere leaves it free.
 
 use egui::{Color32, Painter, Pos2, Rect, Ui};
 use serde_json::json;
-use wordcraft_doc::para::{InlineObject, OBJ};
+use wordcraft_doc::para::{InlineObject, OBJ, Wrap};
 use wordcraft_doc::{PartKind, Pos, StoryRef};
 use wordcraft_layout::DocLayout;
 use wordcraft_layout::hit::ObjectHit;
 
 use crate::WordApp;
 use crate::frame::{self, Drag, Grab};
+use crate::guides;
 use crate::theme::Tokens;
 
 /// The band along a text box's border that grabs the box rather than its text, screen points.
@@ -39,6 +44,10 @@ pub struct ObjectDrag {
     picture: bool,
     /// Dragging a connector's end (false: its start, true: its end) to this page point.
     end: Option<(bool, (f32, f32))>,
+    /// Ctrl/⌘ is held: dropping leaves the original and puts a copy at the new place.
+    copy: bool,
+    /// The alignment guides a move snapped to, shown while dragging ([`crate::guides`]).
+    guides: Vec<crate::guides::Guide>,
     /// The object drawn alone over its rotated bounds, for the preview: made once it moves.
     preview: Option<egui::TextureHandle>,
 }
@@ -158,11 +167,18 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         }
         if ui.input(|i| i.pointer.primary_down()) {
             let shift = ui.input(|i| i.modifiers.shift);
+            d.copy = ui.input(|i| i.modifiers.command) && d.drag.grab == Grab::Move;
             if d.drag.grab == Grab::Rotate {
                 d.drag.turn_to(at, pages, scale, shift);
             } else {
                 // Pictures keep their proportions from a corner unless Shift; shapes only with Shift.
                 d.drag.update(at, pages, scale, d.min, d.picture != shift);
+                // Alignment guides: a move snaps to the page, the margins and the other objects
+                // (Alt: freely).
+                d.guides.clear();
+                if d.drag.grab == Grab::Move && d.drag.moved && app.ui.alignment_guides && !ui.input(|i| i.modifiers.alt) {
+                    snap_move(layout, &mut d, scale);
+                }
             }
             if d.drag.moved && d.preview.is_none() && shows_pixels(&d) {
                 d.preview = preview(app, ui.ctx(), layout, &d.object, scale);
@@ -185,13 +201,24 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
     // A selected connector's end: drag it to glue it.
     if pressed && let Some((object, which)) = connector_end_at(app, layout, pages, scale, at) {
         let drag = Drag::new(Grab::Move, object.page, object.rect, 0.0, at);
-        app.canvas.obj_drag = Some(ObjectDrag { drag, object, min: 0.0, picture: false, end: Some((which, (0.0, 0.0))), preview: None });
+        app.canvas.obj_drag = Some(ObjectDrag {
+            drag,
+            object,
+            min: 0.0,
+            picture: false,
+            end: Some((which, (0.0, 0.0))),
+            guides: Vec::new(),
+            preview: None,
+            copy: false,
+        });
         return true;
     }
     let Some((object, grab)) = grab_at(app, layout, pages, scale, at) else { return false };
     // Shift/Ctrl+click adds an object to the selected ones (or takes it out), for Group.
     let adding = ui.input(|i| i.modifiers.shift || i.modifiers.command);
-    if pressed && adding && grab == Grab::Move && selected(app).is_some() {
+    // Ctrl on the object that is already selected starts a copy-drag instead.
+    let again = selected(app).is_some_and(|(p, _)| p == object.pos());
+    if pressed && adding && grab == Grab::Move && selected(app).is_some() && !(again && !ui.input(|i| i.modifiers.shift)) {
         let _ = app.run("select.addObject", json!({"pos": object.pos()}));
         return true;
     }
@@ -205,17 +232,70 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         };
         // Objects in table cells can be selected and resized, not moved; charts neither.
         if !fixed(app, &object) && (grab != Grab::Move || movable(app, &object)) {
+            let copy = grab == Grab::Move && ui.input(|i| i.modifiers.command);
             app.canvas.obj_drag = Some(ObjectDrag {
                 drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at),
                 object,
                 min,
                 picture,
                 end: None,
+                guides: Vec::new(),
                 preview: None,
+                copy,
             });
         }
     }
     true
+}
+
+/// Snap a moved object's bounds (rotated ones by their turned box) to the guides of the page
+/// it's over: the page's edges and centre, its margins, the other floating objects there.
+fn snap_move(layout: &DocLayout, d: &mut ObjectDrag, scale: f32) {
+    let Some(pg) = layout.pages.get(d.drag.to_page) else { return };
+    let candidates = guides::candidates(paper_width(pg), pg.h, pg.body, snap_targets(pg, &d.object));
+    let s = guides::snap(d.object.spin.bounds(d.drag.rect), &candidates, guides::SNAP_SCREEN / scale.max(0.01));
+    d.drag.rect.x += s.dx;
+    d.drag.rect.y += s.dy;
+    d.guides = s.lines;
+}
+
+/// The page's own width, without the comment balloons' markup area.
+fn paper_width(pg: &wordcraft_layout::Page) -> f32 {
+    (pg.w - pg.markup).max(0.0)
+}
+
+/// The bounds of the floating objects on `pg` that `me` can snap to: all but itself and, for a
+/// text box, the objects in its text (they move with it).
+fn snap_targets(pg: &wordcraft_layout::Page, me: &ObjectHit) -> Vec<wordcraft_geom::Rect> {
+    let pos = me.pos();
+    let own = me.text_box.map(StoryRef::Part);
+    pg.items
+        .iter()
+        .chain(&pg.header)
+        .chain(&pg.footer)
+        .filter_map(|it| match it {
+            wordcraft_layout::Placed::Object { rect, spin, story, path, off, wrap, .. }
+                if *wrap != Wrap::Inline && !(*story == pos.story && *path == pos.path && *off == pos.off) && Some(*story) != own =>
+            {
+                Some(spin.bounds(*rect))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The guides a move snapped to: thin lines across the page (not into the balloon area).
+fn paint_guides(d: &ObjectDrag, painter: &Painter, t: &Tokens, layout: &DocLayout, pages: &[Rect], scale: f32) {
+    let Some(p) = pages.get(d.drag.to_page) else { return };
+    let right = layout.pages.get(d.drag.to_page).map_or(p.max.x, |pg| (p.min.x + paper_width(pg) * scale).min(p.max.x));
+    let stroke = egui::Stroke::new(1.0, t.guide);
+    for g in &d.guides {
+        let line = match g.axis {
+            guides::Axis::X => [egui::pos2(p.min.x + g.at * scale, p.min.y), egui::pos2(p.min.x + g.at * scale, p.max.y)],
+            guides::Axis::Y => [egui::pos2(p.min.x, p.min.y + g.at * scale), egui::pos2(right, p.min.y + g.at * scale)],
+        };
+        painter.line_segment(line, stroke);
+    }
 }
 
 /// Create Link's click: link the box it started from to the text box under `at` (anywhere on it),
@@ -311,6 +391,10 @@ fn drop(app: &mut WordApp, d: &ObjectDrag) {
             let _ = app.run("arrange.rotation", json!({"degrees": d.drag.deg}));
             return;
         }
+        Grab::Move if d.copy => {
+            let _ = app.run("arrange.copyTo", json!({"page": d.drag.to_page, "x": r.x, "y": r.y}));
+            return;
+        }
         Grab::Move => json!({"page": d.drag.to_page, "x": r.x, "y": r.y}),
         // An inline object stays in the text; a floating one keeps its far edges put.
         Grab::Resize(_) if d.object.floating() && movable(app, &d.object) => {
@@ -358,6 +442,7 @@ pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, p
             painter.image(tex.id(), to, uv, Color32::from_white_alpha(PREVIEW_OPACITY));
         }
         frame::paint(painter, t, to, d.drag.deg, false, false, false);
+        paint_guides(d, painter, t, layout, pages, scale);
         return;
     }
     // The others selected along with it (Shift+click): their outlines.
@@ -421,7 +506,13 @@ fn paint_end_drag(app: &WordApp, d: &ObjectDrag, painter: &Painter, t: &Tokens, 
 /// The pointer over an object or a handle (or dragging): its cursor.
 pub fn cursor(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Pos2) -> Option<egui::CursorIcon> {
     if let Some(d) = &app.canvas.obj_drag {
-        return Some(if d.end.is_some() { egui::CursorIcon::Crosshair } else { d.drag.grab.cursor() });
+        return Some(if d.end.is_some() {
+            egui::CursorIcon::Crosshair
+        } else if d.copy && d.drag.moved {
+            egui::CursorIcon::Copy
+        } else {
+            d.drag.grab.cursor()
+        });
     }
     if connector_end_at(app, layout, pages, scale, at).is_some() {
         return Some(egui::CursorIcon::Crosshair);
@@ -495,6 +586,165 @@ mod tests {
         };
         let (app, hit) = app_with(shape);
         assert!(!fixed(&app, &hit));
+    }
+    /// Alignment guides: dragging a floating shape to within a few points of the page's centre
+    /// snaps its centre exactly onto it and shows the guide while dragging; the drop lands there,
+    /// and the guides go. Holding Alt drags freely.
+    #[test]
+    fn dragging_a_shape_snaps_to_the_page_centre_unless_alt() {
+        use egui::{Event, Modifiers, PointerButton};
+        let mut a = WordApp::new(wordcraft_engine::Session::new(Document::new()), crate::Services::default());
+        a.run("view.commentsPane", json!({"value": false})).unwrap();
+        a.run("insert.shape", json!({"kind": "rectangle", "width": 100, "height": 50})).unwrap();
+        a.run("arrange.bounds", json!({"page": 0, "x": 100, "y": 250})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        for _ in 0..6 {
+            h.step();
+        }
+        let page = h.state_mut().session.layout().pages.first().map(|p| p.w - p.markup).unwrap();
+        let centre = page / 2.0;
+        let shape = |h: &mut egui_kittest::Harness<'_, WordApp>| h.state_mut().session.layout().object(&Pos::body(0, 0), 0).unwrap().rect;
+        let button =
+            |at: Pos2, pressed: bool| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Default::default() };
+        // Press on the shape's centre and drag it so its centre ends 1.5 pt right of the page's.
+        let drag = |h: &mut egui_kittest::Harness<'_, WordApp>, alt: bool| {
+            let r = shape(h);
+            let (cx, cy) = (r.x + r.w / 2.0, r.y + r.h / 2.0);
+            let from = crate::canvas::page_to_screen(h.state_mut(), 0, cx, cy).unwrap();
+            let to = crate::canvas::page_to_screen(h.state_mut(), 0, centre + 1.5, cy).unwrap();
+            h.event(Event::ModifiersChanged(if alt { Modifiers::ALT } else { Modifiers::default() }));
+            h.event(Event::PointerMoved(from));
+            h.event(button(from, true));
+            h.step();
+            // Out past the drag threshold, then to the target.
+            for at in [from + egui::vec2(0.0, 40.0), to + egui::vec2(0.0, 40.0), to] {
+                h.event(Event::PointerMoved(at));
+                h.step();
+            }
+            let d = h.state().canvas.obj_drag.as_ref().expect("dragging");
+            let mid = (d.drag.rect, d.guides.clone());
+            h.event(button(to, false));
+            for _ in 0..3 {
+                h.step();
+            }
+            h.event(Event::ModifiersChanged(Modifiers::default()));
+            h.step();
+            mid
+        };
+        let (rect, guides) = drag(&mut h, false);
+        assert!((rect.x + rect.w / 2.0 - centre).abs() < 1e-3, "snapped onto the page's centre while dragging: {rect:?}");
+        assert!(guides.contains(&crate::guides::Guide::x(centre)), "the centre guide shows: {guides:?}");
+        assert!(h.state().canvas.obj_drag.is_none(), "dropped: no guides any more");
+        let r = shape(&mut h);
+        assert!((r.x + r.w / 2.0 - centre).abs() < 0.01, "dropped on the centre: {r:?}");
+        // Alt: no snapping, no guides; it lands where the pointer put it.
+        let (rect, guides) = drag(&mut h, true);
+        assert!((rect.x + rect.w / 2.0 - centre - 1.5).abs() < 0.01, "free with Alt: {rect:?}");
+        assert!(guides.is_empty(), "{guides:?}");
+        let r = shape(&mut h);
+        assert!((r.x + r.w / 2.0 - centre - 1.5).abs() < 0.01, "{r:?}");
+    }
+    /// A floating rectangle shape, `w` × `h`.
+    fn floating_rect(w: f32, h: f32) -> InlineObject {
+        InlineObject::Shape {
+            kind: ShapeKind::Rectangle,
+            w,
+            h,
+            fill: None,
+            stroke: None,
+            stroke_width: 1.0,
+            float: wordcraft_doc::para::Float { wrap: Wrap::InFrontOfText, x: 10.0, y: 10.0, ..Default::default() },
+            story: None,
+            freeform: None,
+            effects: Default::default(),
+            extra: Default::default(),
+        }
+    }
+
+    /// A text box doesn't snap to the objects inside it (they move with it).
+    #[test]
+    fn a_text_box_does_not_snap_to_its_own_contents() {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(Document::new()), crate::Services::default());
+        app.run("insert.textBox", json!({"text": "Box"})).unwrap();
+        let bx = app.session.layout().find_object(0, |o| o.text_box.is_some()).expect("the box");
+        let end = Pos { off: bx.off + OBJ.len_utf8(), ..bx.pos() };
+        app.run("select.range", json!({"anchor": bx.pos(), "focus": end})).unwrap();
+        app.run("arrange.bounds", json!({"page": 0, "x": 100, "y": 200, "width": 200, "height": 150})).unwrap();
+        let id = app.session.layout().find_object(0, |o| o.text_box.is_some()).and_then(|o| o.text_box).unwrap();
+        let inner = Pos { story: StoryRef::Part(id), path: wordcraft_doc::Path::top(0), off: 0 };
+        app.session.doc.insert_object(&inner, floating_rect(30.0, 20.0), &Default::default()).unwrap();
+        app.session.touch();
+        let layout = app.session.layout();
+        let bx = layout.find_object(0, |o| o.text_box.is_some()).unwrap();
+        let pg = layout.pages.first().unwrap();
+        let inside = layout.find_object(0, |o| o.story == StoryRef::Part(id)).expect("the box's own object is laid out");
+        let targets = snap_targets(pg, &bx);
+        assert!(!targets.contains(&inside.bounds()), "{targets:?}");
+        // Another floating object on the page is still a target.
+        let other = snap_targets(pg, &inside);
+        assert!(other.contains(&bx.bounds()), "{other:?}");
+    }
+
+    /// Pressing Alt in the middle of a drag stops the snapping, and letting it go again doesn't
+    /// turn keytips on (the Alt was part of the drag, not a tap).
+    #[test]
+    fn alt_pressed_during_a_drag_unsnaps_and_keeps_keytips_off() {
+        use egui::{Event, Modifiers, PointerButton};
+        let mut a = WordApp::new(wordcraft_engine::Session::new(Document::new()), crate::Services::default());
+        a.run("view.commentsPane", json!({"value": false})).unwrap();
+        a.run("insert.shape", json!({"kind": "rectangle", "width": 100, "height": 50})).unwrap();
+        a.run("arrange.bounds", json!({"page": 0, "x": 100, "y": 250})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        for _ in 0..6 {
+            h.step();
+        }
+        let centre = h.state_mut().session.layout().pages.first().map(|p| (p.w - p.markup) / 2.0).unwrap();
+        let r = h.state_mut().session.layout().object(&Pos::body(0, 0), 0).unwrap().rect;
+        let cy = r.y + r.h / 2.0;
+        let from = crate::canvas::page_to_screen(h.state_mut(), 0, r.x + r.w / 2.0, cy).unwrap();
+        let to = crate::canvas::page_to_screen(h.state_mut(), 0, centre + 1.5, cy).unwrap();
+        let button =
+            |at: Pos2, pressed: bool| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Default::default() };
+        h.event(Event::PointerMoved(from));
+        h.event(button(from, true));
+        h.step();
+        for at in [from + egui::vec2(0.0, 40.0), to] {
+            h.event(Event::PointerMoved(at));
+            h.step();
+        }
+        assert!(!h.state().canvas.obj_drag.as_ref().expect("dragging").guides.is_empty(), "snapped before Alt");
+        // Alt down mid-drag, as a key and a modifier change (backends send both).
+        let alt_key =
+            |pressed: bool, modifiers: Modifiers| Event::Key { key: egui::Key::AltLeft, physical_key: None, pressed, repeat: false, modifiers };
+        h.event(alt_key(true, Modifiers::ALT));
+        h.event(Event::ModifiersChanged(Modifiers::ALT));
+        h.event(Event::PointerMoved(to + egui::vec2(0.0, 1.0)));
+        h.step();
+        let d = h.state().canvas.obj_drag.as_ref().expect("still dragging");
+        assert!(d.guides.is_empty() && (d.drag.rect.x + d.drag.rect.w / 2.0 - centre - 1.5).abs() < 0.01, "free with Alt");
+        // Alt up, then the release.
+        h.event(alt_key(false, Modifiers::default()));
+        h.event(Event::ModifiersChanged(Modifiers::default()));
+        h.event(button(to, false));
+        for _ in 0..3 {
+            h.step();
+        }
+        assert!(h.state().canvas.obj_drag.is_none());
+        assert_eq!(h.state().ui.keytips, crate::keytips::Phase::Off, "Alt during a drag isn't a keytip tap");
     }
 
     /// #1010: dragging a shape off text, the preview is the shape alone, not the text that was

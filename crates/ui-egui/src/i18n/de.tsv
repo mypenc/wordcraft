@@ -92,6 +92,7 @@
 	Enter formatting for number:	Formatierung für die Nummer eingeben:
 	Follow number with:	Der Nummer folgt:
 	Formatting	Formatierung
+	In the margin	Am Rand
 	Include level number from:	Ebenennummer übernehmen aus:
 	Ink	Freihand
 	Insertions and Deletions	Einfügungen und Löschungen
@@ -110,6 +111,7 @@
 	Number alignment:	Nummernausrichtung:
 	Number format	Nummernformat
 	Number style for this level:	Nummernstil für diese Ebene:
+	Only for the selected text	Nur für den ausgewählten Text
 	Outside border	Äußere Rahmenlinie
 	Reopen	Erneut öffnen
 	Restart list after:	Liste neu starten nach:
@@ -1351,6 +1353,7 @@
 	Demote	Tiefer stufen
 	Go Back	Zurückspringen
 	Toggle Unicode Character	Unicode-Zeichen umschalten
+	Type Character Code	Zeichencode eingeben
 	Toggle Field Codes	Feldfunktionen ein/aus
 	Edit Field Code	Feldfunktion bearbeiten
 	Unlink Fields	Feldverknüpfungen aufheben
@@ -1436,6 +1439,8 @@
 	No words yet. Add to Dictionary on a misspelled word puts it here.	Noch keine Wörter. „Zum Wörterbuch hinzufügen“ bei einem falsch geschriebenen Wort legt es hier ab.
 	Overtype	Überschreiben
 	Overtype (typing replaces the characters after the caret)	Überschreiben (die Eingabe ersetzt die Zeichen nach der Einfügemarke)
+	Show alignment guides when moving pictures and shapes	Ausrichtungslinien beim Verschieben von Bildern und Formen anzeigen
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Verschobene Objekte rasten an den Rändern und der Mitte der Seite, an den Seitenrändern und an anderen Objekten ein. Mit gedrückter Alt-Taste frei verschieben.
 	Page display	Seitenanzeige
 	Paragraph marks	Absatzmarken
 	Personalize	Personalisieren
@@ -2010,6 +2015,7 @@
 	Hyphenation Options…	Silbentrennungsoptionen…
 	Hyphenation zone:	Silbentrennzone:
 	Italian	Italienisch
+	Croatian	Kroatisch
 	Japanese	Japanisch
 	Korean	Koreanisch
 	Limit consecutive hyphens to:	Aufeinanderfolgende Trennstriche begrenzen auf:
@@ -2066,6 +2072,31 @@
 	Hindi	Hindi
 	Context	Kontext
 	System	System
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Empfänger filtern
+	Sort Recipients	Empfänger sortieren
+	Filter and Sort	Filtern und Sortieren
+	And	Und
+	Or	Oder
+	Comparison	Vergleich
+	Compare to	Vergleichen mit
+	Add Condition	Bedingung hinzufügen
+	Remove condition	Bedingung entfernen
+	Sort by	Sortieren nach
+	Then by	Dann nach
+	Ascending	Aufsteigend
+	Descending	Absteigend
+	Equal to	Gleich
+	Not equal to	Ungleich
+	Less than	Kleiner als
+	Greater than	Größer als
+	Less than or equal	Kleiner oder gleich
+	Greater than or equal	Größer oder gleich
+	Is blank	Ist leer
+	Is not blank	Ist nicht leer
+	Contains	Enthält
+	Does not contain	Enthält nicht
+	{count} of {total} recipients will be merged.	{count} von {total} Empfängern werden zusammengeführt.
 	Show KeyTips (Alt or F10)	Zugriffstasten anzeigen (Alt oder F10)
 	Reading	Lesen
 	Reading Column Width	Spaltenbreite beim Lesen
@@ -2075,8 +2106,23 @@
 	Correct accidental usage of cAPS LOCK key	Unbeabsichtigtes Verwenden der fESTSTELLTASTE korrigieren
 	Region:	Region:
 	Automatic ({region})	Automatisch ({region})
+	Text of the nearest paragraph with a given style (running headers)	Text des nächsten Absatzes mit einer bestimmten Formatvorlage (lebende Kolumnentitel)
+	Style name:	Formatvorlagenname:
+	Take the last match on the page	Letzten Treffer auf der Seite nehmen
+	Show its list number	Seine Listennummer zeigen
+	Show its number relative to this field	Seine Nummer bezogen auf dieses Feld zeigen
+	Show its number with all higher levels	Seine Nummer mit allen höheren Ebenen zeigen
+	Number only, without the label's words	Nur die Nummer, ohne die Wörter der Beschriftung
+	Add whether it is above or below	Angeben, ob er darüber oder darunter steht
 	Search	Suchen
 	Title Bar	Titelleiste
+	Copy to	Kopieren nach
+
+# Document naming and account controls.
+	Rename Document	Dokument umbenennen
+	Document name	Dokumentname
+	Rename	Umbenennen
+	Account	Konto
 	Privacy Options	Datenschutzoptionen
 	Trust Center	Sicherheitscenter
 	Privacy for this document	Datenschutz für dieses Dokument
@@ -2084,3 +2130,48 @@
 	Leave out the date and time of comments and tracked changes when saving	Beim Speichern Datum und Uhrzeit von Kommentaren und nachverfolgten Änderungen weglassen
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Das bearbeitete Dokument behält Namen und Daten; nur die gespeicherte Datei lässt sie weg.
 	Privacy Settings	Aktuelle Datenschutzeinstellungen
+	Waiting for the save to finish…	Warten, bis das Speichern abgeschlossen ist…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Das Speichern von {name} wurde abgebrochen. Das Dokument ist weiterhin geöffnet und nichts ist verloren gegangen.
+	Paper	Papier
+	Paper size:	Papierformat:
+	Custom size	Benutzerdefiniertes Format
+	More Paper Sizes…	Weitere Papierformate…
+	The margins don't fit on a page this size; make the margins smaller first.	Die Ränder passen nicht auf eine Seite dieser Größe; verkleinern Sie zuerst die Ränder.
+	Full Screen	Vollbild
+	Full\nScreen	Voll-\nbild
+	Use the browser's full screen (F11)	Verwenden Sie den Vollbildmodus des Browsers (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} Zoll
+	{name}   {height} × {width} mm	{name}   {height} × {width} mm
+	{width} × {height} mm	{width} × {height} mm
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Der Recherche-Assistent braucht einen Onlinedienst; WordCraft behält Ihre Dokumente offline.
+	These settings will be used for new documents.	Diese Einstellungen werden für neue Dokumente verwendet.
+	can't split at the first row	die Tabelle kann nicht an der ersten Zeile geteilt werden
+	select two or more cells to merge	wählen Sie zum Verbinden zwei oder mehr Zellen aus
+	there is no ink to replay	es gibt keine Freihandeingabe zum Wiedergeben
+	there's no citation after the caret	nach der Einfügemarke steht kein Zitat
+	this item is already at the top level	dieses Element ist bereits auf der obersten Ebene
+	Envelope #10	Umschlag Nr. 10
+	Envelope DL	Umschlag DL
+	Reading Mode	Lesemodus
+	Column width	Spaltenbreite
+	Text size	Textgröße
+	Edit Document	Dokument bearbeiten
+	Go to what:	Gehe zu:
+	Type +2 or -1 to move from the page you are on.	Geben Sie +2 oder -1 ein, um von der aktuellen Seite aus zu springen.
+	Suggested	Vorschläge
+	Set Proofing Language…	Sprache für die Korrekturhilfen festlegen…
+	Language Preferences…	Spracheinstellungen…
+
+# Dictionaries folder (#1063)
+	Dictionaries	Wörterbücher
+	Dictionaries folder:	Wörterbuchordner:
+	Not set: the system's usual places	Nicht festgelegt: die üblichen Orte des Systems
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Hunspell-Dateien (.aff und .dic) in diesem Ordner (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) haben Vorrang vor denen des Systems.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: kein Wörterbuch gefunden
+
+# Backstage › Recover (#586)
+	Recover	Wiederherstellen

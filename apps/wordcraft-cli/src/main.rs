@@ -42,14 +42,43 @@ USAGE:
                                               running): addEditCitation, addEditBibliography,
                                               addNote, refresh, removeCodes, setDocPrefs
                                               (--cmd runs first, e.g. --cmd caret.docEnd)
+  wordcraft-cli [<command>] -h | --help       this help
   wordcraft-cli --version
+
+Paper: documents created here, and HTML, Markdown and text files (which give no page size), use
+the system region's paper (A4, or Letter in the US and other Letter regions), read from
+LC_ALL / LC_PAPER / LANG or the platform. Set WORDCRAFT_REGION=en-US (or another tag) for the
+same output on every machine.
 ";
 
+/// The subcommands, in `USAGE` order; `--help` or `-h` after any of them prints `USAGE` (#968).
+const SUBCOMMANDS: &[&str] = &["convert", "info", "text", "inspect", "render", "run", "commands", "parity", "mcp", "zotero"];
+
+fn wants_help(cmd: &str, rest: &[String]) -> bool {
+    SUBCOMMANDS.contains(&cmd) && rest.iter().any(|a| a == "--help" || a == "-h")
+}
+
 fn open(path: &str) -> Result<Session, String> {
-    let doc = wordcraft_engine::io::open_path(std::path::Path::new(path))?;
-    let mut s = Session::new(doc);
+    // A file that gives no page size (HTML, Markdown, plain text) opens on the system region's
+    // paper, as in the app: A4 in Italy, Letter in the US (#1381).
+    let region = system_region();
+    let (doc, _) = wordcraft_engine::io::open_path_in(std::path::Path::new(path), None, &region)?;
+    let mut s = session(doc);
     s.path = Some(path.into());
     Ok(s)
+}
+
+/// A headless session in the system region: every way the CLI starts one gives `file.new` the
+/// same paper (#1381).
+fn session(doc: wordcraft_doc::Document) -> Session {
+    let mut s = Session::new(doc);
+    s.system_region = system_region();
+    s
+}
+
+/// The system region, read as the app reads it (locale variables, else the platform's locale).
+fn system_region() -> wordcraft_engine::Region {
+    wordcraft_engine::Region::from_locale_vars(|name| std::env::var(name).ok(), sys_locale::get_locale)
 }
 
 /// The body text for `text`: the plain-text export, so list items keep their bullet or number label.
@@ -65,6 +94,58 @@ fn set_author(s: &mut Session, name: &str) -> Result<(), String> {
 
 fn arg_value(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
+}
+
+enum OptionArg<'a> {
+    Absent,
+    Duplicate,
+    MissingValue,
+    Value(&'a str),
+}
+
+fn find_option_arg<'a>(args: &'a [String], name: &str) -> OptionArg<'a> {
+    let mut matches = args.iter().enumerate().filter(|(_, a)| *a == name);
+    let Some((i, _)) = matches.next() else {
+        return OptionArg::Absent;
+    };
+    if matches.next().is_some() {
+        return OptionArg::Duplicate;
+    }
+    match args.get(i + 1) {
+        None => OptionArg::MissingValue,
+        Some(val) if val.starts_with("--") => OptionArg::MissingValue,
+        Some(val) => OptionArg::Value(val.as_str()),
+    }
+}
+
+fn parse_page_arg(command: &str, args: &[String]) -> Result<Option<u64>, String> {
+    match find_option_arg(args, "--page") {
+        OptionArg::Absent => Ok(None),
+        OptionArg::Duplicate => Err(format!("{command}: duplicate --page option")),
+        OptionArg::MissingValue => Err(format!("{command}: --page requires a value")),
+        OptionArg::Value(val) => {
+            let n = val.parse::<u64>().map_err(|_| format!("{command}: invalid --page `{val}`: not a valid integer"))?;
+            if n == 0 {
+                return Err(format!("{command}: invalid --page `0`: page numbers start at 1"));
+            }
+            Ok(Some(n))
+        }
+    }
+}
+
+fn parse_scale_arg(command: &str, args: &[String]) -> Result<Option<f64>, String> {
+    match find_option_arg(args, "--scale") {
+        OptionArg::Absent => Ok(None),
+        OptionArg::Duplicate => Err(format!("{command}: duplicate --scale option")),
+        OptionArg::MissingValue => Err(format!("{command}: --scale requires a value")),
+        OptionArg::Value(val) => {
+            let scale = val.parse::<f64>().map_err(|_| format!("{command}: invalid --scale `{val}`: not a number"))?;
+            if !scale.is_finite() || scale <= 0.0 {
+                return Err(format!("{command}: invalid --scale `{val}`: scale must be a positive number"));
+            }
+            Ok(Some(scale))
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -184,6 +265,10 @@ fn write_stdout(write: impl FnOnce(&mut std::io::StdoutLock<'static>) -> std::io
 fn run(args: &[String]) -> Result<(), Failure> {
     let cmd = args.first().map(String::as_str).unwrap_or("");
     let rest: Vec<String> = args.iter().skip(1).cloned().collect();
+    // Before options are checked or files and folders opened.
+    if wants_help(cmd, &rest) {
+        return write_stdout(|o| write!(o, "{USAGE}"));
+    }
     let pos = |i: usize| rest.iter().filter(|a| !a.starts_with("--")).nth(i).cloned().ok_or_else(|| format!("missing argument\n\n{USAGE}"));
     match cmd {
         "convert" => {
@@ -234,22 +319,24 @@ fn run(args: &[String]) -> Result<(), Failure> {
         "render" => {
             validate_options("render", &rest, RENDER_OPTIONS)?;
             let (i, o) = (pos(0)?, pos(1)?);
+            let page = parse_page_arg("render", &rest)?.unwrap_or(1);
+            let scale = parse_scale_arg("render", &rest)?.unwrap_or(2.0);
             let mut s = open(&i)?;
-            let page = arg_value(&rest, "--page").and_then(|p| p.parse::<u64>().ok()).unwrap_or(1);
-            let scale = arg_value(&rest, "--scale").and_then(|p| p.parse::<f64>().ok()).unwrap_or(2.0);
             let r = s.run("file.exportPng", &json!({"path": o, "page": page, "scale": scale})).map_err(|e| e.to_string())?;
             write_stdout(|o| writeln!(o, "{r}"))
         }
         "run" => {
             validate_options("run", &rest, RUN_OPTIONS)?;
+            let page = parse_page_arg("run", &rest)?;
+            let scale = parse_scale_arg("run", &rest)?;
             let mut s = match (arg_value(&rest, "--file"), arg_value(&rest, "--template")) {
                 (Some(f), _) => open(&f)?,
                 (None, Some(t)) => {
-                    let mut s = Session::new(wordcraft_doc::Document::new());
+                    let mut s = session(wordcraft_doc::Document::new());
                     s.run("file.new", &json!({"template": t})).map_err(|e| e.to_string())?;
                     s
                 }
-                _ => Session::new(wordcraft_doc::Document::new()),
+                _ => session(wordcraft_doc::Document::new()),
             };
             if let Some(name) = arg_value(&rest, "--author") {
                 set_author(&mut s, &name)?;
@@ -274,10 +361,10 @@ fn run(args: &[String]) -> Result<(), Failure> {
             if let Some(out) = arg_value(&rest, "--save") {
                 let r = if out.to_ascii_lowercase().ends_with(".png") {
                     let mut v = json!({"path": out});
-                    if let Some(n) = arg_value(&rest, "--page").and_then(|p| p.parse::<u64>().ok()) {
+                    if let Some(n) = page {
                         v["page"] = json!(n);
                     }
-                    if let Some(k) = arg_value(&rest, "--scale").and_then(|p| p.parse::<f64>().ok()) {
+                    if let Some(k) = scale {
                         v["scale"] = json!(k);
                     }
                     s.run("file.exportPng", &v)
@@ -291,7 +378,7 @@ fn run(args: &[String]) -> Result<(), Failure> {
         }
         "commands" => {
             validate_options("commands", &rest, COMMANDS_OPTIONS)?;
-            let s = Session::new(wordcraft_doc::Document::new());
+            let s = session(wordcraft_doc::Document::new());
             if rest.iter().any(|a| a == "--json") {
                 let list = serde_json::to_string_pretty(&s.registry.describe()).unwrap_or_default();
                 write_stdout(|o| writeln!(o, "{list}"))
@@ -306,7 +393,7 @@ fn run(args: &[String]) -> Result<(), Failure> {
         }
         "parity" => {
             validate_options("parity", &rest, PARITY_OPTIONS)?;
-            let s = Session::new(wordcraft_doc::Document::new());
+            let s = session(wordcraft_doc::Document::new());
             let p = wordcraft_engine::catalog::parity(&s.registry);
             if rest.iter().any(|a| a == "--markdown") {
                 write_stdout(|o| write!(o, "{}", parity_markdown(&p)))
@@ -482,6 +569,26 @@ mod tests {
     }
 
     #[test]
+    fn help_or_h_after_a_subcommand_asks_for_the_usage() {
+        for cmd in SUBCOMMANDS {
+            assert!(wants_help(cmd, &args(&["in.docx", "--help"])), "{cmd}");
+            assert!(wants_help(cmd, &args(&["-h"])), "{cmd}");
+            assert!(!wants_help(cmd, &args(&["in.docx", "--hepl"])), "{cmd}");
+        }
+        assert!(!wants_help("frobnicate", &args(&["--help"])));
+    }
+
+    #[test]
+    fn usage_lists_exactly_the_subcommands() {
+        let listed: Vec<&str> = USAGE
+            .lines()
+            .filter_map(|line| line.strip_prefix("  wordcraft-cli ")?.split_whitespace().next())
+            .filter(|word| !word.starts_with(['-', '[']))
+            .collect();
+        assert_eq!(listed, SUBCOMMANDS);
+    }
+
+    #[test]
     fn text_keeps_bullet_and_number_labels() {
         let doc = wordcraft_engine::io::open_bytes("lists.md", b"- alpha\n- beta\n\n1. first\n2. second\n").unwrap();
         assert_eq!(listed_text(&doc).unwrap(), "\u{2022}\talpha\n\u{2022}\tbeta\n1.\tfirst\n2.\tsecond");
@@ -552,5 +659,174 @@ mod tests {
         let dir = std::env::temp_dir().to_string_lossy().into_owned();
         let e = run(&args(&["mcp", "--connect", "127.0.0.1:9", "--automation-read-root", &dir])).unwrap_err().to_string();
         assert!(e.contains("--automation-read-root") && e.contains("headless"), "{e}");
+    }
+
+    #[test]
+    fn render_rejects_missing_or_invalid_page_and_scale() {
+        // Missing operands
+        assert_eq!(run(&args(&["render", "missing.docx", "out.png", "--page"])), Err("render: --page requires a value".into()));
+        assert_eq!(run(&args(&["render", "missing.docx", "out.png", "--scale"])), Err("render: --scale requires a value".into()));
+        assert_eq!(run(&args(&["render", "missing.docx", "out.png", "--page", "--scale", "2"])), Err("render: --page requires a value".into()));
+        assert_eq!(run(&args(&["render", "missing.docx", "out.png", "--scale", "--page", "1"])), Err("render: --scale requires a value".into()));
+
+        // Non-numeric operands
+        assert_eq!(
+            run(&args(&["render", "missing.docx", "out.png", "--page", "banana"])),
+            Err("render: invalid --page `banana`: not a valid integer".into())
+        );
+        assert_eq!(
+            run(&args(&["render", "missing.docx", "out.png", "--scale", "banana"])),
+            Err("render: invalid --scale `banana`: not a number".into())
+        );
+
+        // Out-of-range values
+        assert_eq!(
+            run(&args(&["render", "missing.docx", "out.png", "--page", "0"])),
+            Err("render: invalid --page `0`: page numbers start at 1".into())
+        );
+        assert_eq!(
+            run(&args(&["render", "missing.docx", "out.png", "--page", "-1"])),
+            Err("render: invalid --page `-1`: not a valid integer".into())
+        );
+        assert_eq!(
+            run(&args(&["render", "missing.docx", "out.png", "--scale", "0"])),
+            Err("render: invalid --scale `0`: scale must be a positive number".into())
+        );
+        assert_eq!(
+            run(&args(&["render", "missing.docx", "out.png", "--scale", "-2"])),
+            Err("render: invalid --scale `-2`: scale must be a positive number".into())
+        );
+        assert_eq!(
+            run(&args(&["render", "missing.docx", "out.png", "--scale", "NaN"])),
+            Err("render: invalid --scale `NaN`: scale must be a positive number".into())
+        );
+        assert_eq!(
+            run(&args(&["render", "missing.docx", "out.png", "--scale", "inf"])),
+            Err("render: invalid --scale `inf`: scale must be a positive number".into())
+        );
+
+        // Duplicate options
+        assert_eq!(run(&args(&["render", "missing.docx", "out.png", "--page", "1", "--page", "2"])), Err("render: duplicate --page option".into()));
+        assert_eq!(
+            run(&args(&["render", "missing.docx", "out.png", "--scale", "1", "--scale", "2"])),
+            Err("render: duplicate --scale option".into())
+        );
+    }
+
+    #[test]
+    fn run_rejects_missing_or_invalid_page_and_scale() {
+        // Missing operands
+        assert_eq!(run(&args(&["run", "--template", "sample", "--save", "out.png", "--page"])), Err("run: --page requires a value".into()));
+        assert_eq!(run(&args(&["run", "--template", "sample", "--save", "out.png", "--scale"])), Err("run: --scale requires a value".into()));
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--page", "--scale", "2"])),
+            Err("run: --page requires a value".into())
+        );
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--scale", "--page", "1"])),
+            Err("run: --scale requires a value".into())
+        );
+
+        // Non-numeric operands
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--page", "banana"])),
+            Err("run: invalid --page `banana`: not a valid integer".into())
+        );
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--scale", "banana"])),
+            Err("run: invalid --scale `banana`: not a number".into())
+        );
+
+        // Out-of-range values
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--page", "0"])),
+            Err("run: invalid --page `0`: page numbers start at 1".into())
+        );
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--page", "-1"])),
+            Err("run: invalid --page `-1`: not a valid integer".into())
+        );
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--scale", "0"])),
+            Err("run: invalid --scale `0`: scale must be a positive number".into())
+        );
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--scale", "-1"])),
+            Err("run: invalid --scale `-1`: scale must be a positive number".into())
+        );
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--scale", "NaN"])),
+            Err("run: invalid --scale `NaN`: scale must be a positive number".into())
+        );
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--scale", "inf"])),
+            Err("run: invalid --scale `inf`: scale must be a positive number".into())
+        );
+
+        // Duplicate options
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--page", "1", "--page", "2"])),
+            Err("run: duplicate --page option".into())
+        );
+        assert_eq!(
+            run(&args(&["run", "--template", "sample", "--save", "out.png", "--scale", "1", "--scale", "2"])),
+            Err("run: duplicate --scale option".into())
+        );
+    }
+
+    #[test]
+    fn render_and_run_valid_options_and_defaults_produce_files() {
+        let dir = std::env::temp_dir().join(format!("wc-cli-render-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let docx_path = dir.join("sample.docx");
+        // Create sample docx via `run --save sample.docx`
+        assert!(run(&args(&["run", "--template", "sample", "--save", &docx_path.to_string_lossy()])).is_ok());
+        assert!(docx_path.exists());
+
+        let docx_str = docx_path.to_string_lossy().into_owned();
+
+        // 1. render with defaults
+        let out_default = dir.join("out_default.png");
+        assert!(run(&args(&["render", &docx_str, &out_default.to_string_lossy()])).is_ok());
+        assert!(out_default.exists());
+
+        // 2. render with valid --page and --scale
+        let out_valid = dir.join("out_valid.png");
+        assert!(run(&args(&["render", &docx_str, &out_valid.to_string_lossy(), "--page", "1", "--scale", "2"])).is_ok());
+        assert!(out_valid.exists());
+
+        // 3. render with different flag order
+        let out_reordered = dir.join("out_reordered.png");
+        assert!(run(&args(&["render", &docx_str, &out_reordered.to_string_lossy(), "--scale", "1", "--page", "1"])).is_ok());
+        assert!(out_reordered.exists());
+
+        // 4. render failure leaves no output file
+        let out_invalid = dir.join("out_invalid.png");
+        assert!(run(&args(&["render", &docx_str, &out_invalid.to_string_lossy(), "--page", "banana"])).is_err());
+        assert!(!out_invalid.exists());
+
+        // 5. run --save out.png with defaults
+        let run_default = dir.join("run_default.png");
+        assert!(run(&args(&["run", "--file", &docx_str, "--save", &run_default.to_string_lossy()])).is_ok());
+        assert!(run_default.exists());
+
+        // 6. run --save out.png with --page and --scale
+        let run_valid = dir.join("run_valid.png");
+        assert!(run(&args(&["run", "--file", &docx_str, "--save", &run_valid.to_string_lossy(), "--page", "1", "--scale", "1"])).is_ok());
+        assert!(run_valid.exists());
+
+        // 7. run --save out.png with different flag order
+        let run_reordered = dir.join("run_reordered.png");
+        assert!(run(&args(&["run", "--file", &docx_str, "--scale", "1", "--page", "1", "--save", &run_reordered.to_string_lossy()])).is_ok());
+        assert!(run_reordered.exists());
+
+        // 8. run --save out.png failure leaves no output file
+        let run_invalid = dir.join("run_invalid.png");
+        assert!(run(&args(&["run", "--file", &docx_str, "--save", &run_invalid.to_string_lossy(), "--scale", "banana"])).is_err());
+        assert!(!run_invalid.exists());
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

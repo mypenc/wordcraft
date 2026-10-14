@@ -65,7 +65,10 @@ pub fn cust_geom(sppr: &El, w: f32, h: f32) -> Option<Freeform> {
             }
         }
         if !cur.is_empty() {
-            done.push((cur, false));
+            // A path drawn back to where it started is closed, though it has no `a:close` (#743:
+            // Word's cover pages), so it's filled.
+            let back = cur.len() > 2 && cur.first() == cur.last();
+            done.push((cur, back));
         }
         for (pts, closed) in done.into_iter().take(MAX_PATHS.saturating_sub(paths.len())) {
             paths.push(FreePath { pts: pts.into_iter().take(MAX_POINTS).map(scale).collect(), closed: closed && !fill_none });

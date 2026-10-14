@@ -38,6 +38,16 @@ pub const NAMESPACES: &[(&str, &str)] = &[
     ("v", "urn:schemas-microsoft-com:vml"),
     ("o", "urn:schemas-microsoft-com:office:office"),
     ("w10", "urn:schemas-microsoft-com:office:word"),
+    // Office 2016 charts (`cx:chart`), and the namespaces their `mc:Choice` requires.
+    ("cx", "http://schemas.microsoft.com/office/drawing/2014/chartex"),
+    ("cx1", "http://schemas.microsoft.com/office/drawing/2015/9/8/chartex"),
+    ("cx2", "http://schemas.microsoft.com/office/drawing/2015/10/21/chartex"),
+    ("cx3", "http://schemas.microsoft.com/office/drawing/2016/5/9/chartex"),
+    ("cx4", "http://schemas.microsoft.com/office/drawing/2016/5/10/chartex"),
+    ("cx5", "http://schemas.microsoft.com/office/drawing/2016/5/11/chartex"),
+    ("cx6", "http://schemas.microsoft.com/office/drawing/2016/5/12/chartex"),
+    ("cx7", "http://schemas.microsoft.com/office/drawing/2016/5/13/chartex"),
+    ("cx8", "http://schemas.microsoft.com/office/drawing/2016/5/14/chartex"),
 ];
 
 /// The `a:ext` URI under which a drawing is marked decorative ([MS-ODRAWXML]), and the

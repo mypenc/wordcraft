@@ -96,6 +96,7 @@
 	Ignore web and file addresses	Omitir direcciones web y de archivo
 	Ignore words in capitals	Omitir palabras en mayúsculas
 	Ignore words with numbers	Omitir palabras con números
+	In the margin	En el margen
 	Inches	Pulgadas
 	Formatting exceptions	Excepciones de formato
 	Include level number from:	Incluir número de nivel de:
@@ -123,9 +124,12 @@
 	Number alignment:	Alineación del número:
 	Number format	Formato de número
 	Number style for this level:	Estilo de número para este nivel:
+	Only for the selected text	Solo para el texto seleccionado
 	Outside border	Borde exterior
 	Overtype	Sobrescribir
 	Overtype (typing replaces the characters after the caret)	Sobrescribir (lo que escribes reemplaza los caracteres tras el cursor)
+	Show alignment guides when moving pictures and shapes	Mostrar guías de alineación al mover imágenes y formas
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Los objetos que mueves se ajustan a los bordes y el centro de la página, a los márgenes y a otros objetos. Mantén pulsada Alt para moverlos libremente.
 	Page display	Visualización de página
 	Paragraph marks	Marcas de párrafo
 	Personalize	Personalizar
@@ -1449,6 +1453,7 @@
 	Demote	Degradar
 	Go Back	Volver
 	Toggle Unicode Character	Alternar carácter Unicode
+	Type Character Code	Escribir código de carácter
 	Toggle Field Codes	Alternar códigos de campo
 	Edit Field Code	Editar código de campo
 	Unlink Fields	Desvincular campos
@@ -2069,6 +2074,7 @@
 	Hyphenation Options…	Opciones de separación de palabras…
 	Hyphenation zone:	Zona de separación:
 	Italian	Italiano
+	Croatian	Croata
 	Japanese	Japonés
 	Korean	Coreano
 	Limit consecutive hyphens to:	Limitar guiones consecutivos a:
@@ -2441,9 +2447,49 @@ preview	Title	Título
 	Other Large Operators	Otros operadores grandes
 	Region:	Región:
 	Automatic ({region})	Automático ({region})
+	Text of the nearest paragraph with a given style (running headers)	Texto del párrafo más cercano con un estilo dado (encabezados variables)
+	Style name:	Nombre del estilo:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtrar destinatarios
+	Sort Recipients	Ordenar destinatarios
+	Filter and Sort	Filtrar y ordenar
+	And	Y
+	Or	O
+	Comparison	Comparación
+	Compare to	Comparar con
+	Add Condition	Agregar condición
+	Remove condition	Quitar condición
+	Sort by	Ordenar por
+	Then by	Luego por
+	Ascending	Ascendente
+	Descending	Descendente
+	Equal to	Igual a
+	Not equal to	Distinto de
+	Less than	Menor que
+	Greater than	Mayor que
+	Less than or equal	Menor o igual que
+	Greater than or equal	Mayor o igual que
+	Is blank	Está vacío
+	Is not blank	No está vacío
+	Contains	Contiene
+	Does not contain	No contiene
+	{count} of {total} recipients will be merged.	Se combinarán {count} de {total} destinatarios.
+	Take the last match on the page	Tomar la última coincidencia de la página
+	Show its list number	Mostrar su número de lista
+	Show its number relative to this field	Mostrar su número respecto a este campo
+	Show its number with all higher levels	Mostrar su número con todos los niveles superiores
+	Number only, without the label's words	Solo el número, sin las palabras de la etiqueta
+	Add whether it is above or below	Añadir si está arriba o abajo
 	Start-up	Inicio de la aplicación
 	Show the Start screen when WordCraft starts	Mostrar la pantalla de inicio al abrir WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Activado: WordCraft se abre en Archivo › Inicio, con un documento en blanco, las plantillas y tus documentos recientes. Desactivado: abre un documento en blanco.
+	Copy to	Copiar en
+
+# Document naming and account controls.
+	Rename Document	Cambiar nombre del documento
+	Document name	Nombre del documento
+	Rename	Cambiar nombre
+	Account	Cuenta
 	Privacy Options	Opciones de privacidad
 	Trust Center	Centro de confianza
 	Privacy for this document	Privacidad de este documento
@@ -2451,3 +2497,48 @@ preview	Title	Título
 	Leave out the date and time of comments and tracked changes when saving	Omitir la fecha y la hora de los comentarios y los cambios controlados al guardar
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	El documento que editas conserva los nombres y las fechas; solo el archivo guardado los omite.
 	Privacy Settings	Configuración de privacidad actual
+	Waiting for the save to finish…	Esperando a que termine de guardarse…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Se canceló el guardado de {name}; sigue abierto y no se perdió nada.
+	Paper	Papel
+	Paper size:	Tamaño del papel:
+	Custom size	Tamaño personalizado
+	More Paper Sizes…	Más tamaños de papel…
+	The margins don't fit on a page this size; make the margins smaller first.	Los márgenes no caben en una página de este tamaño; reduzca primero los márgenes.
+	Full Screen	Pantalla completa
+	Full\nScreen	Pantalla\ncompleta
+	Use the browser's full screen (F11)	Use la pantalla completa del navegador (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} pulg.
+	{name}   {height} × {width} mm	{name}   {height} × {width} mm
+	{width} × {height} mm	{width} × {height} mm
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Investigador necesita un servicio en línea; WordCraft mantiene tus documentos sin conexión.
+	These settings will be used for new documents.	Esta configuración se usará para los documentos nuevos.
+	can't split at the first row	no se puede dividir la tabla en la primera fila
+	select two or more cells to merge	selecciona dos o más celdas para combinarlas
+	there is no ink to replay	no hay tinta que reproducir
+	there's no citation after the caret	no hay ninguna cita después del cursor
+	this item is already at the top level	este elemento ya está en el nivel superior
+	Envelope #10	Sobre n.º 10
+	Envelope DL	Sobre DL
+	Reading Mode	Modo lectura
+	Column width	Ancho de columna
+	Text size	Tamaño del texto
+	Edit Document	Editar documento
+	Go to what:	Ir a:
+	Type +2 or -1 to move from the page you are on.	Escribe +2 o -1 para moverte desde la página actual.
+	Suggested	Sugerencias
+	Set Proofing Language…	Establecer idioma de revisión…
+	Language Preferences…	Preferencias de idioma…
+
+# Dictionaries folder (#1063)
+	Dictionaries	Diccionarios
+	Dictionaries folder:	Carpeta de diccionarios:
+	Not set: the system's usual places	Sin definir: las ubicaciones habituales del sistema
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Los archivos .aff y .dic de Hunspell de esta carpeta (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) se usan antes que los del sistema.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: no se encontró ningún diccionario
+
+# Backstage › Recover (#586)
+	Recover	Recuperar

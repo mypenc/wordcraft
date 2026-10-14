@@ -368,7 +368,7 @@ fn import_num(doc: &mut Document, src: &Document, num: u32, map: &HashMap<String
     for l in &mut levels {
         l.style = l.style.as_deref().and_then(|s| map.get(s).cloned().or_else(|| doc.styles.get(s).map(|x| x.id.clone())));
     }
-    doc.numbering.abstracts.push(AbstractNum { id: new_abs, name: abs.name.clone(), levels });
+    doc.numbering.abstracts.push(AbstractNum { id: new_abs, name: abs.name.clone(), levels, ..Default::default() });
     doc.numbering.nums.push(Num { id: new_num, abstract_id: new_abs, ..n.clone() });
     done.insert(num, new_num);
     Some(new_num)

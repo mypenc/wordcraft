@@ -12,6 +12,20 @@ pub fn read_omath(e: &El, jc: MathJc) -> Math {
     Math { nodes: merge_runs(arg(e, 0)), omml: e.to_xml(), jc, linear: false }
 }
 
+/// A colour every math run shares, taken off the runs: it is the equation's own colour, as
+/// [`write_equation`](crate::write::math::write_equation) spreads it (#1467). The source OMML
+/// is kept: the writer replaces it only when the colour changes.
+pub fn lift_color(math: &mut Math) -> Option<Rgb> {
+    let (mut shared, mut uniform) = (None, true);
+    wordcraft_doc::math_edit::each_run_mut(&mut math.nodes, &mut |r| match shared {
+        None => shared = Some(r.color),
+        Some(c) => uniform &= c == r.color,
+    });
+    let c = shared.flatten().filter(|_| uniform)?;
+    wordcraft_doc::math_edit::each_run_mut(&mut math.nodes, &mut |r| r.color = None);
+    Some(c)
+}
+
 /// `m:oMathParaPr/m:jc`.
 pub fn para_jc(para: &El) -> MathJc {
     match para.child("m:oMathParaPr").and_then(|p| p.child("m:jc")).and_then(|j| j.attr("m:val")) {

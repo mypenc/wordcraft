@@ -1,6 +1,7 @@
 //! Spreadsheets as mail-merge recipient lists (#334): the sheet names of an Excel workbook
-//! (`.xlsx` / `.xlsm`, ECMA-376 Part 1 §18 SpreadsheetML) or an OpenDocument spreadsheet (`.ods`,
-//! OASIS ODF 1.3 §9.1), and one sheet's cells as rows of display strings.
+//! (`.xlsx` / `.xlsm`, ECMA-376 Part 1 §18 SpreadsheetML; legacy `.xls` BIFF8 in [`xls`], #778)
+//! or an OpenDocument spreadsheet (`.ods`, OASIS ODF 1.3 §9.1), and one sheet's cells as rows of
+//! display strings.
 //!
 //! Values: SpreadsheetML shared strings (rich-text runs joined, phonetic runs skipped), inline
 //! strings, formula results (the cached `<v>`), booleans (`TRUE`/`FALSE`), errors as their text
@@ -23,8 +24,13 @@ use std::io::{Cursor, Read};
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 
+mod xls;
+
+#[doc(hidden)]
+pub use xls::build as xls_fixture;
+
 /// File extensions read as spreadsheets.
-pub const EXTENSIONS: &[&str] = &["xlsx", "xlsm", "ods"];
+pub const EXTENSIONS: &[&str] = &["xlsx", "xlsm", "xls", "ods"];
 
 /// Largest zip entry inflated.
 pub const MAX_ENTRY: u64 = 64 << 20;
@@ -51,6 +57,8 @@ const MAX_XML_DEPTH: usize = 256;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Xlsx,
+    /// Excel 97–2003 (BIFF8 in a compound file).
+    Xls,
     Ods,
 }
 
@@ -71,6 +79,9 @@ pub fn is_extension(ext: &str) -> bool {
 
 /// What kind of spreadsheet `bytes` holds, from the package contents (`None`: not one).
 pub fn detect(bytes: &[u8]) -> Option<Kind> {
+    if xls::is_xls(bytes) {
+        return Some(Kind::Xls);
+    }
     if !bytes.starts_with(b"PK") {
         return None;
     }
@@ -80,16 +91,23 @@ pub fn detect(bytes: &[u8]) -> Option<Kind> {
 
 /// The sheet names, in workbook order.
 pub fn sheet_names(bytes: &[u8]) -> Result<Vec<String>, String> {
+    if bytes.starts_with(&xls::MAGIC) {
+        return xls::sheet_names(bytes);
+    }
     let mut pkg = Package::open(bytes)?;
     match pkg.kind().ok_or("not an Excel or OpenDocument spreadsheet")? {
         Kind::Xlsx => Ok(xlsx_sheets(&mut pkg)?.into_iter().map(|s| s.name).collect()),
         Kind::Ods => Ok(ods_read(&pkg.read("content.xml")?, None)?.0),
+        Kind::Xls => xls::sheet_names(bytes),
     }
 }
 
 /// One sheet's non-blank rows of display strings (trailing blank cells trimmed), with the
 /// workbook's sheet names.
 pub fn read_rows(bytes: &[u8], pick: Pick<'_>) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
+    if bytes.starts_with(&xls::MAGIC) {
+        return xls::read_rows(bytes, pick);
+    }
     let mut pkg = Package::open(bytes)?;
     match pkg.kind().ok_or("not an Excel or OpenDocument spreadsheet")? {
         Kind::Xlsx => {
@@ -100,6 +118,7 @@ pub fn read_rows(bytes: &[u8], pick: Pick<'_>) -> Result<(Vec<String>, Vec<Vec<S
             let rows = xlsx_rows(&mut pkg, &sheet.path)?;
             Ok((names, rows))
         }
+        Kind::Xls => xls::read_rows(bytes, pick),
         Kind::Ods => {
             let content = pkg.read("content.xml")?;
             // Names first, so a name can be resolved to its position.

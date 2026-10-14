@@ -1,8 +1,10 @@
 //! References tab: table of contents, footnotes/endnotes, captions; field updates.
 
 use serde_json::{Value, json};
+use wordcraft_doc::numbering::{Counters, LevelSuffix};
 use wordcraft_doc::para::{InlineObject, NoteKind, OBJ};
 use wordcraft_doc::props::{CharProps, TabAlign, TabLeader, TabStop};
+use wordcraft_doc::section::NumFormat;
 use wordcraft_doc::{Block, Paragraph, PartKind, Path, Pos, StoryRef, para_block};
 
 use super::{delete_selection, sel_result};
@@ -244,11 +246,26 @@ fn toc_entries(s: &Session, f: &FieldCode) -> Vec<TocEntry> {
     let tc = f.has('f').then(|| f.arg('f').unwrap_or("").to_ascii_uppercase());
     let tc_levels = f.arg('l').and_then(level_range).unwrap_or((1, 9));
     let mut v = Vec::new();
+    // Every numbered paragraph advances the list counters, so an entry carries the number its
+    // heading shows (`1.1`), followed by the level's separator, as Word writes it.
+    let mut counters = Counters::default();
     for path in s.doc.para_paths(StoryRef::Body) {
+        let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
+        let number = p
+            .props
+            .numbering
+            .or_else(|| s.doc.styles.resolve_para(&p.props).numbering)
+            .filter(|n| n.num != 0)
+            .and_then(|n| counters.next_label(&s.doc.numbering, n.num, n.level))
+            .filter(|(label, def)| !label.is_empty() && !matches!(def.format, NumFormat::Bullet | NumFormat::None))
+            .map(|(label, def)| match def.suffix {
+                LevelSuffix::Tab => format!("{label}\t"),
+                LevelSuffix::Space => format!("{label} "),
+                LevelSuffix::Nothing => label,
+            });
         if path.depth() > 0 {
             continue;
         }
-        let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
         let style = p.props.style.as_deref().unwrap_or("Normal");
         if style.starts_with("TOC") {
             continue;
@@ -272,7 +289,8 @@ fn toc_entries(s: &Session, f: &FieldCode) -> Vec<TocEntry> {
         if let Some(l) = by_style.or(by_outline).or(if hidden { None } else { by_heading }) {
             let t = p.plain_text().replace(['\u{000C}', '\n', '\t'], " ").trim().to_string();
             if !t.is_empty() {
-                v.push(TocEntry { path: path.clone(), level: l - 1, text: t, lead });
+                let text = number.map_or_else(|| t.clone(), |n| format!("{n}{t}"));
+                v.push(TocEntry { path: path.clone(), level: l - 1, text, lead });
             }
         }
         if let Some(id) = &tc {
@@ -694,43 +712,23 @@ fn caption(s: &mut Session, v: &Value) -> CmdResult {
     sel_result(s)
 }
 
-/// The number part of a heading's list label (`Chapter 2.` → `2`).
-fn chapter_number(label: &str) -> String {
-    let word = label.split_whitespace().last().unwrap_or("");
-    word.trim_matches(|c: char| !c.is_alphanumeric()).to_string()
-}
-
 /// Renumber the body's SEQ fields in document order, honouring `\* format`, `\s level` (restart
 /// after each heading of that level), `\r n` (reset to n), `\c` (repeat) and `\h` (hide), and
-/// fill chapter-number `STYLEREF n \s` fields with the last level-n heading's number (its list
-/// label, or its count when the heading isn't numbered).
+/// fill body STYLEREF fields ([`wordcraft_layout::styleref`]): chapter numbers (`STYLEREF n \s`,
+/// the last level-n heading's number, or its count when the heading isn't numbered) and the
+/// text or number of the nearest paragraph of a style.
 pub fn update_seq(s: &mut Session) -> Result<(), CmdError> {
-    let mut counters = wordcraft_doc::numbering::Counters::default();
     let mut headings = [0u32; 9];
-    let mut chapter: [String; 9] = Default::default();
-    let mut heading_text: [String; 9] = Default::default();
     let mut seq: std::collections::HashMap<String, (u32, u32)> = Default::default();
+    // Built on the first STYLEREF (field results don't change what it finds).
+    let mut styles: Option<wordcraft_layout::styleref::StyleIndex> = None;
     for path in s.doc.para_paths(StoryRef::Body) {
         let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
-        let label = p
-            .props
-            .numbering
-            .or_else(|| s.doc.styles.resolve_para(&p.props).numbering)
-            .filter(|n| n.num != 0)
-            .and_then(|n| counters.next_label(&s.doc.numbering, n.num, n.level))
-            .map(|(l, _)| l);
         if let Some(l) = heading_style_level(p)
             && let Some(k) = (l as usize).checked_sub(1)
             && let Some(count) = headings.get_mut(k)
         {
             *count = count.saturating_add(1);
-            let n = label.map(|l| chapter_number(&l)).filter(|n| !n.is_empty()).unwrap_or_else(|| count.to_string());
-            if let Some(c) = chapter.get_mut(k) {
-                *c = n;
-            }
-            if let Some(t) = heading_text.get_mut(k) {
-                *t = p.plain_text().trim().to_string();
-            }
         }
         let mut updates: Vec<(usize, String)> = Vec::new();
         for (k, o) in p.objects.iter().enumerate() {
@@ -756,15 +754,9 @@ pub fn update_seq(s: &mut Session) -> Result<(), CmdError> {
                     updates.push((k, if f.has('h') { String::new() } else { fmt.format(n.0) }));
                 }
                 "STYLEREF" => {
-                    let level = f
-                        .args
-                        .first()
-                        .and_then(|a| a.strip_prefix("Heading").unwrap_or(a).trim().parse::<usize>().ok())
-                        .and_then(|l| l.checked_sub(1));
-                    let Some(level) = level else { continue };
-                    let r = if f.has('s') || f.has('n') { chapter.get(level) } else { heading_text.get(level) };
-                    if let Some(r) = r {
-                        updates.push((k, r.clone()));
+                    let ix = styles.get_or_insert_with(|| wordcraft_layout::styleref::StyleIndex::build(&s.doc));
+                    if let Some(i) = ix.index_of(&path) {
+                        updates.push((k, ix.eval(instr, wordcraft_layout::styleref::At::Body(i))));
                     }
                 }
                 _ => {}
@@ -872,6 +864,96 @@ mod tests {
             }
         }
         out
+    }
+
+    /// #775: body STYLEREF fields show the nearest paragraph of the style before them.
+    #[test]
+    fn body_styleref_finds_the_heading_before_it() {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("Intro\nChapter One\ntext here\nChapter Two\nend"));
+        for t in ["Chapter One", "Chapter Two"] {
+            s.run("select.text", &json!({"text": t})).unwrap();
+            s.run("styles.apply", &json!({"style": "Heading 1"})).unwrap();
+        }
+        s.run("select.text", &json!({"text": "text here"})).unwrap();
+        s.run("caret.end", &json!({})).unwrap();
+        s.run("insert.field", &json!({"instr": r#"STYLEREF "Heading 1" \* MERGEFORMAT"#})).unwrap();
+        s.run("caret.docEnd", &json!({})).unwrap();
+        s.run("insert.field", &json!({"instr": "STYLEREF 1 \\p"})).unwrap();
+        s.run("caret.docStart", &json!({})).unwrap();
+        s.run("insert.field", &json!({"instr": "STYLEREF \"Heading 1\" \\p"})).unwrap();
+        s.run("insert.field", &json!({"instr": "STYLEREF \"No Such Style\""})).unwrap();
+        let results: Vec<String> = fields(&s).into_iter().map(|f| f.1).collect();
+        assert_eq!(results, ["below", wordcraft_layout::styleref::NO_TEXT, "Chapter One", "above"]);
+    }
+
+    /// #775: a template's running header `STYLEREF "heading 1"` (a complex field, opened from
+    /// DOCX) shows each page's chapter, and keeps its code through a save.
+    #[test]
+    fn docx_styleref_header_shows_each_page_s_chapter() {
+        let ns = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#;
+        let heading = |t: &str, brk: bool| {
+            let b = if brk { "<w:pageBreakBefore/>" } else { "" };
+            format!(
+                r#"<w:p><w:pPr><w:pStyle w:val="Heading1"/>{b}</w:pPr><w:r><w:t>{t}</w:t></w:r></w:p><w:p><w:r><w:t>Body of {t}.</w:t></w:r></w:p>"#
+            )
+        };
+        let body = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><w:document {ns}><w:body>{}{}{}<w:sectPr><w:headerReference w:type="default" r:id="rIdH"/></w:sectPr></w:body></w:document>"#,
+            heading("Rivers", false),
+            heading("Mountains", true),
+            heading("Deserts", true)
+        );
+        let header = format!(
+            r#"<w:hdr {ns}><w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> STYLEREF  "heading 1" \* MERGEFORMAT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>Cached</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:hdr>"#
+        );
+        let styles = format!(
+            r#"<w:styles {ns}><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/></w:style></w:styles>"#
+        );
+        let root = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#;
+        let rels = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdH" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>"#;
+        let mut zw = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, text) in [
+            ("_rels/.rels", root),
+            ("word/document.xml", body.as_str()),
+            ("word/_rels/document.xml.rels", rels),
+            ("word/header1.xml", header.as_str()),
+            ("word/styles.xml", styles.as_str()),
+        ] {
+            zw.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut zw, text.as_bytes()).unwrap();
+        }
+        let bytes = zw.finish().unwrap().into_inner();
+        let headers = |s: &mut Session| -> Vec<String> {
+            s.layout()
+                .pages
+                .iter()
+                .map(|p| {
+                    p.header
+                        .iter()
+                        .filter_map(|it| {
+                            if let wordcraft_layout::Placed::Lines { para, .. } = it {
+                                Some(para.shown.iter().map(|x| x.1.clone()).collect::<String>())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<String>()
+                })
+                .collect()
+        };
+        let mut s = Session::new(crate::io::open_bytes("chapters.docx", &bytes).unwrap());
+        assert_eq!(headers(&mut s), ["Rivers", "Mountains", "Deserts"]);
+        let saved = crate::io::save_bytes("chapters.docx", &s.doc).unwrap();
+        let mut again = Session::new(crate::io::open_bytes("chapters.docx", &saved).unwrap());
+        assert_eq!(headers(&mut again), ["Rivers", "Mountains", "Deserts"]);
+        let hid = again.doc.last_section.headers.default.unwrap();
+        let instr = again.doc.para_paths(StoryRef::Part(hid)).iter().find_map(|p| {
+            again.doc.para(StoryRef::Part(hid), p).unwrap().objects.iter().find_map(|o| match o {
+                InlineObject::Field { instr, .. } => Some(instr.clone()),
+                _ => None,
+            })
+        });
+        assert!(instr.is_some_and(|i| i.contains(r#"STYLEREF  "heading 1""#)));
     }
 
     /// #402: Custom Table of Contents settings become TOC switches, and updating honours them:

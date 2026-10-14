@@ -7,11 +7,13 @@
 //! column left of it to its contents. The app sends each click or finished drag here in page
 //! points, so each is one command (one undo step when it changes the document).
 
+use std::collections::BTreeMap;
+
 use serde_json::Value;
 use wordcraft_doc::para::Anchor;
 use wordcraft_doc::props::TableFloat;
 use wordcraft_doc::{Document, Path, Pos, StoryRef, Table};
-use wordcraft_geom::Rect;
+use wordcraft_geom::{Point, Rect};
 use wordcraft_layout::{DocLayout, Placed};
 
 use super::table_resize::{self, CellBox, Edge, REACH, ResizeTarget};
@@ -251,6 +253,80 @@ pub fn cell_rects(l: &DocLayout, doc: &Document, range: &CellRange) -> Vec<(usiz
     out
 }
 
+/// What a stream selection from `a` to `b` shades, as in Word: its text, except that each row of
+/// a table it takes from start to end (running into or across the table, `table::extend_selection`
+/// takes whole rows) shades all its cells instead (an empty one too), on every page. A table
+/// both ends are in keeps its text (whole cells there are a `CellRange`).
+pub fn selection_rects(l: &DocLayout, doc: &Document, a: &Pos, b: &Pos, page_hint: usize) -> Vec<(usize, Rect)> {
+    let text = l.selection_rects(doc, a, b, page_hint);
+    let (a, b) = if a <= b { (a, b) } else { (b, a) };
+    if a.story != b.story {
+        return text;
+    }
+    let mut seen = BTreeMap::new();
+    let mut cells = Vec::new();
+    for (pi, pg) in l.pages.iter().enumerate() {
+        for it in &pg.items {
+            // A vertically merged cell's box spans its rows (#640), as in `cell_rects`.
+            if let Placed::Cell { rect, table, row, story, covered: false, .. } = it
+                && *story == a.story
+                && row_taken(doc, a, b, table, *row, &mut seen)
+                && !outer_row_taken(doc, a, b, table, &mut seen)
+            {
+                cells.push((pi, *rect));
+            }
+        }
+    }
+    if cells.is_empty() {
+        return text;
+    }
+    let mut out: Vec<(usize, Rect)> = text
+        .into_iter()
+        .filter(|(pi, r)| {
+            let mid = Point::new(r.x + r.w / 2.0, r.y + r.h / 2.0);
+            !cells.iter().any(|(cp, c)| cp == pi && c.contains(mid))
+        })
+        .collect();
+    out.extend(cells);
+    out
+}
+
+/// Whether the selection `a`..`b` (in order, one story) takes row `r` of table `tp` whole: it
+/// runs from the row's start (or before it) to its end (or past it) and doesn't both start and
+/// end in the table. Remembered in `seen`.
+fn row_taken(doc: &Document, a: &Pos, b: &Pos, tp: &Path, r: usize, seen: &mut BTreeMap<(Path, usize), bool>) -> bool {
+    if let Some(&taken) = seen.get(&(tp.clone(), r)) {
+        return taken;
+    }
+    let inside = |p: &Pos| p.path.0.len() > tp.0.len() && p.path.0.starts_with(&tp.0);
+    let taken = if inside(a) && inside(b) {
+        false
+    } else {
+        let mut row = tp.0.clone();
+        row.push(u32::try_from(r).unwrap_or(u32::MAX));
+        let (a_in, b_in) = (a.path.0.starts_with(&row), b.path.0.starts_with(&row));
+        // Where the row starts and ends matters only for an end in it.
+        let ends = if a_in || b_in { table::row_ends(doc, a.story, tp, r) } else { None };
+        let from = if a_in { ends.as_ref().is_some_and(|(start, _)| start == a) } else { a.path.0 < row };
+        let to = if b_in { ends.as_ref().is_some_and(|(_, end)| end == b) } else { b.path.0 > row };
+        from && to
+    };
+    seen.insert((tp.clone(), r), taken);
+    taken
+}
+
+/// Whether a row of a table that table `tp` is nested in is taken whole (it shades instead).
+fn outer_row_taken(doc: &Document, a: &Pos, b: &Pos, tp: &Path, seen: &mut BTreeMap<(Path, usize), bool>) -> bool {
+    let mut p = tp.clone();
+    while let Some((outer, r, _)) = p.cell() {
+        if row_taken(doc, a, b, &outer, r, seen) {
+            return true;
+        }
+        p = outer;
+    }
+    false
+}
+
 /// The click: `page`, `x`, `y` and the resize `reach`.
 fn point(v: &Value) -> Result<(usize, f32, f32, f32), CmdError> {
     let page =
@@ -418,8 +494,9 @@ fn fit_column(s: &mut Session, v: &Value) -> CmdResult {
         wordcraft_layout::measure_table_columns(&s.doc, t).get(g).copied().ok_or_else(|| CmdError::Failed("there's no such column".into()))?;
     let current = target.widths().get(g).copied().unwrap_or(0.0);
     // As in Word, the columns right of it keep their widths and move with the border, so the
-    // table narrows or widens: up to the right margin, never below the column's narrowest content.
-    let room = current + l.pages.get(page).map_or(0.0, |pg| (pg.body.right() - target.right()).max(0.0));
+    // table narrows or widens: up to the right margin (a nested table's cell's), never below the
+    // column's narrowest content.
+    let room = current + (room_right(&l, &s.doc, page, &target) - target.right()).max(0.0);
     let want = widest.min(room.max(narrowest));
     if let Some(w) = target.plan(want - current, 0.0, true).widths {
         let t = s.doc.table_mut(target.story, &target.table)?;
@@ -427,6 +504,22 @@ fn fit_column(s: &mut Session, v: &Value) -> CmdResult {
         table_resize::touch(s, &target)?;
     }
     sel_result(s)
+}
+
+/// Where the room right of table `target` ends on page `page` (page x): the right margin, or
+/// for a table nested in a cell the right edge of that cell's text.
+fn room_right(l: &DocLayout, doc: &Document, page: usize, target: &ResizeTarget) -> f32 {
+    let margin = l.pages.get(page).map_or(target.right(), |pg| pg.body.right());
+    let Some((outer, row, cell)) = target.table.cell() else { return margin };
+    let Some(t) = doc.table(target.story, &outer) else { return margin };
+    let boxes = table_resize::cell_boxes(l, page);
+    let Some(b) = boxes.iter().find(|b| b.story == target.story && b.table == outer && b.row == row && b.cell == cell) else {
+        return margin;
+    };
+    // A right-to-left table has its cells' start (left) margin on their right.
+    let m = wordcraft_layout::cell_margins(doc, t, row, cell);
+    let inset = if t.props.bidi_visual { m[1] } else { m[3] };
+    (b.rect.right() - inset).min(margin)
 }
 
 #[cfg(test)]
@@ -736,6 +829,44 @@ mod tests {
         assert!((c2.w - fit[2].1).abs() < 0.5 && c2.w < c.w, "{c:?} → {c2:?}");
     }
 
+    /// A nested table's column fits within the cell around the table: the table widens only to
+    /// the right edge of that cell's text, not to the page's right margin, and the table around
+    /// it keeps its columns.
+    #[test]
+    fn a_nested_tables_column_fits_within_its_cell() {
+        let mut s = table_session(1, 2);
+        s.sel = Selection::caret(cell_pos(&s, 0, 0));
+        s.run("insert.table", &json!({"rows": 1, "cols": 2})).unwrap();
+        let (inner, _, _) = s.sel.focus.path.cell().unwrap();
+        let rect = |s: &mut Session, table: &Path, cell: usize| {
+            s.layout().pages[0]
+                .items
+                .iter()
+                .find_map(|it| match it {
+                    Placed::Cell { rect, table: t, row: 0, cell: c, .. } if t == table && *c == cell => Some(*rect),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        // Its empty columns narrow first, leaving room right of it in its cell.
+        for col in [1, 0] {
+            let r = rect(&mut s, &inner, col);
+            s.run("table.fitColumn", &json!({"page": 0, "x": r.right(), "y": mid_y(r)})).unwrap();
+        }
+        s.run("text.insert", &json!({"text": "word ".repeat(40)})).unwrap();
+        let outer = table_path(&s);
+        let host = rect(&mut s, &outer, 0);
+        let (a, b) = (rect(&mut s, &inner, 0), rect(&mut s, &inner, 1));
+        assert!(b.right() < host.right() - 40.0, "{b:?} in {host:?}");
+        s.run("table.fitColumn", &json!({"page": 0, "x": a.right(), "y": mid_y(a)})).unwrap();
+        let (a1, b1) = (rect(&mut s, &inner, 0), rect(&mut s, &inner, 1));
+        let text_right = host.right() - wordcraft_layout::cell_margins(&s.doc, &first_table(&s), 0, 0)[3];
+        assert!(a1.w > a.w + 40.0 && (b1.w - b.w).abs() < 0.5, "{a:?} {b:?} → {a1:?} {b1:?}");
+        assert!((b1.right() - text_right).abs() < 0.5, "the table fills its cell's text: {b1:?}, {text_right}");
+        let host1 = rect(&mut s, &outer, 0);
+        assert_eq!((host1.x, host1.w), (host.x, host.w), "the table around it keeps its columns");
+    }
+
     /// Pasting formatting onto a selected column leaves its text (it used to clear it).
     #[test]
     fn the_format_painter_keeps_a_selected_columns_text() {
@@ -833,6 +964,41 @@ mod tests {
         drag_to(&mut s, into);
         assert!(s.cell_range().is_none());
         assert_eq!(s.sel, Selection { anchor: Pos::body(0, 2), focus: Pos { off: 4, ..cell_pos(&s, 1, 2) } });
+    }
+
+    /// A drag from the text before a table into it takes whole rows, and they shade every cell
+    /// of them (an empty one too), not just their letters; the rows it doesn't take and a table
+    /// both ends are in shade their text.
+    #[test]
+    fn a_selection_into_a_table_shades_its_rows_whole_cells() {
+        let mut s = Session::new(Document::new());
+        s.run("text.insert", &json!({"text": "Intro"})).unwrap();
+        s.run("text.newParagraph", &json!({})).unwrap();
+        s.run("insert.table", &json!({"rows": 3, "cols": 2})).unwrap();
+        fill(&mut s);
+        let emptied = cell_pos(&s, 0, 1);
+        s.sel = Selection { anchor: emptied.clone(), focus: Pos { off: 4, ..emptied } };
+        s.run("text.delete", &json!({})).unwrap();
+        assert!(para(&s, 0, 1).is_empty());
+        s.sel = Selection::caret(Pos::body(0, 2));
+        let into = cell_pos(&s, 1, 0);
+        drag_to(&mut s, into);
+        let (a, b) = s.sel.ordered();
+        let l = s.layout();
+        let shaded = selection_rects(&l, &s.doc, &a, &b, 0);
+        for r in 0..3 {
+            for c in 0..2 {
+                let cell = cell_rect(&mut s, r, c);
+                assert_eq!(shaded.iter().filter(|(_, x)| *x == cell).count(), usize::from(r < 2), "cell {r},{c}");
+            }
+        }
+        let first = cell_rect(&mut s, 0, 0);
+        let on = |x: &Rect| first.contains(Point::new(x.x + x.w / 2.0, x.y + x.h / 2.0));
+        assert_eq!(shaded.iter().filter(|(_, x)| on(x)).count(), 1, "the cell, its letters not again");
+        assert!(shaded.iter().any(|(_, x)| x.bottom() <= first.y), "and the text before the table");
+        // Both ends in the table (here a whole row of it): its text.
+        let (start, end) = table::row_ends(&s.doc, StoryRef::Body, &table_path(&s), 2).unwrap();
+        assert_eq!(selection_rects(&l, &s.doc, &start, &end, 0), l.selection_rects(&s.doc, &start, &end, 0));
     }
 
     /// Clicks away from the areas, and hostile numbers: an error and no change, never a panic.

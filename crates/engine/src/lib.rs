@@ -14,6 +14,7 @@ mod io_ext;
 pub mod keymap;
 pub mod math_gallery;
 pub mod print;
+pub mod recovery;
 pub mod ribbon;
 pub mod sample;
 mod session;
@@ -170,6 +171,8 @@ mod tests;
 mod tests_bidi;
 #[cfg(test)]
 mod tests_fonts;
+#[cfg(test)]
+mod tests_revision_checks;
 #[cfg(test)]
 mod tests_typing;
 #[cfg(test)]

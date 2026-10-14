@@ -52,7 +52,7 @@ pub struct LangInfo {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 19] = [
+pub static LANGUAGES: [LangInfo; 20] = [
     LangInfo { code: "en", name: "English", source: "", prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
     // Simplified Chinese; `zh`, `zh-CN`, `zh-SG` and `zh-Hans-*` resolve here (see `candidates`).
     LangInfo {
@@ -118,7 +118,14 @@ pub static LANGUAGES: [LangInfo; 19] = [
     LangInfo { code: "de", name: "Deutsch", source: include_str!("de.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
     // Russian; `ru`, `ru-RU`, `ru_RU.UTF-8` and other regions resolve here.
     LangInfo { code: "ru", name: "Русский", source: include_str!("ru.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
-    LangInfo { code: "tr", name: "Türkçe", source: include_str!("tr.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+    LangInfo {
+        code: "tr",
+        name: "Türkçe",
+        source: include_str!("tr.tsv"),
+        prefer_hans: false,
+        editing_lang: Some("tr-TR"),
+        catalog: OnceLock::new(),
+    },
     // Italian; `it-IT`, `it-CH` and `it-*` resolve here. New documents are written in
     // Italian: `wordcraft-proof` checks it (`ProofLang::It`).
     LangInfo {
@@ -137,6 +144,8 @@ pub static LANGUAGES: [LangInfo; 19] = [
     LangInfo {
         code: "bg", name: "Български", source: include_str!("bg.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new()
     },
+    // Vietnamese; `vi`, `vi-VN` and `vi_VN.UTF-8` resolve here.
+    LangInfo { code: "vi", name: "Tiếng Việt", source: include_str!("vi.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
 ];
 
 impl LangInfo {
@@ -292,23 +301,9 @@ pub fn system_region() -> wordcraft_engine::Region {
     if cfg!(test) {
         return wordcraft_engine::Region::default();
     }
-    let var = |name: &str| std::env::var(name).ok().filter(|v| usable_locale(v));
-    // One tag for everything: an explicit override, or `LC_ALL`.
-    if let Some(tag) = var("WORDCRAFT_REGION").or_else(|| var("LC_ALL")) {
-        return wordcraft_engine::Region::from_tag(&tag);
-    }
-    // Unix sets each convention on its own: numbers (`LC_NUMERIC`, else `LANG`), paper
-    // (`LC_PAPER`) and measurement (`LC_MEASUREMENT`). Elsewhere, and when none is set, the
-    // platform's first preferred locale (on macOS it carries the region, as in `en-PL`; on the web
-    // it is the browser's language).
-    let base = var("LC_NUMERIC").or_else(|| var("LANG")).unwrap_or_else(|| sys_locale::get_locale().unwrap_or_default());
-    wordcraft_engine::Region::from_tag(&base).with_paper_and_measurement(var("LC_PAPER").as_deref(), var("LC_MEASUREMENT").as_deref())
-}
-
-/// A locale variable that names a locale (not empty, `C` or `POSIX`).
-fn usable_locale(v: &str) -> bool {
-    let v = v.trim();
-    !v.is_empty() && !v.eq_ignore_ascii_case("c") && !v.eq_ignore_ascii_case("posix") && !v.starts_with("C.")
+    // The environment's locale variables (Unix), else the platform's first preferred locale (on
+    // macOS it carries the region, as in `en-PL`; on the web it is the browser's language).
+    wordcraft_engine::Region::from_locale_vars(|name| std::env::var(name).ok(), sys_locale::get_locale)
 }
 
 thread_local! {

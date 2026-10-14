@@ -524,15 +524,16 @@ fn resize_drag(s: &mut Session, v: &Value) -> CmdResult {
         return sel_result(s);
     }
     // An "at least" height leaves out the cells' margins and border bands, which the layout adds
-    // (and which depend on the table style): measure what the rows came to and take the extra
-    // off once. A row its text holds taller keeps the dragged height.
+    // (and which depend on the table style), and an exact one the bottom margin: measure what the
+    // rows came to and take the extra off once. A row its text holds taller keeps the dragged
+    // height.
     let drawn = drawn_heights(&s.layout(), &s.doc, page, &target);
     let mut fixed = Vec::new();
     let t = s.doc.table_mut(target.story, &target.table)?;
     for (r, want) in &plan.heights {
         let Some(got) = drawn.iter().find(|(i, _)| i == r).map(|(_, h)| *h) else { continue };
         if let Some(row) = t.rows.get_mut(*r)
-            && row.props.height_rule == HeightRule::AtLeast
+            && matches!(row.props.height_rule, HeightRule::AtLeast | HeightRule::Exact)
             && got > want + 0.05
         {
             row.props.height = Some((want - (got - want)).max(1.0));
@@ -756,6 +757,32 @@ mod tests {
         let h = cell_rect(&mut s, 0, 0).h;
         assert!((h - (a.h + 40.0)).abs() < 0.1, "{} → {h}", a.h);
         assert_eq!(t.rows[1].props.height, None, "the other row is untouched");
+    }
+
+    /// An exact row stays exact when its border is dragged: the stored height leaves out the
+    /// 4pt bottom margin the layout adds below it, and the drawn row is what was dragged.
+    #[test]
+    fn an_exact_row_border_drag_leaves_out_the_bottom_margin() {
+        let mut s = table_session(2, 2);
+        let t = s.doc.body.iter_mut().find_map(|b| match std::sync::Arc::make_mut(b) {
+            wordcraft_doc::Block::Table(t) => Some(t),
+            _ => None,
+        });
+        let t = t.unwrap();
+        t.props.cell_margins = Some([0.0, 5.4, 4.0, 5.4]);
+        t.rows[0].props.height = Some(30.0);
+        t.rows[0].props.height_rule = HeightRule::Exact;
+        s.touch();
+        let a = cell_rect(&mut s, 0, 0);
+        assert!((a.h - 34.0).abs() < 0.1, "{a:?}");
+        let x = a.x + a.w / 2.0;
+        s.run("table.resizeDrag", &json!({"page": 0, "x": x, "y": a.bottom(), "toX": x, "toY": a.bottom() + 20.0})).unwrap();
+        let t = first_table(&s);
+        assert_eq!(t.rows[0].props.height_rule, HeightRule::Exact);
+        let stored = t.rows[0].props.height.unwrap();
+        assert!((stored - 50.0).abs() < 0.1, "stored {stored}");
+        let h = cell_rect(&mut s, 0, 0).h;
+        assert!((h - 54.0).abs() < 0.1, "drawn {h}");
     }
 
     /// The handle past the bottom-right corner scales every column and row.

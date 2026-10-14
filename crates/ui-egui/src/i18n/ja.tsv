@@ -94,6 +94,7 @@
 	Ignore web and file addresses	Web アドレスとファイル パスを無視する
 	Ignore words in capitals	すべて大文字の単語を無視する
 	Ignore words with numbers	数字を含む単語を無視する
+	In the margin	余白に表示
 	Inches	インチ
 	Formatting exceptions	書式の例外
 	Include level number from:	含めるレベルの番号:
@@ -127,12 +128,15 @@
 	Number alignment:	番号の配置:
 	Number format	番号書式
 	Number style for this level:	このレベルの番号の種類:
+	Only for the selected text	選択したテキストのみ
 	Outside border	外側の罫線
 	Make WordCraft the default for Word documents…	WordCraft を Word 文書の既定のアプリにする…
 	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	今後、.docx、.doc、.rtf、.odt ファイルと Word テンプレートを WordCraft で開きます。
 	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	設定 › 既定のアプリ を開きます。そこで .docx などの文書の種類ごとに WordCraft を選びます。
 	Overtype	上書き
 	Overtype (typing replaces the characters after the caret)	上書き (入力した文字がカーソルの後ろの文字を置き換えます)
+	Show alignment guides when moving pictures and shapes	画像や図形を移動するときに配置ガイドを表示する
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	移動したオブジェクトは、ページの端と中央、余白、ほかのオブジェクトに吸着します。Alt キーを押しながら移動すると自由に動かせます。
 	Page display	ページの表示
 	Paragraph marks	段落記号
 	Personalize	個人設定
@@ -1409,6 +1413,7 @@
 	Demote	レベル下げ
 	Go Back	前の編集位置に戻る
 	Toggle Unicode Character	Unicode 文字の切り替え
+	Type Character Code	文字コードの入力
 	Toggle Field Codes	フィールドコードの表示切り替え
 	Edit Field Code	フィールドコードの編集
 	Unlink Fields	フィールドのリンク解除
@@ -2029,6 +2034,7 @@
 	Hyphenation Options…	ハイフネーションのオプション…
 	Hyphenation zone:	ハイフネーション領域:
 	Italian	イタリア語
+	Croatian	クロアチア語
 	Japanese	日本語
 	Korean	韓国語
 	Limit consecutive hyphens to:	連続するハイフンの上限:
@@ -2075,9 +2081,49 @@
 	AutoFit Column by Double-Clicking	ダブルクリックで列の幅を自動調整
 	Region:	地域:
 	Automatic ({region})	自動 ({region})
+	Text of the nearest paragraph with a given style (running headers)	指定したスタイルを持つ最も近い段落の文字列 (柱)
+	Style name:	スタイル名:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	宛先のフィルター
+	Sort Recipients	宛先の並べ替え
+	Filter and Sort	フィルターと並べ替え
+	And	かつ
+	Or	または
+	Comparison	比較
+	Compare to	比較する値
+	Add Condition	条件の追加
+	Remove condition	条件の削除
+	Sort by	並べ替えの基準
+	Then by	次の基準
+	Ascending	昇順
+	Descending	降順
+	Equal to	等しい
+	Not equal to	等しくない
+	Less than	より小さい
+	Greater than	より大きい
+	Less than or equal	以下
+	Greater than or equal	以上
+	Is blank	空白
+	Is not blank	空白ではない
+	Contains	含む
+	Does not contain	含まない
+	{count} of {total} recipients will be merged.	差し込む宛先: {total} 件中 {count} 件
+	Take the last match on the page	ページ内で最後に一致したものを使う
+	Show its list number	リスト番号を表示
+	Show its number relative to this field	このフィールドを基準にした番号を表示
+	Show its number with all higher levels	上位のすべてのレベルを含めた番号を表示
+	Number only, without the label's words	ラベルの語を除いて番号のみ
+	Add whether it is above or below	上にあるか下にあるかを付け加える
 	Start-up	起動
 	Show the Start screen when WordCraft starts	WordCraft の起動時にスタート画面を表示する
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	オン: WordCraft は [ファイル] › [ホーム] で開き、白紙の文書、テンプレート、最近使った文書を表示します。オフ: 白紙の文書を開きます。
+	Copy to	コピー先
+
+# Document naming and account controls.
+	Rename Document	ドキュメント名の変更
+	Document name	ドキュメント名
+	Rename	名前の変更
+	Account	アカウント
 	Privacy Options	プライバシー オプション
 	Trust Center	セキュリティ センター
 	Privacy for this document	このドキュメントのプライバシー
@@ -2085,3 +2131,48 @@
 	Leave out the date and time of comments and tracked changes when saving	保存時にコメントと変更履歴の日時を含めない
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	編集中のドキュメントには名前と日時が残ります。保存したファイルにだけ含まれません。
 	Privacy Settings	現在のプライバシー設定
+	Waiting for the save to finish…	保存が完了するのを待っています…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	{name} の保存はキャンセルされました。文書は開いたままで、何も失われていません。
+	Paper	用紙
+	Paper size:	用紙サイズ:
+	Custom size	ユーザー定義サイズ
+	More Paper Sizes…	その他の用紙サイズ…
+	The margins don't fit on a page this size; make the margins smaller first.	この用紙サイズには余白が収まりません。先に余白を小さくしてください。
+	Full Screen	全画面表示
+	Full\nScreen	全画面\n表示
+	Use the browser's full screen (F11)	ブラウザーの全画面表示を使用してください (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} インチ
+	{name}   {height} × {width} mm	{name}   {height} × {width} mm
+	{width} × {height} mm	{width} × {height} mm
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}、{columns} × {rows}、{size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	リサーチツールにはオンライン サービスが必要です。WordCraft では文書はオフラインのままです。
+	These settings will be used for new documents.	これらの設定は新しい文書に使用されます。
+	can't split at the first row	先頭の行では表を分割できません
+	select two or more cells to merge	結合するセルを 2 つ以上選択してください
+	there is no ink to replay	再生するインクがありません
+	there's no citation after the caret	カーソルの後に引用文献がありません
+	this item is already at the top level	この項目は既に最上位レベルです
+	Envelope #10	封筒 #10
+	Envelope DL	封筒 DL
+	Reading Mode	閲覧モード
+	Column width	列の幅
+	Text size	文字サイズ
+	Edit Document	文書の編集
+	Go to what:	移動先:
+	Type +2 or -1 to move from the page you are on.	現在のページから移動するには +2 や -1 のように入力します。
+	Suggested	おすすめ
+	Set Proofing Language…	校正言語の設定…
+	Language Preferences…	言語の設定…
+
+# Dictionaries folder (#1063)
+	Dictionaries	辞書
+	Dictionaries folder:	辞書フォルダー:
+	Not set: the system's usual places	未設定: システムの標準の場所
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	このフォルダーの Hunspell .aff と .dic ファイル (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) は、システムのものより優先して使われます。
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: 辞書が見つかりません
+
+# Backstage › Recover (#586)
+	Recover	回復

@@ -1,6 +1,7 @@
 //! View tab and status bar: views, zoom, show/hide, panes.
 
 use serde_json::{Value, json};
+use wordcraft_doc::{Zoom, ZoomFit};
 use wordcraft_layout::{NumeralMode, ViewMode};
 
 use super::sel_result;
@@ -90,6 +91,14 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .key("Mod+Alt+S")
         .pure(),
+        // The window fills the screen, OS-level full screen (#980). F11 as in browsers and most
+        // desktop apps; ⌃⌘F first on macOS, where Ctrl is a key of its own (elsewhere Mod is Ctrl,
+        // so "Mod+Ctrl+F" would read Ctrl+Ctrl+F). Escape also leaves it. The front end applies it.
+        CommandSpec::new("view.fullScreen", "Full Screen", "View › Window", |s, v| toggle(s, v, |x| &mut x.full_screen))
+            .params(r#"{"value"?: bool}"#)
+            .key(super::mac_or("Mod+Ctrl+F / F11", "F11"))
+            .when(full_screen_available)
+            .pure(),
         CommandSpec::new("view.state", "View State", "View", |s, _| serde_json::to_value(&s.view).map_err(|e| CmdError::Failed(e.to_string())))
             .pure(),
         // Word › File › Options › Advanced › Numeral: how digits look on screen (display
@@ -109,6 +118,11 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"value"?: "arabic|hindi|context|system"}"#)
         .pure(),
     ]
+}
+
+/// The browser keeps full screen to itself (its own F11); the web app can't ask for it.
+fn full_screen_available(_: &Session) -> Option<&'static str> {
+    cfg!(target_arch = "wasm32").then_some("Use the browser's full screen (F11)")
 }
 
 fn mode(s: &mut Session, m: ViewMode, read: bool) -> CmdResult {
@@ -157,6 +171,32 @@ fn read_line_spacing(s: &mut Session, v: &Value) -> CmdResult {
     };
     s.view.read_line_spacing = spacing;
     Ok(json!({"spacing": spacing}))
+}
+
+/// The zoom a document is saved with (#995): the fit mode, else the percentage; `None` at 100%.
+pub(crate) fn saved_zoom(v: &crate::ViewState) -> Option<Zoom> {
+    let fit = match v.fit.as_str() {
+        "onePage" => Some(ZoomFit::OnePage),
+        "pageWidth" => Some(ZoomFit::PageWidth),
+        "textWidth" => Some(ZoomFit::TextWidth),
+        _ => None,
+    };
+    let percent = if v.zoom.is_finite() { (v.zoom * 100.0).round().clamp(10.0, 500.0) as u32 } else { 100 };
+    Some(Zoom { percent, fit }).filter(|z| z.percent != 100 || z.fit.is_some())
+}
+
+/// Show an opened document at the zoom it was saved with.
+pub(crate) fn restore_zoom(s: &mut Session, z: Zoom) {
+    let fit = match z.fit {
+        Some(ZoomFit::OnePage) => "onePage",
+        Some(ZoomFit::PageWidth) => "pageWidth",
+        Some(ZoomFit::TextWidth) => "textWidth",
+        None => "",
+    };
+    s.view.zoom = z.percent.clamp(10, 500) as f32 / 100.0;
+    s.view.fit = fit.into();
+    s.view.multi_page = false;
+    s.view.single_column = fit == "onePage" || fit == "pageWidth";
 }
 
 fn zoom(s: &mut Session, v: &Value) -> CmdResult {

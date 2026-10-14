@@ -241,6 +241,103 @@ fn glyph_outlines(face: &FaceRef, size: f32, glyphs: &[(u32, f32, f32)]) -> Opti
     pb.finish()
 }
 
+/// Whether a run's glyphs already run left to right, as PDF text extractors (PDFium in Chrome and
+/// Edge, pdf.js, poppler) take them to: they read a run's glyphs as written left to right and turn
+/// right-to-left words back into reading order themselves. Layout gives right-to-left text in
+/// reading order.
+fn left_to_right(glyphs: &[(u32, f32, f32)]) -> bool {
+    glyphs.windows(2).all(|w| matches!(w, [a, b] if a.1 <= b.1))
+}
+
+/// Per-glyph text ranges for clusters of several glyphs (a letter and its vowel marks) when each
+/// glyph is one of the cluster's characters (through the font's character map, one glyph at most
+/// left to take the character left over), so a viewer
+/// reversing a right-to-left word puts every mark back after its letter. Other clusters, such
+/// as a ligature drawn as two glyphs, keep their shared range.
+fn split_clusters(
+    text: &str,
+    glyphs: &[(u32, f32, f32)],
+    ranges: &[std::ops::Range<usize>],
+    rev: &HashMap<u32, char>,
+) -> Vec<std::ops::Range<usize>> {
+    let mut out = ranges.to_vec();
+    let mut i = 0;
+    while i < ranges.len() {
+        let Some(r) = ranges.get(i) else { break };
+        let n = ranges.get(i..).map_or(1, |rest| rest.iter().take_while(|x| *x == r).count()).max(1);
+        let chars: Vec<(usize, char)> = text.get(r.clone()).map(|t| t.char_indices().map(|(k, c)| (r.start + k, c)).collect()).unwrap_or_default();
+        if n > 1 && chars.len() == n {
+            // Glyphs the character map knows take their characters; one left over (a letter's
+            // contextual form, which the map doesn't list) takes the one character left.
+            let mut used = vec![false; n];
+            let mut of: Vec<Option<usize>> = (i..i + n)
+                .map(|g| {
+                    let c = rev.get(&glyphs.get(g)?.0)?;
+                    let k = chars.iter().enumerate().position(|(k, (_, ch))| ch == c && !used.get(k).copied().unwrap_or(true))?;
+                    *used.get_mut(k)? = true;
+                    Some(k)
+                })
+                .collect();
+            let free: Vec<usize> = (0..n).filter(|k| !used.get(*k).copied().unwrap_or(true)).collect();
+            if let ([k], [slot]) = (free.as_slice(), of.iter_mut().filter(|o| o.is_none()).collect::<Vec<_>>().as_mut_slice()) {
+                **slot = Some(*k);
+            }
+            let parts: Option<Vec<std::ops::Range<usize>>> = of
+                .iter()
+                .map(|k| {
+                    let (a, ch) = chars.get((*k)?)?;
+                    Some(*a..a + ch.len_utf8())
+                })
+                .collect();
+            if let (Some(parts), Some(dst)) = (parts, out.get_mut(i..i + n)) {
+                dst.clone_from_slice(&parts);
+            }
+        }
+        i += n;
+    }
+    out
+}
+
+/// Indices of a run's glyphs in visual order, left to right: its clusters (consecutive glyphs
+/// sharing a range in `clusters`, such as a letter and its marks, or a lam-alef ligature) sorted
+/// by their leftmost glyph and kept together. Inside a cluster, glyphs go in reverse order of
+/// their own text (`parts`) when it is right to left, so a viewer reversing the word reads the
+/// letter before its marks.
+fn visual_order(text: &str, glyphs: &[(u32, f32, f32)], clusters: &[std::ops::Range<usize>], parts: &[std::ops::Range<usize>]) -> Vec<usize> {
+    let mut groups: Vec<(f32, Vec<usize>)> = Vec::new();
+    for (i, (_, x, _)) in glyphs.iter().enumerate() {
+        match groups.last_mut() {
+            Some((left, idx)) if i > 0 && clusters.get(i).is_some() && clusters.get(i) == clusters.get(i - 1) => {
+                *left = left.min(*x);
+                idx.push(i);
+            }
+            _ => groups.push((*x, vec![i])),
+        }
+    }
+    // Stable: clusters at the same x keep their order, as do glyphs sharing their text.
+    groups.sort_by(|a, b| a.0.total_cmp(&b.0));
+    groups
+        .into_iter()
+        .flat_map(|(_, mut idx)| {
+            let rtl = idx.first().and_then(|&g| text.get(clusters.get(g)?.clone())).is_some_and(|t| t.chars().any(wordcraft_fonts::is_rtl));
+            if rtl {
+                idx.sort_by_key(|&g| std::cmp::Reverse(parts.get(g).map_or(0, |r| r.start)));
+            }
+            idx
+        })
+        .collect()
+}
+
+/// The y most of a run's glyphs share: its baseline, which raised or lowered marks leave.
+fn baseline(glyphs: &[(u32, f32, f32)]) -> Option<f32> {
+    let mut counts: HashMap<u32, usize> = HashMap::new();
+    for (_, _, y) in glyphs {
+        *counts.entry(y.to_bits()).or_insert(0) += 1;
+    }
+    // Ties go to the lower y bits, so the result doesn't depend on hash order.
+    counts.into_iter().max_by_key(|&(bits, n)| (n, std::cmp::Reverse(bits))).map(|(bits, _)| f32::from_bits(bits))
+}
+
 /// A chart's or diagram's alt text: its own, else what it is ("chart", "diagram").
 fn graphic_alt(alt: &str, kind: GraphicKind) -> &str {
     if alt.trim().is_empty() { kind.noun() } else { alt }
@@ -371,18 +468,27 @@ fn grown(r: &Rect, g: f32, dx: f32, dy: f32) -> Rect {
 
 /// A shape's shadow and glow, behind it: bands of its silhouette (the same approximation of a
 /// blur as the raster renderer, see [`wordcraft_doc::effects::bands`]).
-fn shape_effects(s: &mut Surface, kind: ShapeKind, rect: &Rect, fx: &wordcraft_doc::effects::ShapeEffects, filled: bool, stroked: bool, sw: f32) {
+fn shape_effects(
+    s: &mut Surface,
+    kind: ShapeKind,
+    corner: Option<u32>,
+    rect: &Rect,
+    fx: &wordcraft_doc::effects::ShapeEffects,
+    filled: bool,
+    stroked: bool,
+    sw: f32,
+) {
     let sw = if sw.is_finite() { sw.clamp(0.25, 200.0) } else { 0.75 };
     let silhouette = |s: &mut Surface, c: Rgb, a: f32, g: f32, dx: f32, dy: f32| {
         if filled {
             let grow = g + if stroked { sw / 2.0 } else { 0.0 };
-            if let Some(p) = shape_path(kind, &grown(rect, grow, dx, dy)) {
+            if let Some(p) = shape_path(kind, &grown(rect, grow, dx, dy), corner) {
                 s.set_stroke(None);
                 s.set_fill(Some(fill(c, a)));
                 s.draw_path(&p);
             }
         } else if sw + 2.0 * g > 0.05
-            && let Some(p) = shape_path(kind, &grown(rect, 0.0, dx, dy))
+            && let Some(p) = shape_path(kind, &grown(rect, 0.0, dx, dy), corner)
         {
             s.set_fill(None);
             s.set_stroke(Some(Stroke { paint: rgb::Color::new(c.0, c.1, c.2).into(), width: sw + 2.0 * g, opacity: norm(a), ..Default::default() }));
@@ -404,9 +510,11 @@ fn shape_effects(s: &mut Surface, kind: ShapeKind, rect: &Rect, fx: &wordcraft_d
     s.set_stroke(None);
 }
 
-/// Outline of a basic shape in a rectangle (same geometry as the raster renderer).
-fn shape_path(kind: ShapeKind, r: &Rect) -> Option<Path> {
-    if !(ok(r.x) && ok(r.y) && ok(r.w) && ok(r.h)) || r.w <= 0.0 || r.h <= 0.0 {
+/// Outline of a basic shape in a rectangle (same geometry as the raster renderer); `corner` is a
+/// rounded rectangle's ([`wordcraft_doc::connector::ShapeExtra::corner`]).
+fn shape_path(kind: ShapeKind, r: &Rect, corner: Option<u32>) -> Option<Path> {
+    let flat_ok = kind.is_open() && r.w.max(r.h) > 0.0 && r.w.min(r.h) >= 0.0;
+    if !(ok(r.x) && ok(r.y) && ok(r.w) && ok(r.h)) || !(flat_ok || r.w > 0.0 && r.h > 0.0) {
         return None;
     }
     let (x0, y0, x1, y1) = (r.x, r.y, r.x + r.w, r.y + r.h);
@@ -435,7 +543,7 @@ fn shape_path(kind: ShapeKind, r: &Rect) -> Option<Path> {
         // A freeform is drawn from its own paths; without them, its frame.
         ShapeKind::Rectangle | ShapeKind::TextBox | ShapeKind::Freeform => poly(&mut pb, &[(x0, y0), (x1, y0), (x1, y1), (x0, y1)]),
         ShapeKind::RoundedRectangle => {
-            let rad = r.w.min(r.h) * 0.16;
+            let rad = wordcraft_doc::connector::corner_radius(corner, r.w, r.h);
             let k = rad * (1.0 - K);
             pb.move_to(x0 + rad, y0);
             pb.line_to(x1 - rad, y0);
@@ -647,6 +755,9 @@ impl Exporter<'_> {
                 s.set_fill(None);
             });
         }
+        if let Some(pic) = self.doc.settings.page_picture.clone() {
+            self.tagged(s, Role::Artifact(ArtifactType::Other), None, |me, s| me.page_picture(s, &pic, w, h));
+        }
         if let Some(wm) = self.doc.settings.watermark.clone()
             && !wm.text.trim().is_empty()
         {
@@ -676,10 +787,11 @@ impl Exporter<'_> {
                     for d in &draws {
                         match d {
                             Draw::Glyphs { .. } | Draw::Turned { .. } => self.tagged(s, Role::Para(idx), None, |me, s| me.draw(s, d)),
-                            Draw::Image { .. } => self.tagged(s, Role::Figure, None, |me, s| me.draw(s, d)),
+                            Draw::Image { alt, .. } => self.tagged(s, Role::Figure, Some(alt), |me, s| me.draw(s, d)),
                             // A rotated inline picture.
                             Draw::Rotated { items, .. } if items.iter().any(|i| matches!(i, Draw::Image { .. })) => {
-                                self.tagged(s, Role::Figure, None, |me, s| me.draw(s, d))
+                                let alt = items.iter().find_map(|i| if let Draw::Image { alt, .. } = i { Some(alt.as_str()) } else { None });
+                                self.tagged(s, Role::Figure, alt, |me, s| me.draw(s, d))
                             }
                             // An inline chart or diagram: its text is part of the figure, not the paragraph.
                             Draw::Figure { alt, kind, draws: inner } => self.tagged(s, Role::Figure, Some(graphic_alt(alt, *kind)), |me, s| {
@@ -776,13 +888,13 @@ impl Exporter<'_> {
                     self.draw(s, d);
                 }
             }
-            Draw::Glyphs { face, size, glyphs, color, alpha, synth_bold, synth_italic, text, link, ranges } => {
+            Draw::Glyphs { face, size, glyphs, color, alpha, synth_bold, synth_italic, text, link, ranges, .. } => {
                 self.glyphs(s, face, *size, glyphs, *color, *alpha, *synth_bold, *synth_italic, text, ranges);
                 if let Some(l) = link {
                     self.link_rect(face, *size, glyphs, l);
                 }
             }
-            Draw::Fill { rect, color, alpha } => {
+            Draw::Fill { rect, color, alpha, .. } => {
                 if let Some(p) = rect_path(rect) {
                     s.set_stroke(None);
                     s.set_fill(Some(fill(*color, *alpha)));
@@ -790,8 +902,8 @@ impl Exporter<'_> {
                     s.set_fill(None);
                 }
             }
-            Draw::Line { x0, y0, x1, y1, width, color, stroke, alpha } => self.line(s, (*x0, *y0, *x1, *y1), *width, *color, *stroke, *alpha),
-            Draw::Image { rect, media, crop, alpha } => self.picture(s, rect, media, crop, *alpha),
+            Draw::Line { x0, y0, x1, y1, width, color, stroke, alpha, .. } => self.line(s, (*x0, *y0, *x1, *y1), *width, *color, *stroke, *alpha),
+            Draw::Image { rect, media, crop, alpha, .. } => self.picture(s, rect, media, crop, *alpha),
             Draw::Path { segs, fill: f, stroke, stroke_width } => {
                 let mut pb = PathBuilder::new();
                 append_path(&mut pb, &wordcraft_layout::display::seg_path(segs));
@@ -839,19 +951,19 @@ impl Exporter<'_> {
                 s.draw_path(&p);
                 s.set_stroke(None);
             }
-            Draw::Shape { rect, kind, fill: f, stroke, stroke_width, effects } => {
-                let Some(p) = shape_path(*kind, rect) else { return };
+            Draw::Shape { rect, kind, fill: f, stroke, stroke_width, effects, corner } => {
+                let Some(p) = shape_path(*kind, rect, *corner) else { return };
                 let can_fill = *kind != ShapeKind::Line;
                 let fx = effects.sanitized();
                 if !fx.is_empty() && (f.is_some() && can_fill || stroke.is_some()) {
-                    shape_effects(s, *kind, rect, &fx, f.is_some() && can_fill, stroke.is_some(), *stroke_width);
+                    shape_effects(s, *kind, *corner, rect, &fx, f.is_some() && can_fill, stroke.is_some(), *stroke_width);
                 }
                 // Soft edges: the fill fades out toward the outline (which fades with it).
                 if let (Some(rad), Some(c), true) = (fx.soft_edge, f, can_fill) {
                     let rad = rad.min(rect.w.min(rect.h) / 2.0).max(0.0);
                     s.set_stroke(None);
                     for (g, a) in wordcraft_doc::effects::bands(-rad, 0.0, 1.0) {
-                        if let Some(p) = shape_path(*kind, &grown(rect, g, 0.0, 0.0)) {
+                        if let Some(p) = shape_path(*kind, &grown(rect, g, 0.0, 0.0), *corner) {
                             s.set_fill(Some(fill(*c, a)));
                             s.draw_path(&p);
                         }
@@ -1023,6 +1135,36 @@ impl Exporter<'_> {
         s.set_stroke(None);
     }
 
+    /// The page's picture or texture fill: tiled at 96 dpi for a `tile` fill (when that is a sane
+    /// number of tiles), else stretched over the page.
+    fn page_picture(&mut self, s: &mut Surface, pic: &wordcraft_doc::PagePicture, w: f32, h: f32) {
+        const MAX_TILES: f32 = 4096.0;
+        if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
+            return;
+        }
+        let dims = self
+            .doc
+            .media
+            .get(&pic.media)
+            .and_then(|b| image::ImageReader::new(std::io::Cursor::new(b.as_slice())).with_guessed_format().ok()?.into_dimensions().ok());
+        if let Some((pw, ph)) = dims.filter(|_| pic.fill_type.eq_ignore_ascii_case("tile")) {
+            let (tw, th) = (pw as f32 * 0.75, ph as f32 * 0.75);
+            if tw >= 1.0 && th >= 1.0 && (w / tw).ceil() * (h / th).ceil() <= MAX_TILES {
+                let mut y = 0.0;
+                while y < h {
+                    let mut x = 0.0;
+                    while x < w {
+                        self.picture(s, &Rect::new(x, y, tw, th), &pic.media, &[0.0; 4], 1.0);
+                        x += tw;
+                    }
+                    y += th;
+                }
+                return;
+            }
+        }
+        self.picture(s, &Rect::new(0.0, 0.0, w, h), &pic.media, &[0.0; 4], 1.0);
+    }
+
     fn picture(&mut self, s: &mut Surface, rect: &Rect, media: &str, crop: &[f32; 4], alpha: f32) {
         let Some(clip) = rect_path(rect) else { return };
         if let Some(v) = self.vector(media) {
@@ -1137,7 +1279,9 @@ impl Exporter<'_> {
         if !size.is_finite() || size <= 0.0 || size > 5000.0 {
             return;
         }
-        let Some(&(_, x0, y0)) = glyphs.first() else { return };
+        if glyphs.is_empty() {
+            return;
+        }
         if !glyphs.iter().all(|(_, x, y)| ok(*x) && ok(*y)) {
             return;
         }
@@ -1151,21 +1295,33 @@ impl Exporter<'_> {
         let valid = known.len() == glyphs.len() && known.iter().all(|r| r.start < r.end && text.get(r.clone()).is_some());
         let (txt, ranges) = if valid { (text.to_string(), known.to_vec()) } else { self.map_text(face, glyphs, text) };
         let upem = face.upem.max(1.0) as f32;
-        let kg: Vec<KrillaGlyph> = glyphs
+        // Right-to-left text is written left to right as it appears (see `left_to_right`); glyphs
+        // already in that order are written as they are.
+        let (order, ranges) = if left_to_right(glyphs) {
+            ((0..glyphs.len()).collect(), ranges)
+        } else {
+            let parts = split_clusters(&txt, glyphs, &ranges, &self.cmap(face));
+            (visual_order(&txt, glyphs, &ranges, &parts), parts)
+        };
+        let placed: Vec<(u32, f32, f32, std::ops::Range<usize>)> =
+            order.iter().filter_map(|&i| Some((glyphs.get(i).copied()?, ranges.get(i).cloned()?))).map(|((g, x, y), r)| (g, x, y, r)).collect();
+        let Some(&(_, x0, y0, _)) = placed.first() else { return };
+        // The run's baseline: the y most of its glyphs share (marks sit higher or lower).
+        let base = baseline(glyphs).unwrap_or(y0);
+        let kg: Vec<KrillaGlyph> = placed
             .iter()
-            .zip(ranges)
             .enumerate()
-            .map(|(k, ((g, x, y), r))| {
-                let adv = match glyphs.get(k + 1) {
-                    Some((_, nx, _)) => (nx - x) / size,
+            .map(|(k, (g, x, y, r))| {
+                let adv = match placed.get(k + 1) {
+                    Some((_, nx, _, _)) => (nx - x) / size,
                     None => face.advance(*g) as f32 / upem,
                 };
-                KrillaGlyph::new(GlyphId::new(*g), adv, 0.0, (y0 - y) / size, 0.0, r, None)
+                KrillaGlyph::new(GlyphId::new(*g), adv, 0.0, (y0 - y) / size, 0.0, r.clone(), None)
             })
             .collect();
         let pushed = italic;
         if italic {
-            s.push_transform(&Transform::from_row(1.0, 0.0, -0.21, 1.0, 0.21 * y0, 0.0));
+            s.push_transform(&Transform::from_row(1.0, 0.0, -0.21, 1.0, 0.21 * base, 0.0));
         }
         s.set_fill(Some(fill(color, alpha)));
         s.set_stroke(if bold {

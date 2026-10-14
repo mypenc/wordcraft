@@ -47,13 +47,35 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("insert.header", "Header", "Insert › Header & Footer", |s, v| header_footer(s, v, true)).params(r#"{"text"?: string, "preset"?: "blank|blankThree|title"}"#),
         CommandSpec::new("insert.footer", "Footer", "Insert › Header & Footer", |s, v| header_footer(s, v, false)).params(r#"{"text"?: string, "preset"?: "blank|blankThree|pageNumber"}"#),
         CommandSpec::new("insert.pageNumber", "Page Number", "Insert › Header & Footer", page_number).params(r#"{"position"?: "top|bottom|current", "align"?: "left|center|right", "format"?: "x of y"}"#),
-        CommandSpec::new("insert.editHeader", "Edit Header", "Insert › Header & Footer › Header", |s, _| edit_hf(s, true)).pure(),
-        CommandSpec::new("insert.editFooter", "Edit Footer", "Insert › Header & Footer › Footer", |s, _| edit_hf(s, false)).pure(),
+        // Pure: going into an existing header/footer changes nothing; one the page doesn't have yet
+        // is made by the mutating `insert.createHeader`/`insert.createFooter` (undoable, refused in
+        // a protected document).
+        CommandSpec::new("insert.editHeader", "Edit Header", "Insert › Header & Footer › Header", |s, v| edit_hf(s, v, true))
+            .params(r#"{"page"?: number (0-based: the header that page shows, created if it has none)}"#)
+            .pure(),
+        CommandSpec::new("insert.editFooter", "Edit Footer", "Insert › Header & Footer › Footer", |s, v| edit_hf(s, v, false))
+            .params(r#"{"page"?: number (0-based: the footer that page shows, created if it has none)}"#)
+            .pure(),
+        CommandSpec::new("insert.createHeader", "Header", "Insert › Header & Footer", |s, v| create_hf(s, v, true))
+            .params(r#"{"page"?: number (0-based; default: the caret's section)} — the header that page shows, created if it has none, with the caret in it"#),
+        CommandSpec::new("insert.createFooter", "Footer", "Insert › Header & Footer", |s, v| create_hf(s, v, false))
+            .params(r#"{"page"?: number (0-based; default: the caret's section)} — the footer that page shows, created if it has none, with the caret in it"#),
         CommandSpec::new("insert.closeHeader", "Close Header and Footer", "Header & Footer", |s, _| {
+            if !new_empty_headers(s).is_empty() {
+                // Its own undo step; a protected document keeps it, and the caret still leaves.
+                let _ = s.run("insert.removeEmptyHeaders", &json!({}));
+            }
             s.sel = Selection::caret(s.doc.start_of(StoryRef::Body));
             sel_result(s)
         })
         .pure(),
+        CommandSpec::new("insert.removeEmptyHeaders", "Close Header and Footer", "Header & Footer", |s, _| {
+            let ids = new_empty_headers(s);
+            if strip_headers(&mut s.doc, &ids) {
+                s.touch();
+            }
+            sel_result(s)
+        }),
         CommandSpec::new("insert.removeHeader", "Remove Header", "Insert › Header & Footer › Header", |s, _| {
             s.doc.last_section.headers = Default::default();
             for path in s.doc.para_paths(StoryRef::Body) {
@@ -93,7 +115,8 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("insert.textFromFile", "Text from File", "Insert › Text › Object", |s, v| {
             let path = p::req_str(v, "path")?;
             let doc = crate::io::open_path(std::path::Path::new(path)).map_err(CmdError::Failed)?;
-            let frag = doc.body_fragment();
+            let mut frag = doc.body_fragment();
+            super::paste::unlink_sections(&mut frag.blocks);
             let at = delete_selection(s)?;
             let end = s.doc.insert_fragment(&at, &frag)?;
             s.sel = Selection::caret(end);
@@ -445,11 +468,147 @@ fn header_footer(s: &mut Session, v: &Value, header: bool) -> CmdResult {
     Ok(json!({"story": id}))
 }
 
-fn edit_hf(s: &mut Session, header: bool) -> CmdResult {
-    let id = hf_part(s, header);
+fn edit_hf(s: &mut Session, v: &Value, header: bool) -> CmdResult {
+    let page = p::u64(v, "page").map(|page| usize::try_from(page).unwrap_or(usize::MAX));
+    let shown = match page {
+        Some(page) => shown_hf(s, page, header)?,
+        None => {
+            let block = s.sel.focus.path.0.first().copied().unwrap_or(0) as usize;
+            let set = s
+                .doc
+                .sections()
+                .into_iter()
+                .find(|(end, _)| block <= *end)
+                .or_else(|| s.doc.sections().pop())
+                .map(|(_, sp)| if header { sp.headers.default } else { sp.footers.default });
+            set.flatten().filter(|id| s.doc.parts.contains_key(id))
+        }
+    };
+    let Some(id) = shown else {
+        // None yet: made by the mutating command, so it is an undo step and protection applies.
+        let cmd = if header { "insert.createHeader" } else { "insert.createFooter" };
+        let params = page.map_or_else(|| json!({}), |page| json!({ "page": page }));
+        return s.run(cmd, &params);
+    };
+    if let Some(page) = page {
+        s.page_hint = page;
+    }
     s.touch();
     s.sel = Selection::caret(s.doc.end_of(StoryRef::Part(id)));
     Ok(json!({"story": id}))
+}
+
+/// The header (or footer) page `page` shows, if any; an error for a page that isn't there.
+fn shown_hf(s: &mut Session, page: usize, header: bool) -> Result<Option<u32>, CmdError> {
+    let layout = s.layout();
+    let pg = layout.pages.get(page).ok_or_else(|| CmdError::Params(format!("no page {page}")))?;
+    let shown = if header { pg.header_story } else { pg.footer_story };
+    Ok(shown.filter(|id| s.doc.parts.contains_key(id)))
+}
+
+fn create_hf(s: &mut Session, v: &Value, header: bool) -> CmdResult {
+    let id = match p::u64(v, "page") {
+        Some(page) => {
+            let page = usize::try_from(page).unwrap_or(usize::MAX);
+            s.page_hint = page;
+            page_hf_part(s, page, header)?
+        }
+        None => {
+            let before = s.doc.parts.len();
+            let id = hf_part(s, header);
+            if s.doc.parts.len() > before {
+                s.new_header_parts.push(id);
+            }
+            id
+        }
+    };
+    s.sel = Selection::caret(s.doc.end_of(StoryRef::Part(id)));
+    Ok(json!({"story": id}))
+}
+
+/// The header (or footer) page `page` shows; when it shows none, a new empty one in the slot the
+/// page uses (first page, even page or the default), as Word creates on a double-click in the
+/// empty header area (#960). It goes in the first section: sections link to the previous one by
+/// default, so as in Word it shows on every page that uses that slot and has none of its own.
+fn page_hf_part(s: &mut Session, page: usize, header: bool) -> Result<u32, CmdError> {
+    if let Some(id) = shown_hf(s, page, header)? {
+        return Ok(id);
+    }
+    let layout = s.layout();
+    let slot = layout.pages.get(page).map(|pg| pg.hf_slot).unwrap_or_default();
+    // The page shows none, so no section up to its own has this slot: the first section's is
+    // inherited all the way to it.
+    let block = s.doc.sections().first().map(|(end, _)| *end).unwrap_or(0);
+    let style = if header { "Header" } else { "Footer" };
+    let id = s.doc.add_part(if header { PartKind::Header } else { PartKind::Footer }, vec![para_block(Paragraph::new().styled(style))]);
+    let sect = s.doc.section_mut(block);
+    let set = if header { &mut sect.headers } else { &mut sect.footers };
+    match slot {
+        wordcraft_layout::HfSlot::First => set.first = Some(id),
+        wordcraft_layout::HfSlot::Even => set.even = Some(id),
+        wordcraft_layout::HfSlot::Default => set.default = Some(id),
+    }
+    s.new_header_parts.push(id);
+    Ok(id)
+}
+
+/// The headers/footers made by `insert.createHeader`/`insert.createFooter` that are still empty
+/// (one empty paragraph). The list keeps them after they are taken away, so one an undo brings
+/// back is taken away again on the next close.
+fn new_empty_headers(s: &Session) -> Vec<u32> {
+    s.new_header_parts
+        .iter()
+        .copied()
+        .filter(|id| {
+            s.doc.parts.get(id).is_some_and(|part| {
+                matches!(part.kind, PartKind::Header | PartKind::Footer)
+                    && part.blocks.len() == 1
+                    && part.blocks.first().is_some_and(|b| matches!(&**b, Block::Para(p) if p.text.is_empty() && p.objects.is_empty()))
+            })
+        })
+        .collect()
+}
+
+/// The document as saved: without the headers/footers just made and still empty, so an unwritten
+/// one is never saved (`None` when there are none, to save the document as it is).
+pub(crate) fn saved_copy(s: &Session) -> Option<wordcraft_doc::Document> {
+    let ids = new_empty_headers(s);
+    if ids.is_empty() {
+        return None;
+    }
+    let mut doc = s.doc.clone();
+    strip_headers(&mut doc, &ids).then_some(doc)
+}
+
+/// Takes headers/footers `ids` out of the document and every section that refers to them;
+/// whether anything was taken away.
+fn strip_headers(doc: &mut wordcraft_doc::Document, ids: &[u32]) -> bool {
+    if ids.is_empty() {
+        return false;
+    }
+    let clear = |set: &mut wordcraft_doc::section::HeaderSet| {
+        for slot in [&mut set.default, &mut set.first, &mut set.even] {
+            if slot.is_some_and(|id| ids.contains(&id)) {
+                *slot = None;
+            }
+        }
+    };
+    clear(&mut doc.last_section.headers);
+    clear(&mut doc.last_section.footers);
+    for path in doc.para_paths(StoryRef::Body) {
+        if doc.para(StoryRef::Body, &path).is_some_and(|p| p.section.is_some())
+            && let Ok(p) = doc.para_mut(StoryRef::Body, &path)
+            && let Some(sec) = p.section.as_mut()
+        {
+            clear(&mut sec.headers);
+            clear(&mut sec.footers);
+        }
+    }
+    let mut any = false;
+    for id in ids {
+        any |= doc.parts.remove(id).is_some();
+    }
+    any
 }
 
 fn page_number(s: &mut Session, v: &Value) -> CmdResult {
@@ -648,6 +807,131 @@ fn cover_page(s: &mut Session, v: &Value) -> CmdResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #960: editing the header of a page that has none creates the one that page shows (first
+    /// page, even page or default); typing goes into it, and closing an unwritten one takes it
+    /// away again so the saved file stays as it was.
+    #[test]
+    fn edit_header_on_a_page_creates_its_slot() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("text.insert", &json!({"text": "One"})).unwrap();
+        s.run("insert.pageBreak", &json!({})).unwrap();
+        s.run("text.insert", &json!({"text": "Two"})).unwrap();
+        assert_eq!(s.layout().pages.len(), 2);
+        // Plain document: the default header, then closing it unwritten leaves no header.
+        let r = s.run("insert.editHeader", &json!({"page": 1})).unwrap();
+        let id = r["story"].as_u64().unwrap() as u32;
+        assert_eq!(s.sel.focus.story, StoryRef::Part(id));
+        assert_eq!(s.doc.last_section.headers.default, Some(id));
+        s.run("insert.closeHeader", &json!({})).unwrap();
+        assert_eq!(s.doc.last_section.headers, Default::default());
+        assert!(!s.doc.parts.contains_key(&id));
+        let back = wordcraft_docx::read(&wordcraft_docx::write(&s.doc).unwrap()).unwrap();
+        assert!(back.parts.values().all(|p| !matches!(p.kind, PartKind::Header | PartKind::Footer)), "no empty header saved");
+        // Written footer stays.
+        let r = s.run("insert.editFooter", &json!({"page": 0})).unwrap();
+        let foot = r["story"].as_u64().unwrap() as u32;
+        s.run("text.insert", &json!({"text": "Foot"})).unwrap();
+        s.run("insert.closeHeader", &json!({})).unwrap();
+        assert_eq!(s.doc.last_section.footers.default, Some(foot));
+        assert_eq!(s.layout().pages[1].footer_story, Some(foot));
+        // Different first page: page 0's header is the first-page one, page 1's the default.
+        s.run("layout.differentFirstPage", &json!({"value": true})).unwrap();
+        let first = s.run("insert.editHeader", &json!({"page": 0})).unwrap()["story"].as_u64().unwrap() as u32;
+        s.run("text.insert", &json!({"text": "Cover"})).unwrap();
+        assert_eq!(s.doc.last_section.headers.first, Some(first));
+        assert_eq!(s.doc.last_section.headers.default, None);
+        // Odd & even: page 1 (page number 2) gets the even header.
+        s.run("layout.differentOddEven", &json!({"value": true})).unwrap();
+        let even = s.run("insert.editHeader", &json!({"page": 1})).unwrap()["story"].as_u64().unwrap() as u32;
+        s.run("text.insert", &json!({"text": "Even"})).unwrap();
+        assert_eq!(s.doc.last_section.headers.even, Some(even));
+        // A page that shows a header edits that one; a junk page is an error, not a panic.
+        assert_eq!(s.run("insert.editHeader", &json!({"page": 0})).unwrap()["story"].as_u64(), Some(first as u64));
+        assert!(s.run("insert.editHeader", &json!({"page": 99})).is_err());
+        assert!(s.run("insert.editHeader", &json!({"page": u64::MAX})).is_err());
+    }
+
+    fn two_pages() -> Session {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("text.insert", &json!({"text": "One"})).unwrap();
+        s.run("insert.pageBreak", &json!({})).unwrap();
+        s.run("text.insert", &json!({"text": "Two"})).unwrap();
+        s
+    }
+
+    fn headers(s: &Session) -> usize {
+        s.doc.parts.values().filter(|p| matches!(p.kind, PartKind::Header | PartKind::Footer)).count()
+    }
+
+    /// #960 review: making a header is an edit — a read-only document refuses it (an existing
+    /// header can still be gone into), and Undo takes a made one away again.
+    #[test]
+    fn creating_a_header_is_an_undoable_protected_edit() {
+        let mut s = two_pages();
+        s.doc.settings.protection = Some("readOnly".into());
+        assert!(s.run("insert.editHeader", &json!({"page": 0})).is_err(), "read only: no new header");
+        assert!(s.run("insert.editFooter", &json!({})).is_err(), "read only: no new footer");
+        assert_eq!(headers(&s), 0);
+        s.doc.settings.protection = None;
+        let id = s.run("insert.editHeader", &json!({"page": 1})).unwrap()["story"].as_u64().unwrap() as u32;
+        assert!(s.doc.parts.contains_key(&id));
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(headers(&s), 0, "undo takes the new header away");
+        assert_eq!(s.doc.last_section.headers, Default::default());
+        // Going into one that is there is no edit: allowed read-only, and no undo step.
+        let id = s.run("insert.editHeader", &json!({"page": 0})).unwrap()["story"].as_u64().unwrap() as u32;
+        s.run("text.insert", &json!({"text": "Head"})).unwrap();
+        s.run("insert.closeHeader", &json!({})).unwrap();
+        let steps = s.undo_labels().len();
+        s.doc.settings.protection = Some("readOnly".into());
+        assert_eq!(s.run("insert.editHeader", &json!({"page": 1})).unwrap()["story"].as_u64(), Some(id as u64));
+        assert_eq!(s.undo_labels().len(), steps);
+    }
+
+    /// #960 review: a new header still empty isn't saved, even while it is open; and one an Undo
+    /// brings back after closing is taken away on the next close.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn an_empty_new_header_is_never_saved() {
+        let dir = std::env::temp_dir().join(format!("wordcraft-hf960-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("x.docx");
+        let mut s = two_pages();
+        s.run("insert.editHeader", &json!({"page": 0})).unwrap();
+        s.run("file.save", &json!({"path": path.to_string_lossy()})).unwrap();
+        let back = wordcraft_docx::read(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(back.parts.values().all(|p| p.kind != PartKind::Header), "no empty header saved");
+        assert_eq!(headers(&s), 1, "still open for typing");
+        s.run("insert.closeHeader", &json!({})).unwrap();
+        assert_eq!(headers(&s), 0);
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(headers(&s), 1, "undo brings it back");
+        s.run("insert.closeHeader", &json!({})).unwrap();
+        assert_eq!(headers(&s), 0, "and the next close takes it away again");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #960 review: with no header anywhere, one made on a later section's page goes in the first
+    /// section, linked through to the later ones (Word's "Link to Previous" default); with Odd &
+    /// Even on and only a default header, an even page edits the one it shows.
+    #[test]
+    fn new_header_links_to_previous_and_even_pages_edit_what_they_show() {
+        let mut s = two_pages();
+        s.run("layout.break", &json!({"kind": "nextPage"})).unwrap();
+        s.run("text.insert", &json!({"text": "Three"})).unwrap();
+        let pages = s.layout().pages.len();
+        assert!(pages >= 3 && s.layout().pages[pages - 1].section == 1, "a second section");
+        let id = s.run("insert.editHeader", &json!({"page": pages - 1})).unwrap()["story"].as_u64().unwrap() as u32;
+        s.run("text.insert", &json!({"text": "All"})).unwrap();
+        s.run("insert.closeHeader", &json!({})).unwrap();
+        assert!(s.layout().pages.iter().all(|p| p.header_story == Some(id)), "every page shows it");
+        assert_eq!(s.doc.sections()[0].1.headers.default, Some(id));
+        s.run("layout.differentOddEven", &json!({"value": true})).unwrap();
+        assert_eq!(s.layout().pages[1].header_story, Some(id));
+        assert_eq!(s.run("insert.editHeader", &json!({"page": 1})).unwrap()["story"].as_u64(), Some(id as u64));
+        assert_eq!(s.doc.sections()[0].1.headers.even, None, "nothing made");
+    }
 
     #[test]
     fn base64_round_trip() {

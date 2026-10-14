@@ -125,6 +125,7 @@
 	Ignore web and file addresses	Занемари веб-адресе и путање датотека
 	Ignore words in capitals	Занемари речи писане великим словима
 	Ignore words with numbers	Занемари речи са бројевима
+	In the margin	На маргини
 	Inches	Инчи
 	Formatting exceptions	Изузеци форматирања
 	Include level number from:	Укључи број нивоа:
@@ -153,6 +154,7 @@
 	Number alignment:	Поравнање броја:
 	Number format	Формат броја
 	Number style for this level:	Стил броја за овај ниво:
+	Only for the selected text	Само за изабрани текст
 	Outside border	Спољна ивица
 	In Default apps, choose WordCraft for the document types you want it to open.	У подразумеваним апликацијама изаберите WordCraft за врсте докумената које желите да отвара.
 	Make WordCraft the default for Word documents…	Постави WordCraft као подразумевану апликацију за Word документе…
@@ -160,6 +162,8 @@
 	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Отвара Подешавања › Подразумеване апликације, где бирате WordCraft за .docx и друге врсте докумената.
 	Overtype	Преписивање
 	Overtype (typing replaces the characters after the caret)	Преписивање (откуцано замењује знакове после курсора)
+	Show alignment guides when moving pictures and shapes	Приказуј водиље за поравнање при померању слика и облика
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Померени објекти се приањају уз ивице и средину странице, маргине и друге објекте. Држите Alt да бисте померали слободно.
 	Page display	Приказ стране
 	Paragraph marks	Ознаке пасуса
 	Personalize	Персонализација
@@ -1423,6 +1427,7 @@
 	Demote	Спусти ниво
 	Go Back	Врати се назад
 	Toggle Unicode Character	Пребаци Unicode знак
+	Type Character Code	Унеси код знака
 	Toggle Field Codes	Укључи/искључи кодове поља
 	Edit Field Code	Уреди код поља
 	Unlink Fields	Раскини везу поља
@@ -2043,6 +2048,7 @@
 	Hyphenation Options…	Опције дељења речи…
 	Hyphenation zone:	Зона дељења речи:
 	Italian	Италијански
+	Croatian	Хрватски
 	Japanese	Јапански
 	Korean	Корејски
 	Limit consecutive hyphens to:	Највише узастопних цртица:
@@ -2089,9 +2095,49 @@
 	AutoFit Column by Double-Clicking	Аутоматско уклапање колоне двоструким кликом
 	Region:	Регион:
 	Automatic ({region})	Аутоматски ({region})
+	Text of the nearest paragraph with a given style (running headers)	Текст најближег пасуса са задатим стилом (текућа заглавља)
+	Style name:	Назив стила:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Филтрирај примаоце
+	Sort Recipients	Сортирај примаоце
+	Filter and Sort	Филтрирање и сортирање
+	And	И
+	Or	Или
+	Comparison	Поређење
+	Compare to	Упореди са
+	Add Condition	Додај услов
+	Remove condition	Уклони услов
+	Sort by	Сортирај по
+	Then by	Затим по
+	Ascending	Растуће
+	Descending	Опадајуће
+	Equal to	Једнако
+	Not equal to	Није једнако
+	Less than	Мање од
+	Greater than	Веће од
+	Less than or equal	Мање или једнако
+	Greater than or equal	Веће или једнако
+	Is blank	Празно
+	Is not blank	Није празно
+	Contains	Садржи
+	Does not contain	Не садржи
+	{count} of {total} recipients will be merged.	Прималаца за спајање: {count} од {total}.
+	Take the last match on the page	Узми последње подударање на страници
+	Show its list number	Прикажи његов број у листи
+	Show its number relative to this field	Прикажи његов број у односу на ово поље
+	Show its number with all higher levels	Прикажи његов број са свим вишим нивоима
+	Number only, without the label's words	Само број, без речи из ознаке
+	Add whether it is above or below	Додај да ли је изнад или испод
 	Start-up	Покретање
 	Show the Start screen when WordCraft starts	Прикажи почетни екран при покретању програма WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Укључено: WordCraft се отвара на Фајл › Почетак, са празним документом, шаблонима и недавним документима. Искључено: отвара празан документ.
+	Copy to	Копирај у
+
+# Document naming and account controls.
+	Rename Document	Преименуј документ
+	Document name	Име документа
+	Rename	Преименуј
+	Account	Налог
 	Privacy Options	Опције приватности
 	Trust Center	Центар за безбедност
 	Privacy for this document	Приватност овог документа
@@ -2099,3 +2145,48 @@
 	Leave out the date and time of comments and tracked changes when saving	Изостави датум и време коментара и праћених измена при чувању
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Документ који уређујете задржава имена и датуме; изоставља их само сачувана датотека.
 	Privacy Settings	Тренутна подешавања приватности
+	Waiting for the save to finish…	Чека се да се чување заврши…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Чување {name} је отказано. Документ је и даље отворен и ништа није изгубљено.
+	Paper	Папир
+	Paper size:	Величина папира:
+	Custom size	Прилагођена величина
+	More Paper Sizes…	Још величина папира…
+	The margins don't fit on a page this size; make the margins smaller first.	Маргине не стају на страну ове величине; прво смањите маргине.
+	Full Screen	Цео екран
+	Full\nScreen	Цео\nекран
+	Use the browser's full screen (F11)	Користите приказ преко целог екрана у прегледачу (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} инча
+	{name}   {height} × {width} mm	{name}   {height} × {width} мм
+	{width} × {height} mm	{width} × {height} мм
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Истраживачу је потребна услуга на мрежи, а WordCraft ваше документе чува ван мреже.
+	These settings will be used for new documents.	Ова подешавања ће се користити за нове документе.
+	can't split at the first row	табела не може да се подели код првог реда
+	select two or more cells to merge	изаберите две или више ћелија за спајање
+	there is no ink to replay	нема мастила за репризу
+	there's no citation after the caret	после курсора нема цитата
+	this item is already at the top level	ова ставка је већ на највишем нивоу
+	Envelope #10	Коверта бр. 10
+	Envelope DL	Коверта DL
+	Reading Mode	Режим читања
+	Column width	Ширина колоне
+	Text size	Величина текста
+	Edit Document	Уреди документ
+	Go to what:	Иди на:
+	Type +2 or -1 to move from the page you are on.	Унесите +2 или -1 да бисте се померили од стране на којој сте.
+	Suggested	Предлози
+	Set Proofing Language…	Постави језик провере…
+	Language Preferences…	Језичке поставке…
+
+# Dictionaries folder (#1063)
+	Dictionaries	Речници
+	Dictionaries folder:	Фасцикла речника:
+	Not set: the system's usual places	Није подешено: уобичајене локације у систему
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Hunspell .aff и .dic датотеке из ове фасцикле (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) користе се пре системских.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: речник није пронађен
+
+# Backstage › Recover (#586)
+	Recover	Опорави

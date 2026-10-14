@@ -1,6 +1,7 @@
 # Czech (cs) interface catalog. Columns, separated by a TAB:
 #   context <TAB> English source <TAB> translation
-#   context    empty (WordCraft uses no contexts yet)
+#   context    usually empty. `preview` is short sample text inside a rendered preview tile;
+#              it falls back to the plain entry.
 #   source     the English text exactly as in the code (tl!(...), ribbon labels, command labels)
 #   escapes    \n  \t  \\  inside a column. `{name}` placeholders must appear in both columns, and a
 #              trailing "…" in one needs one in the other.
@@ -10,6 +11,7 @@
 # Czech computing and typography vocabulary. No Microsoft Word (or other product) localisation,
 # string table or translated UI was consulted or copied; add entries the same way.
 # Product, format and technology names (WordCraft, PDF, Markdown, MCP …) stay in Latin letters.
+# Counts use count-neutral wording (`Počet slov: 21`), so no plural forms are needed.
 
 	(All)	(Vše)
 	(no style)	(žádný styl)
@@ -23,6 +25,7 @@
 	3-D	3D
 	A file dialog is already open.	Dialogové okno souboru je již otevřené.
 	A free, open-source word processor written from scratch in Rust.\nPart of the Crafting Apps from the ArtCraft team.	Bezplatný textový procesor s otevřeným zdrojovým kódem napsaný od základu v jazyce Rust.\nSoučást sady Crafting Apps od týmu ArtCraft.
+	AaBbCcDd	AaÁáBbCc
 	A mail merge field	Pole hromadné korespondence
 	A numbered sequence (figures, tables…)	Číslovaná posloupnost (obrázky, tabulky…)
 	A password is required to open this document.	K otevření tohoto dokumentu je vyžadováno heslo.
@@ -77,6 +80,9 @@
 	Allow row to break across pages	Povolit zalomení řádku mezi stránkami
 	Alphabetical	Abecedně
 	Alt Text	Alternativní text
+	Annotation Reference	Odkaz na komentář
+	Annotation Subject	Předmět komentáře
+	Annotation Text	Text komentáře
 	Alt text	Alternativní text
 	Alt:	Alt. text:
 	Anyone can open this document. Encrypt it with a password to keep it private.	Tento dokument může otevřít kdokoli. Chcete-li jej chránit, zašifrujte jej heslem.
@@ -128,8 +134,10 @@
 	Blank document	Prázdný dokument
 	Blank Page	Prázdná stránka
 	Block\nAuthors	Blokovat\nautory
+	Body text in a short paragraph to show spacing.	Základní text ukazuje mezery v odstavci.
 	Body Text	Základní text
 	Bold	Tučné
+	Book Title	Název knihy
 	Bookmark	Záložka
 	Bookmark name:	Název záložky:
 	Border Painter	Štětec ohraničení
@@ -158,6 +166,7 @@
 	Cancel	Zrušit
 	Capitalize Each Word	Velká Počáteční Písmena Slov
 	Captions	Titulky
+	Category	Kategorie
 	Categories:	Kategorie:
 	Cell	Buňka
 	Cell Margins	Okraje buňky
@@ -173,7 +182,7 @@
 	Change Shape	Změnit tvar
 	Change Structure	Změnit strukturu
 	Change to Display	Změnit na samostatnou rovnici
-	Change to Inline	Změnit na vnořenou rovnici
+	Change to Inline	Změnit na rovnici v řádku
 	Changed lines:	Změněné řádky:
 	Changes	Změny
 	Character	Znak
@@ -276,10 +285,11 @@
 	Date & Time	Datum a čas
 	Date and Time	Datum a čas
 	Date formats:	Formáty data:
-	Decimal	Desetinná čárka
+	Decimal	Desetinné
 	Decrease Font Size	Zmenšit velikost písma
 	Decrease Indent	Zmenšit odsazení
 	Default	Výchozí
+	Default Paragraph Font	Standardní písmo odstavce
 	Default tab stops:	Výchozí krok tabulátoru:
 	Define New Bullet	Definovat novou odrážku
 	Define New Multilevel List	Definovat nový víceúrovňový seznam
@@ -372,15 +382,20 @@
 	Em Dash	Dlouhá pomlčka
 	Em Space	Čtverčíková mezera
 	Emboss	Reliéf
+	Emphasis	Zdůraznění
 	En Dash	Krátká pomlčka
 	En Space	Půlčtverčíková mezera
 	Encrypt with Password	Zašifrovat heslem
+	Endnote Reference	Znak vysvětlivky
+	Endnote Text	Text vysvětlivky
 	Encrypt with Password…	Zašifrovat heslem…
 	English (United States)	Angličtina (Spojené státy)
 	Engrave	Rytina
 	Enter formatting for number:	Zadejte formát čísla:
 	Enter in Equation	Enter v rovnici
 	Enter page number:	Zadejte číslo stránky:
+	Envelope Address	Adresa na obálce
+	Envelope Return	Zpáteční adresa na obálce
 	Envelopes	Obálky
 	Equal column width	Stejná šířka sloupců
 	Equals:	Rovná se:
@@ -449,6 +464,8 @@
 	Fonts	Písma
 	Footer	Zápatí
 	Footnote and Endnote	Poznámka pod čarou a vysvětlivka
+	Footnote Reference	Znak poznámky pod čarou
+	Footnote Text	Text poznámky pod čarou
 	Footnotes	Poznámky pod čarou
 	Format	Formát
 	Format Page Numbers	Formát číslování stránek
@@ -461,6 +478,12 @@
 	Formula	Vzorec
 	Fraction	Zlomek
 	from Unicode (hex)	z Unicode (hex)
+	All - Linear	Všechny – lineární
+	All - Professional	Všechny – profesionální
+	Current - Linear	Aktuální – lineární
+	Current - Professional	Aktuální – profesionální
+	Centered as Group	Na střed jako skupina
+	✓ None	✓ Žádné
 	Function	Funkce
 	General	Obecné
 	getartcraft.com/apps/wordcraft	getartcraft.com/apps/wordcraft
@@ -501,6 +524,7 @@
 	Home	Domů
 	Horizontal	Vodorovně
 	Horizontal Line	Vodorovná čára
+	Hyperlink	Hypertextový odkaz
 	How many pages the whole document has	Celkový počet stránek v dokumentu
 	How many pages this section has	Počet stránek v tomto oddílu
 	How many words the document holds	Počet slov v dokumentu
@@ -514,6 +538,7 @@
 	Immersive	Asistivní čtení
 	Immersive Reader	Asistivní čtečka
 	Immersive\nReader	Asistivní\nčtečka
+	In the margin	Na okraji
 	Include level number from:	Zahrnout číslo úrovně z:
 	Increase Font Size	Zvětšit velikost písma
 	Increase Indent	Zvětšit odsazení
@@ -523,13 +548,15 @@
 	Indents	Odsazení
 	Indents and Spacing	Odsazení a mezery
 	Index	Rejstřík
+	Index Heading	Nadpis rejstříku
+	Index {n}	Rejstřík {n}
 	Index and Tables	Rejstřík a seznamy
 	Info	Informace
 	Ink	Rukopis
 	Ink to\nMath	Rukopis na\nrovnici
 	Ink to\nShape	Rukopis na\ntvar
 	Ink\nReplay	Přehrát\nrukopis
-	Inline	Vnořená
+	Inline	V řádku
 	Input Format	Formát vstupu
 	Insert	Vložení
 	Insert a new equation (Alt+=)	Vložit novou rovnici (Alt+=)
@@ -563,6 +590,9 @@
 	Insertions:	Vložení:
 	Inside Borders	Vnitřní ohraničení
 	Inspect Document	Zkontrolovat dokument
+	Intense Emphasis	Výrazné zdůraznění
+	Intense Quote	Výrazná citace
+	Intense Reference	Výrazný odkaz
 	Inspect Styles at Selection	Zkontrolovat styly výběru
 	Integral	Integrál
 	Interface language:	Jazyk rozhraní:
@@ -581,6 +611,7 @@
 	Keep the password somewhere safe: without it nobody, WordCraft included, can open the document. Leave both boxes empty to remove the password.	Heslo si bezpečně uložte: bez něj dokument nikdo (včetně aplikace WordCraft) neotevře. Chcete-li heslo odebrat, ponechte obě pole prázdná.
 	Keep with Next	Svázat s následujícím
 	Keep with next	Svázat s následujícím
+	Keywords	Klíčová slova
 	Keeps the fonts and formatting of the copied text.	Zachová písma a formátování zkopírovaného textu.
 	Labels	Štítky
 	Landscape	Na šířku
@@ -618,6 +649,7 @@
 	Line breaking	Zalamování řádků
 	Line delta	Změna počtu řádků
 	Line End	Konec řádku
+	Line Number	Číslo řádku
 	Line Numbers	Čísla řádků
 	Line Spacing	Řádkování
 	Line spacing	Řádkování
@@ -633,6 +665,7 @@
 	Link to Previous	Navázat na předchozí
 	Linked style (paragraph and character)	Propojený styl (odstavec a znak)
 	Links	Odkazy
+	List Paragraph	Odstavec se seznamem
 	Links and References	Odkazy a reference
 	List Definition	Definice seznamu
 	Location: {path}	Umístění: {path}
@@ -709,6 +742,7 @@
 	No Markup	Bez revizí
 	No model credits were built into this copy.	Tato kopie neobsahuje uvedení modelů.
 	No Paragraph Space	Bez mezer mezi odstavci
+	No Spacing	Bez mezer
 	No Shadow	Bez stínu
 	No Soft Edges	Bez měkkých okrajů
 	No templates match your search.	Hledání neodpovídají žádné šablony.
@@ -717,9 +751,12 @@
 	Nonbreaking Hyphen	Nezlomitelný spojovník
 	Nonbreaking Space	Nezlomitelná mezera
 	None	Žádné
+	Normal	Normální
 	Normal  1" all	Normální  1" všude
+	Normal Indent	Normální s odsazením
 	Normal speed	Normální rychlost
 	Normal Style	Normální styl
+	Normal Table	Normální tabulka
 	Normal Text	Normální text
 	Normal Word Document	Normální dokument Word
 	Not available right now	Momentálně nedostupné
@@ -753,6 +790,7 @@
 	OK	OK
 	One	Jeden
 	One Page	Jedna stránka
+	Only for the selected text	Pouze pro vybraný text
 	Only web (http, https) and email (mailto) links can be followed	Otevřít lze pouze webové (http, https) a e-mailové (mailto) odkazy
 	Open	Otevřít
 	OpenDocument Text (*.odt)	Text OpenDocument (*.odt)
@@ -850,7 +888,7 @@
 	Print Layout	Rozvržení při tisku
 	Print\nLayout	Rozvržení\npři tisku
 	Professional	Profesionální
-	Proofing	Kontrola pravopisu a mluvnice
+	Proofing	Kontrola pravopisu
 	Proofing Issues	Nalezené chyby
 	Properties	Vlastnosti
 	Protect	Zabezpečení
@@ -858,6 +896,7 @@
 	Quick Access Toolbar	Panel nástrojů Rychlý přístup
 	Quick Parts	Rychlé části
 	Quick Tables	Rychlé tabulky
+	Quote	Citace
 	Radical	Odmocnina
 	Raised/lowered	Zvýšené/snížené
 	Read Aloud	Číst nahlas
@@ -955,6 +994,38 @@
 	Save As	Uložit jako
 	Save as Template	Uložit jako šablonu
 	Save the document to turn on AutoSave	Pro zapnutí automatického ukládání dokument nejprve uložte
+	Contributors	Přispěvatelé
+	Models	Modely
+	Good evening	Dobrý večer
+	Good morning	Dobré ráno
+	Good afternoon	Dobré odpoledne
+	Track\nChanges	Sledovat\nzměny
+	Track\nChanges ✓	Sledovat\nzměny ✓
+	tOGGLE cASE	pŘEPNOUT vELIKOST pÍSMEN
+	Change to Level 1	Změnit na úroveň 1
+	Change to Level 2	Změnit na úroveň 2
+	Change to Level 3	Změnit na úroveň 3
+	Change to Level 4	Změnit na úroveň 4
+	Change to Level 5	Změnit na úroveň 5
+	Change to Level 6	Změnit na úroveň 6
+	Change to Level 7	Změnit na úroveň 7
+	Change to Level 8	Změnit na úroveň 8
+	Change to Level 9	Změnit na úroveň 9
+	Level 1	Úroveň 1
+	Level 2	Úroveň 2
+	Level 3	Úroveň 3
+	Level 4	Úroveň 4
+	Level 5	Úroveň 5
+	Level 6	Úroveň 6
+	Level 7	Úroveň 7
+	Level 8	Úroveň 8
+	Level 9	Úroveň 9
+	ASAP	CO NEJDŘÍVE
+	CONFIDENTIAL	DŮVĚRNÉ
+	DO NOT COPY	NEKOPÍROVAT
+	DRAFT	KONCEPT
+	SAMPLE	VZOR
+	URGENT	NALÉHAVÉ
 	Save the document to turn on AutoSave (a file you have only opened isn't rewritten until you save it)	Pro zapnutí automatického ukládání dokument uložte (pouze otevřený soubor se nepřepisuje, dokud jej sami neuložíte)
 	Saved	Uloženo
 	Scale	Měřítko
@@ -1081,9 +1152,10 @@
 	Stop Reading	Zastavit čtení
 	Stopped	Zastaveno
 	Strikethrough	Přeškrtnuté
+	Strong	Silné
 	Structure Actions	Akce se strukturou
 	Structures	Struktury
-	Studio cover	Titulní stránka studia
+	Studio cover	Titulní stránka Studio
 	Studio handbook (sample)	Příručka studia (ukázka)
 	Style	Styl
 	Style based on:	Styl založený na:
@@ -1092,7 +1164,11 @@
 	Style:	Styl:
 	Styles	Styly
 	Styles Pane	Podokno stylů
+	Subject	Předmět
 	Subscript	Dolní index
+	Subtitle	Podtitul
+	Subtle Emphasis	Jemné zdůraznění
+	Subtle Reference	Jemný odkaz
 	Subset:	Podmnožina:
 	Superscript	Horní index
 	Suppress line numbers	Potlačit čísla řádků
@@ -1108,9 +1184,11 @@
 	Table	Tabulka
 	Table Column Width	Šířka sloupce tabulky
 	Table Design	Návrh tabulky
+	Table Grid	Mřížka tabulky
 	Table Layout	Rozvržení tabulky
 	Table of Authorities	Seznam citovaných předpisů
 	Table of Contents	Obsah
+	Table of Figures	Seznam obrázků
 	Table of\nContents	Obsah
 	Table Properties	Vlastnosti tabulky
 	Table Properties…	Vlastnosti tabulky…
@@ -1262,7 +1340,7 @@
 	Zotero: done	Zotero: hotovo
 	{count} items highlighted	Počet zvýrazněných položek: {count}
 	{group} settings	Nastavení skupiny {group}
-	{key}+Click to follow link	{key}+kliknutí pro otevření odkazu
+	{key}+Click to follow link	{key}+kliknutím otevřete odkaz
 	{name} is protected with a password.	Dokument {name} je chráněn heslem.
 	{n} lines	Řádků: {n}
 	{n} pt	{n} b.
@@ -1315,6 +1393,294 @@
 	Lines +/−	Řádky +/−
 	Craft	Řemeslo
 	Studio	Studio
+	Plain Table 1	Prostá tabulka 1
+	Grid Table 1 Light	Tabulka s mřížkou 1 – světlá
+	Grid Table 4 – Blue	Tabulka s mřížkou 4 – modrá
+	Grid Table 4 – Green	Tabulka s mřížkou 4 – zelená
+	Grid Table 4 – Orange	Tabulka s mřížkou 4 – oranžová
+	Grid Table 4 – Purple	Tabulka s mřížkou 4 – fialová
+	List Table 3 – Blue	Tabulka se seznamem 3 – modrá
+	List Table 3 – Green	Tabulka se seznamem 3 – zelená
+	List Table 3 – Orange	Tabulka se seznamem 3 – oranžová
+	List Table 3 – Purple	Tabulka se seznamem 3 – fialová
+	Convert between built-up and linear form	Převést mezi profesionálním a lineárním tvarem
+	Justification of a display equation	Zarovnání rovnice na samostatném řádku
+	Number the equation; the number sits at the right margin (or type # then the number)	Očíslovat rovnici; číslo se umístí k pravému okraji (nebo napište # a poté číslo)
+	Show the equation in the line of text	Zobrazit rovnici v řádku textu
+	Show the equation on a line of its own	Zobrazit rovnici na samostatném řádku
+	Type equations in LaTeX	Zapisovat rovnice v LaTeXu
+	Type equations in the linear format (UnicodeMath)	Zapisovat rovnice v lineárním formátu (UnicodeMath)
+	Type normal (non-math) text in the equation	Psát v rovnici běžný (nematematický) text
+	Sides of a right triangle	Strany pravoúhlého trojúhelníku
+	Circle area from its radius	Obsah kruhu z jeho poloměru
+	Roots of ax²+bx+c	Kořeny ax²+bx+c
+	Binomial expansion of (x+a)ⁿ	Binomický rozvoj (x+a)ⁿ
+	Power series of (1+x)ⁿ	Mocninná řada (1+x)ⁿ
+	Euler's identity	Eulerova identita
+	Derivative as a limit	Derivace jako limita
+	Exponential series	Exponenciální řada
+	Integral of e^(−x²)	Integrál e^(−x²)
+	Sine and cosine series of f(x)	Sinová a kosinová řada f(x)
+	Sum or difference of sines	Součet nebo rozdíl sinů
+	Sum of cosines	Součet kosinů
+	Normal probability density	Hustota pravděpodobnosti normálního rozdělení
+	Bayes' rule	Bayesova věta
+	Accents	Diakritická znaménka
+	Basic Math	Základní matematika
+	Boxed Formulas	Vzorce v rámečku
+	Cases and Stacks	Rozlišení případů a výrazy nad sebou
+	Common Accent Objects	Běžné výrazy s diakritickými znaménky
+	Common Brackets	Běžné závorky
+	Common Fractions	Běžné zlomky
+	Common Functions	Běžné funkce
+	Common Large Operators	Běžné velké operátory
+	Common Operator Structures	Běžné struktury operátorů
+	Common Operators	Běžné operátory
+	Common Radicals	Běžné odmocniny
+	Common Subscripts and Superscripts	Běžné dolní a horní indexy
+	Contour Integrals	Křivkové integrály
+	Differentials	Diferenciály
+	Dots	Tečky
+	Empty Matrices	Prázdné matice
+	Functions	Funkce
+	Geometry	Geometrie
+	Greek Letters	Řecká písmena
+	Hyperbolic Functions	Hyperbolické funkce
+	Identity Matrices	Jednotkové matice
+	Integrals	Integrály
+	Inverse Functions	Inverzní funkce
+	Inverse Hyperbolic Functions	Inverzní hyperbolické funkce
+	Letter-Like Symbols	Symboly podobné písmenům
+	Matrices with Brackets	Matice v závorkách
+	Negated Relations	Negované relace
+	Operator Structures	Struktury operátorů
+	Operators	Operátory
+	Other Large Operators	Další velké operátory
+	Overbars and Underbars	Čáry nad a pod výrazem
+	Products and Coproducts	Součiny a koprodukty
+	Radicals	Odmocniny
+	Scripts	Indexy
+	Single Brackets	Samostatné závorky
+	Sparse Matrices	Řídké matice
+	Subscripts and Superscripts	Dolní a horní indexy
+	Summations	Sumy
+	Trigonometric Functions	Goniometrické funkce
+	Unions and Intersections	Sjednocení a průniky
+	1×2 Empty Matrix	Prázdná matice 1×2
+	1×3 Empty Matrix	Prázdná matice 1×3
+	2×1 Empty Matrix	Prázdná matice 2×1
+	2×2 Empty Matrix	Prázdná matice 2×2
+	2×3 Empty Matrix	Prázdná matice 2×3
+	3×1 Empty Matrix	Prázdná matice 3×1
+	3×2 Empty Matrix	Prázdná matice 3×2
+	3×3 Empty Matrix	Prázdná matice 3×3
+	2×2 Determinant	Determinant 2×2
+	2×2 Identity Matrix	Jednotková matice 2×2
+	2×2 Identity Matrix (sparse)	Jednotková matice 2×2 (řídká)
+	3×3 Identity Matrix	Jednotková matice 3×3
+	3×3 Identity Matrix (sparse)	Jednotková matice 3×3 (řídká)
+	2×2 Matrix in Brackets	Matice 2×2 v hranatých závorkách
+	2×2 Matrix in Double Bars	Matice 2×2 mezi dvojitými svislými čarami
+	2×2 Matrix in Parentheses	Matice 2×2 v kulatých závorkách
+	n×n Identity Matrix	Jednotková matice n×n
+	n×n Matrix	Matice n×n
+	A xor B	A XOR B
+	Absolute value cases	Absolutní hodnota podle případů
+	Acute	Čárka
+	Angle Brackets	Lomené závorky
+	Angle Brackets with Separator	Lomené závorky s oddělovačem
+	Angle Brackets with Two Separators	Lomené závorky se dvěma oddělovači
+	Baseline Dots	Tečky na účaří
+	Binomial Coefficient	Binomický koeficient
+	Binomial Coefficient (angle)	Binomický koeficient (lomené závorky)
+	Binomial Coefficient with Angle Brackets	Binomický koeficient v lomených závorkách
+	Boxed Formula	Vzorec v rámečku
+	Boxed Formula (example)	Vzorec v rámečku (příklad)
+	Braces	Složené závorky
+	Braces with Separator	Složené závorky s oddělovačem
+	Brackets	Hranaté závorky
+	Brackets with Separators	Závorky s oddělovači
+	Breve	Oblouček
+	Cases (Three Conditions)	Rozlišení případů (tři podmínky)
+	Cases (Two Conditions)	Rozlišení případů (dvě podmínky)
+	Ceiling	Horní celá část
+	Change in y over change in x	Změna y dělená změnou x
+	Check	Háček
+	Circled Dot	Tečka v kroužku
+	Circled Plus	Plus v kroužku
+	Circled Times	Znaménko násobení v kroužku
+	Colon Equal	Dvojtečka a rovná se
+	Contour Integral	Křivkový integrál
+	Contour Integral with Limits	Křivkový integrál s mezemi
+	Contour Integral with Stacked Limits	Křivkový integrál s mezemi nad a pod
+	Coproduct	Koprodukt
+	Coproduct with Limits	Koprodukt s mezemi
+	Coproduct with Lower Limit	Koprodukt s dolní mezí
+	Coproduct with Subscript-Superscript Limits	Koprodukt s mezemi v dolním a horním indexu
+	Cosecant Function	Kosekans
+	Cosine 2x	Kosinus 2x
+	Cosine Function	Kosinus
+	Cotangent Function	Kotangens
+	Cube Root	Třetí odmocnina
+	Delta Equal To	Rovná se s deltou
+	Delta over arrow	Delta nad šipkou
+	Diagonal Dots	Diagonální tečky
+	Differential	Diferenciál
+	Differential theta	Diferenciál théta
+	Differential x	Diferenciál x
+	Differential y	Diferenciál y
+	Dot	Tečka
+	Double Bar	Dvojitá čára
+	Double Dot	Dvě tečky
+	Double Integral	Dvojný integrál
+	Double Integral with Limits	Dvojný integrál s mezemi
+	Double Integral with Stacked Limits	Dvojný integrál s mezemi nad a pod
+	Double Left Arrow with Text Above	Dvojitá šipka vlevo s textem nad
+	Double Left Arrow with Text Below	Dvojitá šipka vlevo s textem pod
+	Double Left Right Arrow with Text Above	Dvojitá obousměrná šipka s textem nad
+	Double Left Right Arrow with Text Below	Dvojitá obousměrná šipka s textem pod
+	Double Right Arrow with Text Above	Dvojitá šipka vpravo s textem nad
+	Double Right Arrow with Text Below	Dvojitá šipka vpravo s textem pod
+	Double Square Brackets	Dvojité hranaté závorky
+	Double Vertical Bars	Dvojité svislé čáry
+	Double summation	Dvojná suma
+	Equal Equal	Dvě rovnítka
+	Equal by Definition	Rovná se podle definice
+	Exponential	Exponenciální funkce
+	Floor	Dolní celá část
+	Grave	Obrácená čárka
+	Grouping Character Above	Seskupovací znak nad výrazem
+	Grouping Character Below	Seskupovací znak pod výrazem
+	Hat	Stříška
+	Hyperbolic Cosecant Function	Hyperbolický kosekans
+	Hyperbolic Cosine Function	Hyperbolický kosinus
+	Hyperbolic Cotangent Function	Hyperbolický kotangens
+	Hyperbolic Secant Function	Hyperbolický sekans
+	Hyperbolic Sine Function	Hyperbolický sinus
+	Hyperbolic Tangent Function	Hyperbolický tangens
+	Hypotenuse	Přepona
+	Integral with Limits	Integrál s mezemi
+	Integral with Stacked Limits	Integrál s mezemi nad a pod
+	Intersection	Průnik
+	Intersection with Limits	Průnik s mezemi
+	Intersection with Lower Limit	Průnik s dolní mezí
+	Intersection with Subscript-Superscript Limits	Průnik s mezemi v dolním a horním indexu
+	Inverse Cosecant Function	Arkuskosekans
+	Inverse Cosine Function	Arkuskosinus
+	Inverse Cotangent Function	Arkuskotangens
+	Inverse Hyperbolic Cosecant Function	Inverzní hyperbolický kosekans
+	Inverse Hyperbolic Cosine Function	Inverzní hyperbolický kosinus
+	Inverse Hyperbolic Cotangent Function	Inverzní hyperbolický kotangens
+	Inverse Hyperbolic Secant Function	Inverzní hyperbolický sekans
+	Inverse Hyperbolic Sine Function	Inverzní hyperbolický sinus
+	Inverse Hyperbolic Tangent Function	Inverzní hyperbolický tangens
+	Inverse Secant Function	Arkussekans
+	Inverse Sine Function	Arkussinus
+	Inverse Tangent Function	Arkustangens
+	Left Arrow with Text Above	Šipka vlevo s textem nad
+	Left Arrow with Text Below	Šipka vlevo s textem pod
+	Left Bracket Twice	Dvě levé hranaté závorky
+	Left Right Arrow Above	Obousměrná šipka nad výrazem
+	Left Right Arrow with Text Above	Obousměrná šipka s textem nad
+	Left Right Arrow with Text Below	Obousměrná šipka s textem pod
+	Left Subscript-Superscript	Levý dolní a horní index
+	Leftwards Arrow Above	Šipka vlevo nad výrazem
+	Leftwards Harpoon Above	Harpuna vlevo nad výrazem
+	Limit	Limita
+	Limit Example	Limita (příklad)
+	Linear Fraction	Lineární zlomek
+	Logarithm	Logaritmus
+	Logarithm with Base	Logaritmus se základem
+	Logical AND	Logické A
+	Logical AND with Limits	Logické A s mezemi
+	Logical OR	Logické NEBO
+	Logical OR with Limits	Logické NEBO s mezemi
+	Maximum	Maximum
+	Maximum Example	Maximum (příklad)
+	Measured By	Měřeno pomocí
+	Midline Dots	Tečky ve střední výšce
+	Minimum	Minimum
+	Minus Equal	Minus a rovná se
+	Natural Logarithm	Přirozený logaritmus
+	One half	Jedna polovina
+	Outward Brackets	Závorky otočené ven
+	Overbar	Čára nad výrazem
+	Overbrace	Složená závorka nad výrazem
+	Parentheses	Kulaté závorky
+	Parentheses with Separator	Kulaté závorky s oddělovačem
+	Partial Differential	Parciální diferenciál
+	Pi Over 2	Pí děleno 2
+	Plus Equal	Plus a rovná se
+	Product	Součin
+	Product of A	Součin A
+	Product with Limits	Součin s mezemi
+	Product with Lower Limit	Součin s dolní mezí
+	Product with Subscript-Superscript Limits	Součin s mezemi v dolním a horním indexu
+	Quadratic Root	Kořen kvadratické rovnice
+	Radical with Degree	Odmocnina se stupněm
+	Right Arrow with Text Above	Šipka vpravo s textem nad
+	Right Arrow with Text Below	Šipka vpravo s textem pod
+	Right Bracket Twice	Dvě pravé hranaté závorky
+	Rightwards Arrow Above	Šipka vpravo nad výrazem
+	Rightwards Harpoon Above	Harpuna vpravo nad výrazem
+	Secant Function	Sekans
+	Sine Function	Sinus
+	Sine theta	Sinus théta
+	Single Left Angle	Levá lomená závorka
+	Single Left Bar	Levá svislá čára
+	Single Left Brace	Levá složená závorka
+	Single Left Bracket	Levá hranatá závorka
+	Single Left Parenthesis	Levá kulatá závorka
+	Single Right Brace	Pravá složená závorka
+	Single Right Bracket	Pravá hranatá závorka
+	Single Right Parenthesis	Pravá kulatá závorka
+	Skewed Fraction	Šikmý zlomek
+	Small change	Malá změna
+	Square Root	Druhá odmocnina
+	Square Root with Degree	Druhá odmocnina se stupněm
+	Square Union	Hranaté sjednocení
+	Stack Object	Dva výrazy nad sebou
+	Stack Object (Three)	Tři výrazy nad sebou
+	Stacked Fraction	Zlomek s vodorovnou čarou
+	Stacked, no bar	Nad sebou bez zlomkové čáry
+	Subscript-Superscript	Dolní a horní index
+	Summation	Suma
+	Summation from 0 to n	Suma od 0 do n
+	Summation over binomials	Suma binomických koeficientů
+	Summation with Limits	Suma s mezemi
+	Summation with Lower Limit	Suma s dolní mezí
+	Summation with Subscript Limit	Suma s mezí v dolním indexu
+	Summation with Subscript-Superscript Limits	Suma s mezemi v dolním a horním indexu
+	Surface Integral	Plošný integrál
+	Surface Integral with Limits	Plošný integrál s mezemi
+	Surface Integral with Stacked Limits	Plošný integrál s mezemi nad a pod
+	Tangent Function	Tangens
+	Tangent formula	Vzorec pro tangens
+	Text over Colon Equal	Text nad dvojtečkou a rovnítkem
+	Text over Equal	Text nad rovnítkem
+	Tilde	Vlnovka
+	Triple Dot	Tři tečky
+	Triple Integral	Trojný integrál
+	Triple Integral with Limits	Trojný integrál s mezemi
+	Triple Integral with Stacked Limits	Trojný integrál s mezemi nad a pod
+	Underbar	Čára pod výrazem
+	Underbrace	Složená závorka pod výrazem
+	Union	Sjednocení
+	Union of intersections	Sjednocení průniků
+	Union with Limits	Sjednocení s mezemi
+	Union with Lower Limit	Sjednocení s dolní mezí
+	Union with Plus	Sjednocení s plusem
+	Union with Subscript-Superscript Limits	Sjednocení s mezemi v dolním a horním indexu
+	Up Diagonal Dots	Diagonální tečky nahoru
+	Vector A	Vektor A
+	Vector AB	Vektor AB
+	Vertical Bars	Svislé čáry
+	Vertical Dots	Svislé tečky
+	Volume Integral	Objemový integrál
+	Volume Integral with Limits	Objemový integrál s mezemi
+	Volume Integral with Stacked Limits	Objemový integrál s mezemi nad a pod
+	Yields	Dává
+	x bar	x s čárou nad
 	Atelier	Ateliér
 	Darkroom	Temná komora
 	Gallery	Galerie
@@ -1326,8 +1692,8 @@
 	Size and Crop…	Velikost a oříznutí…
 	Insert Columns to the Left	Vložit sloupce vlevo
 	Insert Columns to the Right	Vložit sloupce vpravo
-	Insert Rows Above	Vložit řádky výše
-	Insert Rows Below	Vložit řádky níže
+	Insert Rows Above	Vložit řádky nad
+	Insert Rows Below	Vložit řádky pod
 	Mon	Po
 	Tue	Út
 	Wed	St
@@ -1343,6 +1709,7 @@
 	Demote	Snížit úroveň
 	Go Back	Přejít zpět
 	Toggle Unicode Character	Přepnout znak Unicode
+	Type Character Code	Zadat kód znaku
 	Toggle Field Codes	Přepnout kódy polí
 	Edit Field Code	Upravit kód pole
 	Unlink Fields	Zrušit propojení polí
@@ -1596,6 +1963,10 @@
 	Tag	Značka
 	This page	Tato stránka
 	Title	Název
+	TOA Heading	Nadpis seznamu citovaných předpisů
+	TOC Heading	Nadpis obsahu
+	TOC {n}	Obsah {n}
+preview	Title	Ukázka
 	Type:	Typ:
 	URL	URL
 	Volume	Ročník
@@ -1631,7 +2002,7 @@
 	Danish	Dánština
 	Delivery address:	Dodací adresa:
 	Detect language automatically	Rozpoznat jazyk automaticky
-	Do not check spelling or grammar	Nekontrolovat pravopis ani gramatiku
+	Do not check spelling or grammar	Nekontrolovat pravopis ani mluvnici
 	Dutch	Nizozemština
 	English (United Kingdom)	Angličtina (Spojené království)
 	Envelope size:	Velikost obálky:
@@ -1648,6 +2019,7 @@
 	Hyphenation Options…	Možnosti dělení slov…
 	Hyphenation zone:	Pásmo dělení slov:
 	Italian	Italština
+	Croatian	Chorvatština
 	Japanese	Japonština
 	Korean	Korejština
 	Limit consecutive hyphens to:	Omezit počet po sobě jdoucích rozdělení:
@@ -1701,7 +2073,7 @@
 	Checked styles are allowed:	Povolené jsou zaškrtnuté styly:
 	Combine Documents	Zkombinovat dokumenty
 	Compare Documents	Porovnat dokumenty
-	Compared: {changes} changes	Porovnáno: počet změn: {changes}
+	Compared: {changes} changes	Porovnáno – počet změn: {changes}
 	Comparing with another file needs the desktop app.	Porovnání s jiným souborem vyžaduje desktopovou aplikaci.
 	Comparison settings	Nastavení porovnání
 	Don't capitalize after:	Nepsat velké písmeno po:
@@ -1720,7 +2092,7 @@
 	Hyphens (--) as dashes (—)	Spojovníky (--) jako pomlčky (—)
 	In equations, typing a name after a backslash replaces it with its symbol.	V rovnicích se název napsaný za zpětným lomítkem nahradí příslušným symbolem.
 	Internet addresses as links	Internetové adresy jako odkazy
-	Label changes with:	Označit změny štítkem:
+	Label changes with:	Označit změny jménem:
 	Limit formatting to a selection of styles	Omezit formátování na vybrané styly
 	Math AutoCorrect	Automatické opravy matematiky
 	More >>	Více >>
@@ -1844,7 +2216,7 @@
 	Interface language	Jazyk rozhraní
 	Inside:	Uvnitř:
 	Latin text font:	Písmo pro latinkový text:
-	Mark grammar errors as you type	Označovat gramatické chyby při psaní
+	Mark grammar errors as you type	Označovat mluvnické chyby při psaní
 	Measurement units:	Jednotky měření:
 	Millimeters	Milimetry
 	Mirror indents	Zrcadlové odsazení
@@ -1853,6 +2225,8 @@
 	No words yet. Add to Dictionary on a misspelled word puts it here.	Zatím žádná slova. Sem se ukládají slova přidaná příkazem Přidat do slovníku u chybně napsaného slova.
 	Overtype	Přepisování
 	Overtype (typing replaces the characters after the caret)	Přepisování (psaný text nahrazuje znaky za kurzorem)
+	Show alignment guides when moving pictures and shapes	Při přesouvání obrázků a tvarů zobrazovat zarovnávací vodítka
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Přesouvané objekty se přichytávají k okrajům a středu stránky, k okrajům textu a k dalším objektům. Podržením klávesy Alt je přesunete volně.
 	Page display	Zobrazení stránky
 	Paragraph marks	Značky odstavců
 	Personalize	Přizpůsobení
@@ -1871,6 +2245,7 @@
 	Tab characters	Znaky tabulátoru
 	These marks show even when Show/Hide ¶ is off.	Tyto značky se zobrazují, i když je vypnuto Zobrazit/skrýt ¶.
 	Typing replaces selected text	Psaný text nahrazuje vybraný text
+	Typing	Psaní
 	Update fields before printing	Před tiskem aktualizovat pole
 	Use the Insert key to switch overtype on and off	Přepínat režim přepisování klávesou Insert
 	Extend Selection by Units	Rozšířit výběr po jednotkách
@@ -1924,8 +2299,8 @@
 	The system file dialog isn't available, so WordCraft shows its own. To get the system dialog, install a file chooser portal (such as xdg-desktop-portal-gtk) or zenity.	Systémový dialog pro práci se soubory není k dispozici, proto WordCraft zobrazuje vlastní. Chcete-li používat systémový dialog, nainstalujte portál pro výběr souborů (například xdg-desktop-portal-gtk) nebo zenity.
 	Up one level	O úroveň výš
 	Home folder	Domovská složka
-	{name} wasn't found.	{name} nebyl nalezen.
-	{name} already exists. Choose Save again to replace it.	{name} již existuje. Dalším zvolením Uložit jej nahradíte.
+	{name} wasn't found.	Položka {name} nebyla nalezena.
+	{name} already exists. Choose Save again to replace it.	Položka {name} již existuje. Dalším zvolením Uložit ji nahradíte.
 	This folder can't be read: {error}	Tuto složku nelze přečíst: {error}
 	Showing the first {count} items.	Zobrazuje se prvních {count} položek.
 	File name:	Název souboru:
@@ -1942,18 +2317,18 @@
 	Copies	Kopie
 	Collate copies	Kompletovat kopie
 	Pages like 1-3, 5	Stránky, např. 1-3, 5
-	{count} of {total} pages will print	Vytiskne se {count} z {total} stránek
+	{count} of {total} pages will print	Stránky k tisku: {count} z {total}
 	Save these pages as PDF…	Uložit tyto stránky jako PDF…
 	The printer, two-sided printing and pages per sheet are chosen in that dialog.	Tiskárna, oboustranný tisk a počet stránek na list se volí v tomto dialogu.
 	Previous Page	Předchozí stránka
 	Print to PDF	Tisk do PDF
 	Add Shape	Přidat tvar
 	Change Colors	Změnit barvy
-	Change Layout	Změnit rozložení
-	Create Graphic	Vytvořit obrázek
+	Change Layout	Změnit rozvržení
+	Create Graphic	Vytvořit grafiku
 	Edit Items	Upravit položky
-	Layouts	Rozložení
-	Reset Graphic	Obnovit obrázek
+	Layouts	Rozvržení
+	Reset Graphic	Obnovit grafiku
 	SmartArt Design	Návrh SmartArt
 	SmartArt Styles	Styly SmartArt
 	Text Pane	Podokno textu
@@ -1984,7 +2359,7 @@
 	One line per item. Enter adds an item.	Jeden řádek na položku. Klávesa Enter přidá položku.
 	Add\nShape	Přidat\ntvar
 	Change\nColors	Změnit\nbarvy
-	Reset\nGraphic	Obnovit\nobrázek
+	Reset\nGraphic	Obnovit\ngrafiku
 	Promote to Heading 1	Povýšit na Nadpis 1
 	Demote to Body Text	Snížit na základní text
 	Move Up	Přesunout nahoru
@@ -2012,6 +2387,7 @@
 	Outline Tools	Nástroje osnovy
 	Close Outline\nView	Zavřít\nzobrazení osnovy
 	Use wildcards	Používat zástupné znaky
+	Wildcards (regex)	Zástupné znaky (regex)
 	Special	Speciální
 	Match prefix	Shoda předpony
 	Match suffix	Shoda přípony
@@ -2052,7 +2428,16 @@
 	Your system has animation effects turned on.	Efekty animace jsou v systému zapnuté.
 	Your system has animation effects turned off.	Efekty animace jsou v systému vypnuté.
 	Your system doesn't report an animation setting, so animation effects stay on.	Systém neuvádí žádné nastavení animací, proto efekty animace zůstávají zapnuté.
-	Do Not Check Spelling or Grammar	Nekontrolovat pravopis ani gramatiku
+	Do Not Check Spelling or Grammar	Nekontrolovat pravopis ani mluvnici
+	➕ New comment	➕ Nový komentář
+	📂  Browse…	📂  Procházet…
+	Possible spelling mistake	Možná pravopisná chyba
+	Extra space	Nadbytečná mezera
+	Capitalize the first word of a sentence	Začít první slovo věty velkým písmenem
+	Remove the space before the punctuation	Odstranit mezeru před interpunkcí
+	Use "an" before a vowel sound	Před samohláskovým zvukem použít „an“
+	Use "a" before a consonant sound	Před souhláskovým zvukem použít „a“
+	The spelling and grammar check is complete.	Kontrola pravopisu a mluvnice je dokončena.
 	Undo Actions	Vrátit více akcí
 	Undo History	Historie vrácení
 	Undo 1 Action	Vrátit 1 akci
@@ -2072,6 +2457,31 @@
 	Hindi	Hindské
 	Context	Podle kontextu
 	System	Systémové
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtrovat příjemce
+	Sort Recipients	Seřadit příjemce
+	Filter and Sort	Filtrovat a seřadit
+	And	A
+	Or	Nebo
+	Comparison	Porovnání
+	Compare to	Porovnat s
+	Add Condition	Přidat podmínku
+	Remove condition	Odebrat podmínku
+	Sort by	Seřadit podle
+	Then by	Potom podle
+	Ascending	Vzestupně
+	Descending	Sestupně
+	Equal to	Rovná se
+	Not equal to	Nerovná se
+	Less than	Menší než
+	Greater than	Větší než
+	Less than or equal	Menší nebo rovno
+	Greater than or equal	Větší nebo rovno
+	Is blank	Je prázdné
+	Is not blank	Není prázdné
+	Contains	Obsahuje
+	Does not contain	Neobsahuje
+	{count} of {total} recipients will be merged.	Příjemci ke sloučení: {count} z {total}.
 	Show KeyTips (Alt or F10)	Zobrazit klávesové tipy (Alt nebo F10)
 	Reading	Čtení
 	Reading Column Width	Šířka sloupce pro čtení
@@ -2081,8 +2491,23 @@
 	Correct accidental usage of cAPS LOCK key	Opravovat náhodné použití klávesy cAPS LOCK
 	Region:	Oblast:
 	Automatic ({region})	Automaticky ({region})
+	Text of the nearest paragraph with a given style (running headers)	Text nejbližšího odstavce s daným stylem (živá záhlaví)
+	Style name:	Název stylu:
+	Take the last match on the page	Vzít poslední shodu na stránce
+	Show its list number	Zobrazit jeho číslo v seznamu
+	Show its number relative to this field	Zobrazit jeho číslo vzhledem k tomuto poli
+	Show its number with all higher levels	Zobrazit jeho číslo se všemi vyššími úrovněmi
+	Number only, without the label's words	Jen číslo, bez slov popisku
+	Add whether it is above or below	Doplnit, zda je výše, nebo níže
 	Search	Hledat
 	Title Bar	Záhlaví okna
+	Copy to	Kopírovat do
+
+# Document naming and account controls.
+	Rename Document	Přejmenovat dokument
+	Document name	Název dokumentu
+	Rename	Přejmenovat
+	Account	Účet
 	Privacy Options	Možnosti ochrany osobních údajů
 	Trust Center	Centrum zabezpečení
 	Privacy for this document	Soukromí tohoto dokumentu
@@ -2090,3 +2515,55 @@
 	Leave out the date and time of comments and tracked changes when saving	Při ukládání vynechat datum a čas komentářů a sledovaných změn
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Upravovaný dokument si jména a data ponechá; vynechá je jen uložený soubor.
 	Privacy Settings	Aktuální nastavení soukromí
+	Waiting for the save to finish…	Čeká se na dokončení ukládání…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Ukládání {name} bylo zrušeno, dokument zůstává otevřený a nic se neztratilo.
+	Paper	Papír
+	Paper size:	Velikost papíru:
+	Custom size	Vlastní velikost
+	More Paper Sizes…	Další velikosti papíru…
+	The margins don't fit on a page this size; make the margins smaller first.	Okraje se na stránku této velikosti nevejdou; nejprve okraje zmenšete.
+	Full Screen	Celá obrazovka
+	Full\nScreen	Celá\nobrazovka
+	Use the browser's full screen (F11)	Použijte celou obrazovku prohlížeče (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} palce
+	{name}   {height} × {width} mm	{name}   {height} × {width} mm
+	{width} × {height} mm	{width} × {height} mm
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Výzkumník potřebuje online službu; WordCraft vaše dokumenty uchovává offline.
+	These settings will be used for new documents.	Tato nastavení se použijí pro nové dokumenty.
+	can't split at the first row	tabulku nelze rozdělit na prvním řádku
+	select two or more cells to merge	vyberte ke sloučení dvě nebo více buněk
+	there is no ink to replay	není žádný rukopis k přehrání
+	there's no citation after the caret	za kurzorem není žádná citace
+	this item is already at the top level	tato položka už je na nejvyšší úrovni
+	Envelope #10	Obálka č. 10
+	Envelope DL	Obálka DL
+	Reading Mode	Režim čtení
+	Column width	Šířka sloupce
+	Text size	Velikost textu
+	Edit Document	Upravit dokument
+	Go to what:	Přejít na:
+	Type +2 or -1 to move from the page you are on.	Zadáním +2 nebo -1 se posunete od aktuální stránky.
+	Suggested	Navrhované
+	Set Proofing Language…	Nastavit jazyk kontroly pravopisu…
+	Language Preferences…	Předvolby jazyka…
+
+# Cross-reference dialog (#1003)
+	For which item:	Pro kterou položku:
+	Heading	Nadpis
+	Heading text	Text nadpisu
+	Insert reference to:	Vložit odkaz na:
+	Reference type:	Typ odkazu:
+
+# Dictionaries folder (#1063)
+	Dictionaries	Slovníky
+	Dictionaries folder:	Složka se slovníky:
+	Not set: the system's usual places	Nenastaveno: obvyklá umístění v systému
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Soubory Hunspell .aff a .dic z této složky (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) mají přednost před systémovými.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: slovník nebyl nalezen
+
+# Backstage › Recover (#586)
+	Recover	Obnovit

@@ -145,7 +145,7 @@ pub fn wrap_outline(o: &InlineObject, picture: impl FnOnce(&str, [f32; 4]) -> Op
         return Some(Arc::new(p.unit()));
     }
     match o {
-        InlineObject::Shape { kind, .. } => shape_outline(*kind, w, h).map(Arc::new),
+        InlineObject::Shape { kind, extra, .. } => shape_outline(*kind, w, h, extra.corner).map(Arc::new),
         InlineObject::Image { media, crop, .. } => picture(media, *crop),
         _ => None,
     }

@@ -128,8 +128,10 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
             {
                 run = Some(("readAloud.skipCitations", json!({"value": skip})));
             }
-            if let Some(e) = app.session.read_aloud.error() {
-                ui.label(egui::RichText::new(e).color(t.red).small());
+            // The error `poll` saw this frame, not the worker's latest: the player thread can set
+            // one between the two, and the window would show a message the status bar hasn't.
+            if let Some(e) = app.read_aloud_error.as_ref().filter(|e| app.session.read_aloud.error().as_ref() == Some(*e)) {
+                ui.label(egui::RichText::new(e.as_str()).color(t.red).small());
             }
         });
     if !open {

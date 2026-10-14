@@ -99,6 +99,7 @@
 	Ignore web and file addresses	Пропускати веб-адреси та шляхи до файлів
 	Ignore words in capitals	Пропускати слова з великих літер
 	Ignore words with numbers	Пропускати слова з цифрами
+	In the margin	На полях
 	Inches	Дюйми
 	Formatting exceptions	Винятки форматування
 	Include level number from:	Додати номер рівня:
@@ -126,9 +127,12 @@
 	Number alignment:	Вирівнювання номера:
 	Number format	Формат номера
 	Number style for this level:	Стиль номера для цього рівня:
+	Only for the selected text	Лише для виділеного тексту
 	Outside border	Зовнішня межа
 	Overtype	Заміна
 	Overtype (typing replaces the characters after the caret)	Заміна (введений текст замінює символи після курсора)
+	Show alignment guides when moving pictures and shapes	Показувати напрямні вирівнювання під час переміщення зображень і фігур
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Переміщувані об'єкти прилипають до країв і центру сторінки, полів та інших об'єктів. Утримуйте Alt, щоб переміщувати вільно.
 	Page display	Відображення сторінки
 	Paragraph marks	Знаки абзацу
 	Personalize	Персоналізація
@@ -1421,6 +1425,7 @@
 	Demote	Понизити рівень
 	Go Back	Повернутися назад
 	Toggle Unicode Character	Перемкнути символ Unicode
+	Type Character Code	Ввести код символу
 	Toggle Field Codes	Перемкнути коди полів
 	Edit Field Code	Змінити код поля
 	Unlink Fields	Від’єднати поля
@@ -2041,6 +2046,7 @@
 	Hyphenation Options…	Параметри перенесення слів…
 	Hyphenation zone:	Зона перенесення:
 	Italian	Італійська
+	Croatian	Хорватська
 	Japanese	Японська
 	Korean	Корейська
 	Limit consecutive hyphens to:	Обмежити кількість переносів поспіль:
@@ -2087,9 +2093,49 @@
 	AutoFit Column by Double-Clicking	Добір ширини стовпця подвійним клацанням
 	Region:	Регіон:
 	Automatic ({region})	Автоматично ({region})
+	Text of the nearest paragraph with a given style (running headers)	Текст найближчого абзацу із заданим стилем (живі колонтитули)
+	Style name:	Назва стилю:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Фільтр одержувачів
+	Sort Recipients	Сортування одержувачів
+	Filter and Sort	Фільтр і сортування
+	And	І
+	Or	Або
+	Comparison	Порівняння
+	Compare to	Значення
+	Add Condition	Додати умову
+	Remove condition	Видалити умову
+	Sort by	Сортувати за
+	Then by	Потім за
+	Ascending	За зростанням
+	Descending	За спаданням
+	Equal to	Дорівнює
+	Not equal to	Не дорівнює
+	Less than	Менше
+	Greater than	Більше
+	Less than or equal	Менше або дорівнює
+	Greater than or equal	Більше або дорівнює
+	Is blank	Порожнє
+	Is not blank	Не порожнє
+	Contains	Містить
+	Does not contain	Не містить
+	{count} of {total} recipients will be merged.	Одержувачів для злиття: {count} з {total}.
+	Take the last match on the page	Брати останній збіг на сторінці
+	Show its list number	Показувати його номер у списку
+	Show its number relative to this field	Показувати його номер відносно цього поля
+	Show its number with all higher levels	Показувати його номер з усіма вищими рівнями
+	Number only, without the label's words	Лише номер, без слів мітки
+	Add whether it is above or below	Додавати, вище він чи нижче
 	Start-up	Запуск
 	Show the Start screen when WordCraft starts	Показувати початковий екран під час запуску WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Увімкнено: WordCraft відкривається на сторінці Файл › Основне з порожнім документом, шаблонами та нещодавніми документами. Вимкнено: відкривається порожній документ.
+	Copy to	Копіювати до
+
+# Document naming and account controls.
+	Rename Document	Перейменувати документ
+	Document name	Ім’я документа
+	Rename	Перейменувати
+	Account	Обліковий запис
 	Privacy Options	Параметри конфіденційності
 	Trust Center	Центр безпеки
 	Privacy for this document	Конфіденційність цього документа
@@ -2097,3 +2143,48 @@
 	Leave out the date and time of comments and tracked changes when saving	Не зберігати дату й час приміток і відстежуваних змін
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Документ, який ви редагуєте, зберігає імена й дати; їх не буде лише у збереженому файлі.
 	Privacy Settings	Поточні налаштування конфіденційності
+	Waiting for the save to finish…	Очікування завершення збереження…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Збереження {name} скасовано. Документ досі відкритий, нічого не втрачено.
+	Paper	Папір
+	Paper size:	Розмір паперу:
+	Custom size	Власний розмір
+	More Paper Sizes…	Інші розміри паперу…
+	The margins don't fit on a page this size; make the margins smaller first.	Поля не вміщуються на сторінці такого розміру; спершу зменште поля.
+	Full Screen	На весь екран
+	Full\nScreen	На весь\nекран
+	Use the browser's full screen (F11)	Скористайтеся повноекранним режимом браузера (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} дюйма
+	{name}   {height} × {width} mm	{name}   {height} × {width} мм
+	{width} × {height} mm	{width} × {height} мм
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Досліднику потрібна онлайн-служба, а WordCraft працює з документами без підключення до інтернету.
+	These settings will be used for new documents.	Ці параметри використовуватимуться для нових документів.
+	can't split at the first row	не можна розділити таблицю на першому рядку
+	select two or more cells to merge	виділіть дві або більше клітинок, щоб об'єднати їх
+	there is no ink to replay	немає рукописних приміток для відтворення
+	there's no citation after the caret	після курсора немає цитати
+	this item is already at the top level	цей елемент уже на верхньому рівні
+	Envelope #10	Конверт №10
+	Envelope DL	Конверт DL
+	Reading Mode	Режим читання
+	Column width	Ширина стовпця
+	Text size	Розмір тексту
+	Edit Document	Редагувати документ
+	Go to what:	Перейти до:
+	Type +2 or -1 to move from the page you are on.	Введіть +2 або -1, щоб перейти на стільки сторінок від поточної.
+	Suggested	Пропоновані
+	Set Proofing Language…	Вибрати мову перевірки правопису…
+	Language Preferences…	Мовні параметри…
+
+# Dictionaries folder (#1063)
+	Dictionaries	Словники
+	Dictionaries folder:	Папка словників:
+	Not set: the system's usual places	Не задано: стандартні розташування в системі
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Файли Hunspell .aff і .dic із цієї папки (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) використовуються раніше за системні.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: словник не знайдено
+
+# Backstage › Recover (#586)
+	Recover	Відновити

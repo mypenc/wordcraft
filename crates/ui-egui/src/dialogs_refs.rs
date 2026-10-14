@@ -1,9 +1,9 @@
-//! References dialogs (#402): Caption (with New Label and Numbering), Index and Mark Index Entry,
-//! Custom Table of Contents (with Options and the TOC styles), and the Source Manager with
-//! Create / Edit Source. Each fills a form from the session and ends in a command
-//! (`references.caption`, `references.index`, `references.markEntry`, `references.toc`,
-//! `references.sources`, `references.citation`), so agents get the same result without the
-//! dialog. Shown through [`crate::dialogs::Dialog::Refs`].
+//! References dialogs (#402): Caption (with New Label and Numbering), Cross-reference (#916),
+//! Index and Mark Index Entry, Custom Table of Contents (with Options and the TOC styles), and the
+//! Source Manager with Create / Edit Source. Each fills a form from the session and ends in a
+//! command (`references.caption`, `insert.crossReference`, `references.index`,
+//! `references.markEntry`, `references.toc`, `references.sources`, `references.citation`), so
+//! agents get the same result without the dialog. Shown through [`crate::dialogs::Dialog::Refs`].
 
 use egui::{Sense, Ui, vec2};
 use serde::Serialize;
@@ -27,6 +27,7 @@ pub enum RefsDialog {
     },
     /// Caption › New Label….
     NewLabel(CaptionForm),
+    CrossRef(CrossRefForm),
     Index(IndexForm),
     MarkEntry(MarkForm),
     Toc(TocForm),
@@ -53,6 +54,7 @@ impl RefsDialog {
             RefsDialog::Caption(_) => "caption",
             RefsDialog::CaptionNumbering { .. } => "captionNumbering",
             RefsDialog::NewLabel(_) => "newLabel",
+            RefsDialog::CrossRef(_) => "crossReference",
             RefsDialog::Index(_) => "index",
             RefsDialog::MarkEntry(_) => "markEntry",
             RefsDialog::Toc(_) => "toc",
@@ -70,6 +72,7 @@ impl RefsDialog {
             RefsDialog::Caption(_) => "Caption",
             RefsDialog::CaptionNumbering { .. } => "Caption Numbering",
             RefsDialog::NewLabel(_) => "New Label",
+            RefsDialog::CrossRef(_) => "Cross-reference",
             RefsDialog::Index(_) => "Index",
             RefsDialog::MarkEntry(_) => "Mark Index Entry",
             RefsDialog::Toc(_) => "Table of Contents",
@@ -82,11 +85,12 @@ impl RefsDialog {
     }
 }
 
-/// The dialog `ui.dialog` opens by `name`: `caption`, `index`, `markEntry`, `toc`,
+/// The dialog `ui.dialog` opens by `name`: `caption`, `crossReference`, `index`, `markEntry`, `toc`,
 /// `sourceManager` or `createSource` (which inserts a citation of the new source).
 pub fn open(name: &str, app: &WordApp) -> Option<RefsDialog> {
     Some(match name {
         "caption" => RefsDialog::Caption(CaptionForm::read(app)),
+        "crossReference" => RefsDialog::CrossRef(CrossRefForm::read(app, "heading")),
         "index" => RefsDialog::Index(IndexForm::read(app)),
         "markEntry" => RefsDialog::MarkEntry(MarkForm::read(app)),
         "toc" => RefsDialog::Toc(TocForm::read(app)),
@@ -102,6 +106,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut RefsDialog) -> bool {
         RefsDialog::Caption(f) => caption_ui(app, ui, f),
         RefsDialog::CaptionNumbering { form, was } => numbering_ui(ui, form, was),
         RefsDialog::NewLabel(f) => new_label_ui(app, ui, f),
+        RefsDialog::CrossRef(f) => cross_ref_ui(app, ui, f),
         RefsDialog::Index(f) => index_ui(app, ui, f),
         RefsDialog::MarkEntry(f) => mark_ui(app, ui, f),
         RefsDialog::Toc(f) => toc_ui(app, ui, f),
@@ -335,6 +340,89 @@ fn caption_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CaptionForm) -> Next {
         app.status(e);
     }
     if ok || cancel { Next::Close } else { Next::Stay }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cross-reference
+
+/// Reference types: (`insert.crossReference`'s `to`, label).
+const REF_TYPES: [(&str, &str); 5] =
+    [("heading", "Heading"), ("bookmark", "Bookmark"), ("equation", "Equation"), ("figure", "Figure"), ("table", "Table")];
+
+/// The Cross-reference dialog's fields.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrossRefForm {
+    /// `heading`, `bookmark`, `equation`, `figure` or `table`.
+    pub to: String,
+    /// `text`, `page`, `number` or `aboveBelow`.
+    pub show: String,
+    /// The document's targets of this type.
+    pub targets: Vec<String>,
+    pub selected: Option<usize>,
+}
+
+impl CrossRefForm {
+    pub fn read(app: &WordApp, to: &str) -> CrossRefForm {
+        let targets: Vec<String> = wordcraft_engine::cmd::citations::ref_targets(&app.session, to).into_iter().map(|(t, _)| t).collect();
+        let selected = (!targets.is_empty()).then_some(0);
+        CrossRefForm { to: to.into(), show: "text".into(), targets, selected }
+    }
+
+    /// What can be inserted for this type: (`show`, label).
+    pub fn shows(&self) -> &'static [(&'static str, &'static str)] {
+        match self.to.as_str() {
+            "heading" => &[("text", "Heading text"), ("page", "Page number"), ("aboveBelow", "Above/below")],
+            "bookmark" => &[("text", "Bookmark text"), ("page", "Page number"), ("aboveBelow", "Above/below")],
+            _ => &[("text", "Entire caption"), ("number", "Only label and number"), ("page", "Page number"), ("aboveBelow", "Above/below")],
+        }
+    }
+
+    /// `insert.crossReference` parameters, or `None` with nothing picked.
+    pub fn params(&self) -> Option<Value> {
+        let target = self.targets.get(self.selected?)?;
+        Some(json!({"to": self.to, "target": target, "show": self.show}))
+    }
+}
+
+fn cross_ref_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CrossRefForm) -> Next {
+    let was = f.to.clone();
+    egui::Grid::new("xref_opts").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
+        ui.label(tl!("Reference type:"));
+        let types: Vec<(String, &str)> = REF_TYPES.iter().map(|(v, l)| (v.to_string(), *l)).collect();
+        choice(ui, "xref_type", &mut f.to, &types);
+        ui.end_row();
+        ui.label(tl!("Insert reference to:"));
+        let shows: Vec<(String, &str)> = f.shows().iter().map(|(v, l)| (v.to_string(), *l)).collect();
+        choice(ui, "xref_show", &mut f.show, &shows);
+        ui.end_row();
+    });
+    if f.to != was {
+        *f = CrossRefForm::read(app, &f.to);
+    }
+    ui.add_space(4.0);
+    ui.label(tl!("For which item:"));
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        egui::ScrollArea::vertical().max_height(180.0).auto_shrink([false, false]).show(ui, |ui| {
+            ui.set_width(320.0);
+            if f.targets.is_empty() {
+                ui.weak(tl!("Nothing of this type in the document."));
+            }
+            for (i, t) in f.targets.iter().enumerate() {
+                if ui.selectable_label(f.selected == Some(i), t).clicked() {
+                    f.selected = Some(i);
+                }
+            }
+        });
+    });
+    let (ok, cancel) = buttons(ui, tl!("Insert"));
+    if ok && let Some(params) = f.params() {
+        if let Err(e) = app.run("insert.crossReference", params) {
+            app.status(e);
+        }
+        return Next::Close;
+    }
+    if cancel { Next::Close } else { Next::Stay }
 }
 
 fn numbering_ui(ui: &mut Ui, f: &mut CaptionForm, was: &CaptionForm) -> Next {
@@ -1098,6 +1186,30 @@ mod tests {
         // The label is offered next time and saved with the preferences.
         assert!(CaptionForm::read(&a).labels.contains(&"Plate".to_string()));
         assert_eq!(a.prefs().caption_labels, vec!["Plate".to_string()]);
+    }
+
+    /// #916: Cross-reference from the ribbon opens a dialog listing the targets of each type
+    /// (equation captions too) and inserts a `REF` field to the one picked.
+    #[test]
+    fn cross_reference_dialog_lists_targets_and_inserts_a_ref_field() {
+        let mut a = app("Kilns\nE=mc2\nSee ");
+        a.run("select.text", json!({"text": "Kilns"})).unwrap();
+        a.run("styles.apply", json!({"style": "Heading 1"})).unwrap();
+        a.run("select.text", json!({"text": "E=mc2"})).unwrap();
+        a.run("references.caption", json!({"label": "Equation", "text": "energy"})).unwrap();
+        a.run("caret.docEnd", json!({})).unwrap();
+        assert_eq!(a.run("insert.crossReference", json!({})).unwrap(), json!({"pending": "crossReference"}));
+        let RefsDialog::CrossRef(f) = form(&a) else { panic!() };
+        assert_eq!((f.targets.clone(), f.selected), (vec!["Kilns".to_string()], Some(0)));
+        let mut f = CrossRefForm::read(&a, "equation");
+        assert_eq!(f.targets, vec!["Equation 1: energy".to_string()]);
+        f.show = "number".into();
+        a.dialog = None;
+        a.run("insert.crossReference", f.params().unwrap()).unwrap();
+        assert!(instrs(&a).iter().any(|i| i.starts_with("REF _Ref")), "{:?}", instrs(&a));
+        assert!(a.session.doc.plain_text(StoryRef::Body).ends_with("See Equation 1"));
+        // Nothing to pick: nothing to insert.
+        assert_eq!(CrossRefForm::read(&a, "table").params(), None);
     }
 
     /// #402: Mark Entry opens with the selection; Insert Index opens with Word's defaults and

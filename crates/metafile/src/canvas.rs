@@ -190,6 +190,12 @@ pub(crate) struct Canvas {
     /// Bytes held by the items so far (path ops and pixels), capped at [`MAX_BYTES`].
     used: usize,
     objects: Vec<Option<Obj>>,
+    /// Indices below `objects.len()` that hold no object, so the WMF handle table finds its lowest
+    /// free slot without scanning.
+    free: std::collections::BTreeSet<usize>,
+    /// Table slots examined by `add_object(None, ..)`; the tests assert it stays constant per call.
+    #[cfg(test)]
+    pub slot_probes: usize,
     pen: Pen,
     brush: Brush,
     even_odd: bool,
@@ -211,6 +217,9 @@ impl Canvas {
             saved: Vec::new(),
             used: 0,
             objects: Vec::new(),
+            free: std::collections::BTreeSet::new(),
+            #[cfg(test)]
+            slot_probes: 0,
             pen: Pen { style: 0, width: 0.0, color: [0, 0, 0, 255] },
             brush: Brush { style: BS_SOLID, color: [255, 255, 255, 255] },
             even_odd: true,
@@ -328,20 +337,27 @@ impl Canvas {
         self.nop = s.nop;
     }
 
-    /// Stores an object in `slot` (EMF index), or in the first free slot (WMF handle table).
+    /// Stores an object in `slot` (EMF index), or in the lowest free slot (WMF handle table).
     pub fn add_object(&mut self, slot: Option<usize>, obj: Obj) {
         match slot {
             Some(i) if i < MAX_OBJECTS => {
+                // Growing the table leaves the slots between the old end and `i` free.
+                self.free.extend(self.objects.len()..i);
                 if self.objects.len() <= i {
                     self.objects.resize(i + 1, None);
                 }
+                self.free.remove(&i);
                 if let Some(s) = self.objects.get_mut(i) {
                     *s = Some(obj);
                 }
             }
             Some(_) => {}
-            None => match self.objects.iter().position(Option::is_none) {
+            None => match self.free.pop_first() {
                 Some(i) => {
+                    #[cfg(test)]
+                    {
+                        self.slot_probes += 1;
+                    }
                     if let Some(s) = self.objects.get_mut(i) {
                         *s = Some(obj);
                     }
@@ -353,8 +369,10 @@ impl Canvas {
     }
 
     pub fn delete_object(&mut self, i: u32) {
-        if let Some(s) = self.objects.get_mut(i as usize) {
+        let i = i as usize;
+        if let Some(s) = self.objects.get_mut(i) {
             *s = None;
+            self.free.insert(i);
         }
     }
 
@@ -421,8 +439,11 @@ impl Canvas {
 
     /// Draws logical-space ops with the current pen (`stroke`) and brush (`fill`), or appends them to
     /// the open path bracket, where fill and stroke wait for FILLPATH/STROKEPATH.
-    pub fn shape(&mut self, ops: &[Op], fill: bool, stroke: bool) {
-        let dev: Vec<Op> = ops.iter().map(|o| self.map_op(*o)).collect();
+    pub fn shape(&mut self, mut dev: Vec<Op>, fill: bool, stroke: bool) {
+        // Maps in place: the caller's vector becomes the device-space path, no second copy.
+        for op in &mut dev {
+            *op = self.map_op(*op);
+        }
         if self.in_path {
             return self.push_path_ops(dev);
         }
@@ -458,14 +479,14 @@ impl Canvas {
         if let Some(last) = pts.last() {
             self.pos = *last;
         }
-        self.shape(&ops, fill, stroke);
+        self.shape(ops, fill, stroke);
     }
 
     /// POLYBEZIER: cubic segments that start a new figure at `from`. The current point is unchanged.
     pub fn bezier(&mut self, from: P, pts: &[P]) {
         let mut ops = vec![Op::M(from)];
         ops.extend(cubics(pts));
-        self.shape(&ops, false, true);
+        self.shape(ops, false, true);
     }
 
     /// POLYBEZIERTO: cubic segments from the current point through groups of three control or end
@@ -477,7 +498,7 @@ impl Canvas {
         if let Some(last) = pts.last() {
             self.pos = *last;
         }
-        self.shape(&ops, false, true);
+        self.shape(ops, false, true);
     }
 
     pub fn poly(&mut self, pts: &[P], close: bool, fill: bool, stroke: bool) {
@@ -487,7 +508,7 @@ impl Canvas {
         if close {
             ops.push(Op::Z);
         }
-        self.shape(&ops, fill, stroke);
+        self.shape(ops, fill, stroke);
     }
 
     pub fn begin_path(&mut self) {
@@ -571,4 +592,105 @@ fn cubics(pts: &[P]) -> Vec<Op> {
         ops.push(Op::C(a, b, e));
     }
     ops
+}
+
+#[cfg(test)]
+mod object_table_tests {
+    use super::*;
+
+    fn pen(id: u32) -> Obj {
+        Obj::Pen(Pen { style: 0, width: 0.0, color: [id as u8, (id >> 8) as u8, 0, 255] })
+    }
+
+    fn id_of(o: &Option<Obj>) -> Option<u32> {
+        match o {
+            Some(Obj::Pen(p)) => Some(u32::from(p.color[0]) | u32::from(p.color[1]) << 8),
+            _ => None,
+        }
+    }
+
+    /// The table as it was before the free-slot set: a scan from index 0 for every handle-table create.
+    struct Naive(Vec<Option<u32>>);
+
+    impl Naive {
+        fn add(&mut self, slot: Option<usize>, id: u32) {
+            match slot {
+                Some(i) if i < MAX_OBJECTS => {
+                    if self.0.len() <= i {
+                        self.0.resize(i + 1, None);
+                    }
+                    self.0[i] = Some(id);
+                }
+                Some(_) => {}
+                None => match self.0.iter().position(Option::is_none) {
+                    Some(i) => self.0[i] = Some(id),
+                    None if self.0.len() < MAX_OBJECTS => self.0.push(Some(id)),
+                    None => {}
+                },
+            }
+        }
+
+        fn delete(&mut self, i: u32) {
+            if let Some(s) = self.0.get_mut(i as usize) {
+                *s = None;
+            }
+        }
+    }
+
+    #[test]
+    fn handle_table_picks_the_same_slots_as_the_first_free_scan() {
+        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+        let mut rnd = move |n: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % n
+        };
+        for round in 0..20 {
+            // Small tables exercise reuse; some rounds also run past the cap and use explicit EMF slots.
+            let span = if round % 2 == 0 { 12 } else { MAX_OBJECTS as u64 + 50 };
+            let (mut cv, mut naive) = (Canvas::new(), Naive(Vec::new()));
+            for id in 0..20_000u32 {
+                match rnd(10) {
+                    0..=4 => {
+                        cv.add_object(None, pen(id));
+                        naive.add(None, id);
+                    }
+                    5 | 6 if round >= 10 => {
+                        let slot = rnd(span + 20) as usize;
+                        cv.add_object(Some(slot), pen(id));
+                        naive.add(Some(slot), id);
+                    }
+                    _ => {
+                        let i = rnd(span + 5) as u32;
+                        cv.delete_object(i);
+                        naive.delete(i);
+                    }
+                }
+                if id % 500 == 0 || id == 19_999 {
+                    let got: Vec<Option<u32>> = cv.objects.iter().map(id_of).collect();
+                    assert_eq!(got, naive.0, "round {round}, step {id}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn creating_into_a_full_table_does_not_scan_it() {
+        let mut cv = Canvas::new();
+        for i in 0..MAX_OBJECTS as u32 {
+            cv.add_object(None, pen(i));
+        }
+        assert_eq!(cv.objects.len(), MAX_OBJECTS);
+        let before = cv.slot_probes;
+        for i in 0..10_000 {
+            cv.add_object(None, pen(i));
+        }
+        // A scan from index 0 would examine 4096 slots per create; the free set examines none.
+        assert_eq!(cv.slot_probes, before);
+        cv.delete_object(7);
+        cv.add_object(None, pen(99));
+        assert_eq!(cv.slot_probes, before + 1);
+        assert_eq!(cv.objects.get(7).map(id_of), Some(Some(99)));
+    }
 }

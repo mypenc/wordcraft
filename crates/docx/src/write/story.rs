@@ -2,7 +2,7 @@
 
 use wordcraft_doc::effects::ShapeEffects;
 use wordcraft_doc::para::{AltText, Anchor, Float, NoteKind, ShapeKind, Wrap};
-use wordcraft_doc::props::{CharProps, PropChange, Rgb};
+use wordcraft_doc::props::{CharProps, PropChange, Rgb, TextColor};
 use wordcraft_doc::section::{LineNumberRestart, NoteProps, SectionProps, SectionStart};
 use wordcraft_doc::table::Table;
 use wordcraft_doc::{Block, Blocks, InlineObject, Paragraph, RevisionKind};
@@ -464,7 +464,7 @@ impl Writer<'_> {
                     w.empty("w:commentRangeEnd", &[("w:id", &s)]);
                     w.open("w:r", &[]);
                     w.open("w:rPr", &[]);
-                    w.val("w:rStyle", "CommentReference");
+                    w.val("w:rStyle", comment_reference_style(self.doc));
                     w.close("w:rPr");
                     w.empty("w:commentReference", &[("w:id", &s)]);
                     w.close("w:r");
@@ -472,9 +472,13 @@ impl Writer<'_> {
             }
             InlineObject::Equation { linear, display, math } => {
                 // Automatic equation numbers become text: Word numbers nothing by itself.
+                let color = match props.color {
+                    Some(TextColor::Rgb(c)) => Some(c),
+                    _ => None,
+                };
                 match super::math::resolve_numbers(math, *display, &mut self.eq_number) {
-                    Some(m) => super::math::write_equation(w, linear, *display, &m),
-                    None => super::math::write_equation(w, linear, *display, math),
+                    Some(m) => super::math::write_equation(w, linear, *display, &m, color),
+                    None => super::math::write_equation(w, linear, *display, math, color),
                 }
             }
             InlineObject::Field { instr, result, locked, .. } => self.field(w, instr, result, *locked, props),
@@ -540,12 +544,16 @@ impl Writer<'_> {
                 if ink && !direct_ink {
                     Self::ink_transform(&mut root, (graphic.w, graphic.h), (*gw, *gh), float, 0);
                 }
-                let alternate = (ink && root.name == "mc:AlternateContent").then_some(&root);
+                // Native ink, or an Office 2016 chart (`cx:chart`) with its fallback picture.
+                let alternate = (root.name == "mc:AlternateContent").then_some(&root);
                 let fallback = alternate.and_then(|e| e.child("mc:Fallback"));
-                let native = alternate.and_then(|e| e.child("mc:Choice")).and_then(|e| e.find("a:graphic"));
+                let choice = alternate.and_then(|e| e.child("mc:Choice"));
+                let native = choice.and_then(|e| e.find("a:graphic"));
                 if alternate.is_some() && native.is_none() {
                     return;
                 }
+                // A chart's picture gets the chart's current frame too; ink's VML preview is resized in place.
+                let picture = if ink { None } else { fallback.and_then(|e| e.find("a:graphic")) };
                 self.rev_open(w, props);
                 w.open("w:r", &[]);
                 self.rpr(w, props);
@@ -553,24 +561,30 @@ impl Writer<'_> {
                     w.raw(&root.to_xml());
                 } else {
                     if fallback.is_some() {
+                        let requires = if ink { "wpi" } else { choice.and_then(|c| c.attr("Requires")).unwrap_or_default() };
                         w.open("mc:AlternateContent", &[]);
-                        w.open("mc:Choice", &[("Requires", "wpi")]);
+                        w.open("mc:Choice", &[("Requires", requires)]);
                     }
-                    w.open("w:drawing", &[]);
                     let docpr = self.next_docpr();
                     let name = match graphic.kind {
                         wordcraft_doc::graphic::GraphicKind::Chart => format!("Chart {docpr}"),
                         wordcraft_doc::graphic::GraphicKind::Diagram => format!("Diagram {docpr}"),
                         wordcraft_doc::graphic::GraphicKind::Ink => format!("Ink {docpr}"),
                     };
-                    self.drawing_open(w, float, *gw, *gh, &docpr, &name, alt);
-                    w.empty("wp:cNvGraphicFramePr", &[]);
-                    w.raw(&native.unwrap_or(&root).to_xml());
-                    w.close(if float.wrap == Wrap::Inline { "wp:inline" } else { "wp:anchor" });
-                    w.close("w:drawing");
+                    let z = self.z;
+                    self.graphic_frame(w, float, (*gw, *gh), &docpr, &name, alt, native.unwrap_or(&root));
                     if let Some(fallback) = fallback {
                         w.close("mc:Choice");
-                        w.raw(&fallback.to_xml());
+                        match picture {
+                            Some(picture) => {
+                                // Both branches are one object: same id and stacking order.
+                                self.z = z;
+                                w.open("mc:Fallback", &[]);
+                                self.graphic_frame(w, float, (*gw, *gh), &docpr, &name, alt, picture);
+                                w.close("mc:Fallback");
+                            }
+                            None => w.raw(&fallback.to_xml()),
+                        }
                         w.close("mc:AlternateContent");
                     }
                 }
@@ -624,7 +638,7 @@ impl Writer<'_> {
                 }
                 // Tight and Through wrapping need a polygon: the shape's outline unless it has one.
                 if matches!(float.wrap, Wrap::Tight | Wrap::Through) && float.wrap_polygon.is_none() {
-                    float.wrap_polygon = wordcraft_doc::wrap::shape_outline(*kind, *sw, *sh)
+                    float.wrap_polygon = wordcraft_doc::wrap::shape_outline(*kind, *sw, *sh, extra.corner)
                         .and_then(|pts| wordcraft_doc::wrap::WrapPolygon::from_unit(false, &pts))
                         .map(std::sync::Arc::new);
                 }
@@ -965,7 +979,15 @@ impl Writer<'_> {
             Some(f) => cust_geom(w, f, *sw, *sh),
             None => {
                 w.open("a:prstGeom", &[("prst", prst)]);
-                w.empty("a:avLst", &[]);
+                match extra.corner.filter(|_| *kind == ShapeKind::RoundedRectangle) {
+                    Some(c) => {
+                        w.open("a:avLst", &[]);
+                        let fmla = format!("val {}", c.min(wordcraft_doc::connector::MAX_CORNER));
+                        w.empty("a:gd", &[("name", "adj"), ("fmla", &fmla)]);
+                        w.close("a:avLst");
+                    }
+                    None => w.empty("a:avLst", &[]),
+                }
                 w.close("a:prstGeom");
             }
         }
@@ -1061,6 +1083,17 @@ impl Writer<'_> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// A `w:drawing` holding `graphic` (an `a:graphic`) in a frame of the object's size and place.
+    #[allow(clippy::too_many_arguments)]
+    fn graphic_frame(&mut self, w: &mut W, float: &Float, (gw, gh): (f32, f32), docpr: &str, name: &str, alt: &str, graphic: &crate::xml::El) {
+        w.open("w:drawing", &[]);
+        self.drawing_open(w, float, gw, gh, docpr, name, alt);
+        w.empty("wp:cNvGraphicFramePr", &[]);
+        w.raw(&graphic.to_xml());
+        w.close(if float.wrap == Wrap::Inline { "wp:inline" } else { "wp:anchor" });
+        w.close("w:drawing");
+    }
+
     fn drawing_open(&mut self, w: &mut W, float: &Float, iw: f32, ih: f32, docpr: &str, name: &str, alt: &str) {
         let (cx, cy) = (emu(iw.max(0.0)), emu(ih.max(0.0)));
         if float.wrap == Wrap::Inline {
@@ -1594,4 +1627,15 @@ pub(super) fn note_pr_inner(w: &mut W, pr: &NoteProps) {
     if let Some(r) = pr.num_restart {
         w.val("w:numRestart", r.ooxml());
     }
+}
+
+/// The character style for comment reference marks: the document's "annotation reference" style
+/// (Word's built-in name; localized documents give it another id, e.g. Polish
+/// `Odwoaniedokomentarza`), else `CommentReference`.
+fn comment_reference_style(doc: &wordcraft_doc::Document) -> &str {
+    doc.styles
+        .styles
+        .iter()
+        .find(|s| s.kind == wordcraft_doc::styles::StyleKind::Character && s.name.eq_ignore_ascii_case("annotation reference"))
+        .map_or("CommentReference", |s| s.id.as_str())
 }

@@ -8,6 +8,7 @@
 //! capped), so hostile input yields an error or a best-effort document, never a panic.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod crypt;
 mod drawing;
 mod fib;
 mod fkp;
@@ -58,9 +59,16 @@ pub enum DocbinError {
     /// The compound file is readable but is not a Word 97-2003 document.
     #[error("not a Word 97-2003 document: {0}")]
     NotWord(String),
-    /// The document is password-protected (XOR obfuscation or RC4 encryption).
-    #[error("encrypted or password-protected .doc files are not supported")]
-    Encrypted,
+    /// The document is password-protected and no password was given.
+    #[error("this document is protected with a password")]
+    PasswordRequired,
+    /// The password does not open the document.
+    #[error("the password is incorrect")]
+    WrongPassword,
+    /// The document is encrypted in a way WordCraft can't read (AES, an external provider, an
+    /// unknown header).
+    #[error("encrypted document: {0}")]
+    Encryption(String),
     /// The input exceeds a safety limit (stream size, piece count…).
     #[error("limit exceeded: {0}")]
     Limit(String),
@@ -69,25 +77,51 @@ pub enum DocbinError {
     Malformed(String),
 }
 
-/// Read a `.doc` (Word 97-2003 binary) file into a [`Document`].
+/// Is this `.doc` password-protected (XOR obfuscation, RC4 or RC4 CryptoAPI)? False for
+/// anything that is not a readable Word 97-2003 file.
+pub fn is_encrypted(bytes: &[u8]) -> bool {
+    let Ok(mut comp) = cfb::CompoundFile::open(std::io::Cursor::new(bytes)) else { return false };
+    stream(&mut comp, "WordDocument").is_some_and(|w| fib::peek_encryption(&w).is_some())
+}
+
+/// Read a `.doc` (Word 97-2003 binary) file into a [`Document`]. A password-protected file
+/// gives [`DocbinError::PasswordRequired`]; see [`read_with_password`].
 pub fn read(bytes: &[u8]) -> Result<Document, DocbinError> {
+    read_with_password(bytes, None)
+}
+
+/// [`read`] for a file that may be password-protected: it is checked against the file's stored
+/// verifier ([`DocbinError::WrongPassword`] when it does not match) and then decrypted. The
+/// password is ignored for an unprotected file.
+pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Document, DocbinError> {
     let mut comp = cfb::CompoundFile::open(std::io::Cursor::new(bytes)).map_err(|e| DocbinError::Container(e.to_string()))?;
-    let word = stream(&mut comp, "WordDocument").ok_or_else(|| DocbinError::NotWord("no WordDocument stream".into()))?;
+    let mut word = stream(&mut comp, "WordDocument").ok_or_else(|| DocbinError::NotWord("no WordDocument stream".into()))?;
     if word.len() as u64 > MAX_STREAM {
         return Err(DocbinError::Limit(format!("WordDocument stream is {} bytes", word.len())));
     }
-    let fib = fib::Fib::parse(&word)?;
-    if fib.encrypted {
-        return Err(DocbinError::Encrypted);
-    }
+    let enc = fib::peek_encryption(&word);
     // The FIB names the Table stream (0Table or 1Table); fall back to whichever exists,
     // since files written by other writers sometimes carry the wrong bit.
-    let named = if fib.which_tbl_stm { "1Table" } else { "0Table" };
-    let other = if fib.which_tbl_stm { "0Table" } else { "1Table" };
-    let table = stream(&mut comp, named).or_else(|| stream(&mut comp, other)).unwrap_or_default();
+    let which = if let Some(e) = enc { e.which_tbl_stm } else { fib::Fib::parse(&word)?.which_tbl_stm };
+    let named = if which { "1Table" } else { "0Table" };
+    let other = if which { "0Table" } else { "1Table" };
+    let mut table = stream(&mut comp, named).or_else(|| stream(&mut comp, other)).unwrap_or_default();
     if table.len() as u64 > MAX_STREAM {
         return Err(DocbinError::Limit(format!("Table stream is {} bytes", table.len())));
     }
+    let mut data = stream(&mut comp, "Data").unwrap_or_default();
+    if data.len() as u64 > MAX_STREAM {
+        return Err(DocbinError::Limit(format!("Data stream is {} bytes", data.len())));
+    }
+    if let Some(e) = enc {
+        // Verify the password first; only then is anything decrypted.
+        let password = password.ok_or(DocbinError::PasswordRequired)?;
+        let cipher = crypt::Cipher::open(e.flags, e.lkey, &table, password)?;
+        cipher.decrypt_word(&mut word);
+        cipher.decrypt_table(&mut table);
+        cipher.decrypt_data(&mut data);
+    }
+    let fib = fib::Fib::parse(&word)?;
 
     // The piece table locates every character in the WordDocument stream.
     let (fc_clx, lcb_clx) =
@@ -108,11 +142,6 @@ pub fn read(bytes: &[u8]) -> Result<Document, DocbinError> {
         Some((f, l)) => Bins::parse(&table, f, l)?,
         None => Bins::parse(&[], 0, 0)?,
     };
-
-    let data = stream(&mut comp, "Data").unwrap_or_default();
-    if data.len() as u64 > MAX_STREAM {
-        return Err(DocbinError::Limit(format!("Data stream is {} bytes", data.len())));
-    }
 
     let mut doc = Document::new();
     doc.body.clear();

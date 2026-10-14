@@ -25,6 +25,11 @@ pub fn import(text: &str) -> Document {
     model::to_doc(&parse(text))
 }
 
+/// [`import`] onto `page`: Markdown gives no page size (#1381).
+pub fn import_on(text: &str, page: &wordcraft_doc::SectionProps) -> Document {
+    model::to_doc_in(&parse(text), page.clone())
+}
+
 /// Parse Markdown text into the flow model.
 pub fn parse(text: &str) -> model::Flow {
     let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
@@ -160,22 +165,30 @@ fn list_marker(t: &str) -> Option<Marker> {
 fn split_row(l: &str) -> Vec<String> {
     let t = l.trim();
     let t = t.strip_prefix('|').unwrap_or(t);
-    let t = if t.ends_with('|') && !t.ends_with("\\|") { &t[..t.len() - 1] } else { t };
+    let t = if let Some(before) = t.strip_suffix('|') {
+        let num_bs = before.chars().rev().take_while(|&c| c == '\\').count();
+        if num_bs % 2 == 0 { before } else { t }
+    } else {
+        t
+    };
     let mut cells = Vec::new();
     let mut cur = String::new();
     let mut chars = t.chars().peekable();
-    let mut in_code = false;
     while let Some(c) = chars.next() {
         match c {
-            '\\' if chars.peek() == Some(&'|') => {
-                cur.push('|');
-                chars.next();
-            }
-            '`' => {
-                in_code = !in_code;
-                cur.push(c);
-            }
-            '|' if !in_code => cells.push(std::mem::take(&mut cur).trim().to_string()),
+            '\\' => match chars.peek() {
+                Some(&'|') => {
+                    cur.push('|');
+                    chars.next();
+                }
+                Some(&'\\') => {
+                    cur.push('\\');
+                    cur.push('\\');
+                    chars.next();
+                }
+                _ => cur.push('\\'),
+            },
+            '|' => cells.push(std::mem::take(&mut cur).trim().to_string()),
             _ => cur.push(c),
         }
     }
@@ -1079,6 +1092,14 @@ enum Mark {
 
 /// Inline spans → Markdown with properly nested markers.
 fn inlines_md(inlines: &[Inline]) -> String {
+    inlines_md_impl(inlines, false)
+}
+
+fn inlines_md_table(inlines: &[Inline]) -> String {
+    inlines_md_impl(inlines, true)
+}
+
+fn inlines_md_impl(inlines: &[Inline], in_table: bool) -> String {
     // Split into (text, fmt) pieces with whitespace moved outside emphasis.
     let mut pieces: Vec<(String, Fmt, Option<String>)> = Vec::new();
     let inlines = crate::model::equations_as_text(inlines);
@@ -1159,7 +1180,12 @@ fn inlines_md(inlines: &[Inline]) -> String {
             }
         }
         if f.code {
-            out.push_str(&code_span(&text));
+            if in_table {
+                let t = text.replace('|', "\\|");
+                out.push_str(&code_span(&t));
+            } else {
+                out.push_str(&code_span(&text));
+            }
         } else {
             out.push_str(&escape(&text).replace('\n', "\\\n").replace('\t', "    "));
         }
@@ -1189,7 +1215,7 @@ fn table_md(t: &FTable, out: &mut Vec<String>) {
         let mut parts = Vec::new();
         for b in &c.blocks {
             match b {
-                FBlock::Para(p) => parts.push(inlines_md(&p.inlines).replace("\\\n", "<br>")),
+                FBlock::Para(p) => parts.push(inlines_md_table(&p.inlines).replace("\\\n", "<br>")),
                 FBlock::Table(inner) => parts.push(escape(&inner.rows.iter().flat_map(|r| r.iter().map(Cell::text)).collect::<Vec<_>>().join(" "))),
             }
         }
@@ -1418,5 +1444,195 @@ mod tests {
         let FBlock::Para(q) = &back.blocks[0] else { panic!() };
         assert_eq!(q.text(), "1. not a list *really*");
         assert!(q.list.is_none());
+    }
+
+    #[test]
+    fn single_backtick_code_span_escaped_pipe() {
+        let md = "| Command | Status |\n| --- | --- |\n| `cmd \\| grep` | pass |\n";
+        let flow = parse(md);
+        let FBlock::Table(t) = &flow.blocks[0] else { panic!("expected table") };
+        assert_eq!(t.rows.len(), 2);
+        assert_eq!(t.rows[1].len(), 2);
+        let FBlock::Para(p0) = &t.rows[1][0].blocks[0] else { panic!() };
+        assert_eq!(p0.inlines.len(), 1);
+        assert!(matches!(&p0.inlines[0], Inline::Text(t, f) if t == "cmd | grep" && f.code));
+        let FBlock::Para(p1) = &t.rows[1][1].blocks[0] else { panic!() };
+        assert_eq!(p1.text(), "pass");
+
+        let mut out = Vec::new();
+        table_md(t, &mut out);
+        let exported = out.join("\n");
+        assert!(exported.contains("`cmd \\| grep`"), "Exported: {exported}");
+    }
+
+    #[test]
+    fn double_backtick_code_span_escaped_pipe() {
+        let md = "| Syntax | Note |\n| --- | --- |\n| ``a \\| b`` | second |\n";
+        let flow = parse(md);
+        let FBlock::Table(t) = &flow.blocks[0] else { panic!("expected table") };
+        assert_eq!(t.rows.len(), 2);
+        assert_eq!(t.rows[1].len(), 2);
+        let FBlock::Para(p0) = &t.rows[1][0].blocks[0] else { panic!() };
+        assert_eq!(p0.inlines.len(), 1);
+        assert!(matches!(&p0.inlines[0], Inline::Text(t, f) if t == "a | b" && f.code));
+        let FBlock::Para(p1) = &t.rows[1][1].blocks[0] else { panic!() };
+        assert_eq!(p1.text(), "second");
+    }
+
+    #[test]
+    fn code_span_literal_backtick_and_escaped_pipe() {
+        let md = "| Expression | Detail |\n| --- | --- |\n| ``a`b\\|c`` | distinct |\n";
+        let flow = parse(md);
+        let FBlock::Table(t) = &flow.blocks[0] else { panic!("expected table") };
+        assert_eq!(t.rows.len(), 2);
+        assert_eq!(t.rows[1].len(), 2);
+        let FBlock::Para(p0) = &t.rows[1][0].blocks[0] else { panic!() };
+        assert_eq!(p0.inlines.len(), 1);
+        assert!(matches!(&p0.inlines[0], Inline::Text(t, f) if t == "a`b|c" && f.code));
+        let FBlock::Para(p1) = &t.rows[1][1].blocks[0] else { panic!() };
+        assert_eq!(p1.text(), "distinct");
+    }
+
+    #[test]
+    fn three_column_table_with_distinctive_text() {
+        let md = "| Col1 | Col2 | Col3 |\n| --- | --- | --- |\n| `p1\\|q1` | Distinctive Two | Distinctive Three |\n";
+        let flow = parse(md);
+        let FBlock::Table(t) = &flow.blocks[0] else { panic!("expected table") };
+        assert_eq!(t.rows.len(), 2);
+        assert_eq!(t.rows[1].len(), 3);
+        assert_eq!(t.rows[1][0].text(), "p1|q1");
+        assert_eq!(t.rows[1][1].text(), "Distinctive Two");
+        assert_eq!(t.rows[1][2].text(), "Distinctive Three");
+        let FBlock::Para(p0) = &t.rows[1][0].blocks[0] else { panic!() };
+        assert!(matches!(&p0.inlines[0], Inline::Text(_, f) if f.code));
+        let FBlock::Para(p1) = &t.rows[1][1].blocks[0] else { panic!() };
+        assert!(matches!(&p1.inlines[0], Inline::Text(_, f) if !f.code));
+        let FBlock::Para(p2) = &t.rows[1][2].blocks[0] else { panic!() };
+        assert!(matches!(&p2.inlines[0], Inline::Text(_, f) if !f.code));
+    }
+
+    #[test]
+    fn regular_table_cells_containing_escaped_pipes() {
+        let md = "| Option | Description |\n| --- | --- |\n| Regular \\| Pipe | Normal text cell |\n";
+        let flow = parse(md);
+        let FBlock::Table(t) = &flow.blocks[0] else { panic!("expected table") };
+        assert_eq!(t.rows.len(), 2);
+        assert_eq!(t.rows[1].len(), 2);
+        assert_eq!(t.rows[1][0].text(), "Regular | Pipe");
+        assert_eq!(t.rows[1][1].text(), "Normal text cell");
+        let FBlock::Para(p0) = &t.rows[1][0].blocks[0] else { panic!() };
+        assert!(matches!(&p0.inlines[0], Inline::Text(_, f) if !f.code));
+
+        let mut out = Vec::new();
+        table_md(t, &mut out);
+        let exported = out.join("\n");
+        assert!(exported.contains("Regular \\| Pipe"), "Exported: {exported}");
+        assert!(!exported.contains("Regular \\\\| Pipe"), "Exported: {exported}");
+    }
+
+    #[test]
+    fn unescaped_pipes_behave_as_gfm_column_separators() {
+        let md = "| Header 1 | Header 2 |\n| --- | --- |\n| `raw|pipe` | Extra Column |\n";
+        let flow = parse(md);
+        let FBlock::Table(t) = &flow.blocks[0] else { panic!("expected table") };
+        assert_eq!(t.rows.len(), 2);
+        assert_eq!(t.rows[1].len(), 2);
+        assert_eq!(t.rows[1][0].text(), "`raw");
+        assert_eq!(t.rows[1][1].text(), "pipe`");
+    }
+
+    #[test]
+    fn ordinary_tables_and_standalone_code_spans_unchanged() {
+        let md = "| Alpha | Beta |\n| --- | --- |\n| 1 | 2 |\n";
+        let flow = parse(md);
+        let FBlock::Table(t) = &flow.blocks[0] else { panic!() };
+        let mut out = Vec::new();
+        table_md(t, &mut out);
+        assert_eq!(out.join("\n"), "| Alpha | Beta |\n| --- | --- |\n| 1 | 2 |");
+
+        let mut p = Para::default();
+        let f = Fmt { code: true, ..Default::default() };
+        p.push_text("cmd | grep", &f);
+        let exported = inlines_md(&p.inlines);
+        assert_eq!(exported, "`cmd | grep`");
+    }
+
+    #[test]
+    fn table_code_pipe_export_import_round_trip() {
+        let mut table = FTable::default();
+        let mut cell_a = Cell::default();
+        let mut para_a = Para::default();
+        let fmt_a = Fmt { code: true, ..Default::default() };
+        para_a.push_text("a`b|c", &fmt_a);
+        cell_a.blocks.push(FBlock::Para(para_a));
+
+        let mut cell_b = Cell::default();
+        let mut para_b = Para::default();
+        para_b.push_text("CRITICAL_DISTINCTIVE_INFO", &Fmt::default());
+        cell_b.blocks.push(FBlock::Para(para_b));
+
+        let mut head_a = Cell::default();
+        let mut head_para_a = Para::default();
+        head_para_a.push_text("Col A", &Fmt::default());
+        head_a.blocks.push(FBlock::Para(head_para_a));
+
+        let mut head_b = Cell::default();
+        let mut head_para_b = Para::default();
+        head_para_b.push_text("Col B", &Fmt::default());
+        head_b.blocks.push(FBlock::Para(head_para_b));
+
+        table.rows.push(vec![head_a, head_b]);
+        table.rows.push(vec![cell_a, cell_b]);
+
+        let mut out = Vec::new();
+        table_md(&table, &mut out);
+        let exported_md = out.join("\n");
+
+        assert!(exported_md.contains("``a`b\\|c``"), "Exported: {exported_md}");
+        assert!(exported_md.contains("CRITICAL\\_DISTINCTIVE\\_INFO"), "Exported: {exported_md}");
+
+        let back_flow = parse(&exported_md);
+        let FBlock::Table(back_table) = &back_flow.blocks[0] else { panic!("expected table") };
+
+        assert_eq!(back_table.rows.len(), 2, "Both rows must exist");
+        let row1 = &back_table.rows[1];
+        assert_eq!(row1.len(), 2, "Both cells must exist in row 1");
+
+        let back_cell_a = &row1[0];
+        let back_cell_b = &row1[1];
+        assert_eq!(back_cell_a.text(), "a`b|c", "Cell A text must be preserved");
+        assert_eq!(back_cell_b.text(), "CRITICAL_DISTINCTIVE_INFO", "Cell B text must be preserved");
+
+        let FBlock::Para(back_p_a) = &back_cell_a.blocks[0] else { panic!() };
+        assert_eq!(back_p_a.inlines.len(), 1);
+        assert!(
+            matches!(&back_p_a.inlines[0], Inline::Text(t, f) if t == "a`b|c" && f.code),
+            "Code formatting must remain intact on Cell A: {:?}",
+            back_p_a.inlines
+        );
+
+        let FBlock::Para(back_p_b) = &back_cell_b.blocks[0] else { panic!() };
+        assert_eq!(back_p_b.inlines.len(), 1);
+        assert!(
+            matches!(&back_p_b.inlines[0], Inline::Text(t, f) if t == "CRITICAL_DISTINCTIVE_INFO" && !f.code),
+            "Cell B formatting must remain plain text: {:?}",
+            back_p_b.inlines
+        );
+
+        assert_eq!(back_cell_a.text(), "a`b|c");
+        assert_eq!(back_cell_b.text(), "CRITICAL_DISTINCTIVE_INFO");
+
+        assert!(!back_cell_a.text().contains("CRITICAL_DISTINCTIVE_INFO"));
+        assert!(!back_cell_b.text().contains("a`b|c"));
+
+        let doc = import(&exported_md);
+        let re_exported = export(&doc);
+        assert!(re_exported.contains("``a`b\\|c``"), "Re-exported: {re_exported}");
+        assert!(re_exported.contains("CRITICAL\\_DISTINCTIVE\\_INFO"), "Re-exported: {re_exported}");
+        let doc2 = import(&re_exported);
+        let back_flow2 = model::from_doc(&doc2);
+        let FBlock::Table(back_table2) = &back_flow2.blocks[0] else { panic!() };
+        assert_eq!(back_table2.rows[1][0].text(), "a`b|c");
+        assert_eq!(back_table2.rows[1][1].text(), "CRITICAL_DISTINCTIVE_INFO");
     }
 }

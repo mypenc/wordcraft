@@ -105,3 +105,68 @@ fn bad_font_input_is_an_error() {
     assert_eq!(r["pending"], true);
     assert!(s.ui_requests.iter().any(|r| r["open"] == "addFont"));
 }
+
+/// A .docx whose text is set in `family`, embedding `font` through the font table (#1171): as an
+/// obfuscated `.odttf` when `key` is a real GUID, as a plain `.ttf` when it is all zeros.
+fn docx_embedding(family: &str, font: Option<(&[u8], &str)>, text: &str) -> Vec<u8> {
+    const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const R: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const PR: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+    let rels = |items: &[(&str, &str)]| {
+        let list: String = items.iter().map(|(t, g)| format!(r#"<Relationship Id="rId{t}" Type="{R}/{t}" Target="{g}"/>"#)).collect();
+        format!(r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{PR}">{list}</Relationships>"#)
+    };
+    let mut files: Vec<(String, Vec<u8>)> = vec![
+        (
+            "[Content_Types].xml".into(),
+            br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="ttf" ContentType="application/x-font-ttf"/><Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/></Types>"#.to_vec(),
+        ),
+        ("_rels/.rels".into(), rels(&[("officeDocument", "word/document.xml")]).into_bytes()),
+        ("word/_rels/document.xml.rels".into(), rels(&[("fontTable", "fontTable.xml")]).into_bytes()),
+        (
+            "word/document.xml".into(),
+            format!(r#"<w:document xmlns:w="{W}"><w:body><w:p><w:r><w:rPr><w:rFonts w:ascii="{family}" w:hAnsi="{family}"/><w:sz w:val="20"/></w:rPr><w:t>{text}</w:t></w:r></w:p></w:body></w:document>"#).into_bytes(),
+        ),
+    ];
+    let mut table = format!(r#"<w:fonts xmlns:w="{W}" xmlns:r="{R}"><w:font w:name="{family}">"#);
+    if let Some((data, key)) = font {
+        let digits = key.replace(['{', '}', '-'], "");
+        let hex: Vec<u8> = (0..16).map(|i| u8::from_str_radix(&digits[i * 2..i * 2 + 2], 16).unwrap()).collect();
+        let zero = hex.iter().all(|b| *b == 0);
+        let mut data = data.to_vec();
+        // Obfuscation (ECMA-376 Part 1, 17.8.1): the first 32 bytes XOR the key's bytes, reversed.
+        for i in 0..32 {
+            data[i] ^= hex[15 - i % 16];
+        }
+        let ext = if zero { "ttf" } else { "odttf" };
+        table.push_str(&format!(r#"<w:embedRegular r:id="rIdfont" w:fontKey="{key}" w:subsetted="0"/>"#));
+        files.push(("word/_rels/fontTable.xml.rels".into(), rels(&[("font", &format!("fonts/font1.{ext}"))]).into_bytes()));
+        files.push((format!("word/fonts/font1.{ext}"), data));
+    }
+    table.push_str("</w:font></w:fonts>");
+    files.push(("word/fontTable.xml".into(), table.into_bytes()));
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, bytes) in files {
+        zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+        std::io::Write::write_all(&mut zip, &bytes).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+#[test]
+fn fonts_embedded_in_a_docx_lay_out_its_text() {
+    const TEXT: &str = "illicit little lilies fill tiny jill";
+    let end_x =
+        |bytes: &[u8]| Session::new(crate::io::open_bytes("e.docx", bytes).unwrap()).layout().caret_on(&Pos::body(0, TEXT.len()), 0).unwrap().x;
+    let mono = end_x(&docx_embedding("JetBrains Mono", None, TEXT));
+    // Both forms Word and other producers write: an obfuscated .odttf with its key, a plain .ttf
+    // with the all-zero key. Each is a family no other test or system has.
+    for (family, key) in [("JetBrains Odtt", "{9F1C2A4E-7B3D-4C58-A1E6-0D2B8F5C3E77}"), ("JetBrains Zero", "{00000000-0000-0000-0000-000000000000}")]
+    {
+        let font = renamed("JetBrainsMono-Regular.ttf", "JetBrains Mono", family);
+        let missing = end_x(&docx_embedding(family, None, TEXT));
+        assert!((missing - mono).abs() > 1.0, "{family}: not embedded, the text falls back: {missing} vs {mono}");
+        let x = end_x(&docx_embedding(family, Some((&font, key)), TEXT));
+        assert!((x - mono).abs() < 0.01, "{family}: measured with the embedded font: {x} vs {mono} (missing {missing})");
+    }
+}

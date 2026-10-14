@@ -154,3 +154,208 @@ fn caret_in_a_continued_footnote_is_found_on_its_page() {
         assert_eq!(para.line_of(up.off), k, "hint {hint}: {up:?}");
     }
 }
+
+/// A letter per section, each restarting its page numbers, with "Page X of Y" in its footer
+/// where Y is a `PAGEREF` to a bookmark at the letter's end (how mail-merged letters count their
+/// own pages). The footer shows each letter's last page, not the file's stale result.
+#[test]
+fn page_references_in_footers_show_their_bookmarks_page() {
+    let field = |instr: &str| InlineObject::Field { instr: instr.into(), result: "9".into(), locked: false, code: false };
+    let footer = |d: &mut Document, mark: &str| {
+        let mut p = Paragraph::with_text("Page  of ", Default::default());
+        p.insert_object(5, field("PAGE"), &Default::default()).unwrap();
+        let n = p.len();
+        p.insert_object(n, field(&format!("PAGEREF {mark} \\* Arabic \\* MERGEFORMAT")), &Default::default()).unwrap();
+        d.add_part(PartKind::Footer, vec![para_block(p)])
+    };
+    let mut d = Document::from_text("Letter A 1\nLetter A 2\nLetter A 3\nLetter B 1\nLetter B 2");
+    let (fa, fb) = (footer(&mut d, "End_A"), footer(&mut d, "End_B"));
+    for i in [1, 2, 4] {
+        d.para_mut(StoryRef::Body, &Path::top(i)).unwrap().props.page_break_before = Some(true);
+    }
+    for (i, mark) in [(2, "End_A"), (4, "End_B")] {
+        let p = d.para_mut(StoryRef::Body, &Path::top(i)).unwrap();
+        let n = p.len();
+        p.insert_object(n, InlineObject::BookmarkStart { name: mark.into() }, &Default::default()).unwrap();
+    }
+    let restart = |id| SectionProps {
+        page_num_start: Some(1),
+        footers: wordcraft_doc::section::HeaderSet { default: Some(id), ..Default::default() },
+        ..d.last_section.clone()
+    };
+    let (a, b) = (restart(fa), restart(fb));
+    d.para_mut(StoryRef::Body, &Path::top(2)).unwrap().section = Some(Box::new(a));
+    d.last_section = b;
+    let shown = |l: &DocLayout| -> Vec<String> {
+        l.pages
+            .iter()
+            .map(|p| {
+                p.footer
+                    .iter()
+                    .flat_map(|it| if let Placed::Lines { para, .. } = it { para.shown.iter().map(|s| s.1.clone()).collect() } else { vec![] })
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .collect()
+    };
+    let mut cache = LayoutCache::new();
+    let l = layout(&d, &mut cache, &LayoutOptions::default());
+    assert_eq!(shown(&l), ["1/3", "2/3", "3/3", "1/2", "2/2"]);
+    // The bookmark moves to the letter's first page: only the reference changes, and the
+    // footers laid out before (same page, same totals) aren't reused.
+    let last = d.para_mut(StoryRef::Body, &Path::top(4)).unwrap();
+    let n = last.len();
+    last.delete(n - '\u{FFFC}'.len_utf8(), n).unwrap();
+    let first = d.para_mut(StoryRef::Body, &Path::top(3)).unwrap();
+    let n = first.len();
+    first.insert_object(n, InlineObject::BookmarkStart { name: "End_B".into() }, &Default::default()).unwrap();
+    assert_eq!(shown(&layout(&d, &mut cache, &LayoutOptions::default())), ["1/3", "2/3", "3/3", "1/1", "2/1"]);
+    // In the body, a page reference keeps its result until fields are updated.
+    let mut body = Document::from_text("Intro\nSee page ");
+    let p = body.para_mut(StoryRef::Body, &Path::top(0)).unwrap();
+    p.insert_object(0, InlineObject::BookmarkStart { name: "Intro".into() }, &Default::default()).unwrap();
+    let p = body.para_mut(StoryRef::Body, &Path::top(1)).unwrap();
+    let n = p.len();
+    p.insert_object(n, field("PAGEREF Intro"), &Default::default()).unwrap();
+    // The footer's reference to the same bookmark is resolved.
+    let mut fp = Paragraph::new();
+    fp.insert_object(0, field("PAGEREF Intro"), &Default::default()).unwrap();
+    let id = body.add_part(PartKind::Footer, vec![para_block(fp)]);
+    body.last_section.footers.default = Some(id);
+    let l = lay(&body);
+    assert_eq!(footer_shown(&l), ["1"]);
+    let texts: Vec<String> = l.pages[0]
+        .items
+        .iter()
+        .flat_map(|it| if let Placed::Lines { para, .. } = it { para.shown.iter().map(|s| s.1.clone()).collect() } else { vec![] })
+        .collect();
+    assert_eq!(texts, ["9"]);
+}
+
+/// The fields' text in each page's footer, joined with "/".
+fn footer_shown(l: &DocLayout) -> Vec<String> {
+    l.pages
+        .iter()
+        .map(|p| {
+            p.footer
+                .iter()
+                .flat_map(|it| if let Placed::Lines { para, .. } = it { para.shown.iter().map(|s| s.1.clone()).collect() } else { vec![] })
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .collect()
+}
+
+/// A footer of `PAGEREF` fields to `marks` (stored result "9"), set on the last section.
+fn page_ref_footer(d: &mut Document, marks: &[&str]) -> u32 {
+    let mut p = Paragraph::new();
+    for mark in marks {
+        let n = p.len();
+        let field = InlineObject::Field { instr: format!("PAGEREF {mark}"), result: "9".into(), locked: false, code: false };
+        p.insert_object(n, field, &Default::default()).unwrap();
+    }
+    let id = d.add_part(PartKind::Footer, vec![para_block(p)]);
+    d.last_section.footers.default = Some(id);
+    id
+}
+
+fn mark(d: &mut Document, path: &Path, off: usize, name: &str) {
+    d.para_mut(StoryRef::Body, path).unwrap().insert_object(off, InlineObject::BookmarkStart { name: name.into() }, &Default::default()).unwrap();
+}
+
+/// Bookmarks in the second half of a paragraph split over two pages, in a table cell and in a
+/// section numbered in roman numerals are found on the page and in the format they land in.
+#[test]
+fn page_references_find_bookmarks_in_split_paragraphs_tables_and_roman_sections() {
+    // One long paragraph over two pages, marked at its start and its end.
+    let mut d = Document::from_text(&"Long paragraph text running on. ".repeat(160));
+    let n = d.para(StoryRef::Body, &Path::top(0)).unwrap().len();
+    mark(&mut d, &Path::top(0), n, "End");
+    mark(&mut d, &Path::top(0), 0, "Start");
+    page_ref_footer(&mut d, &["Start", "End"]);
+    let l = lay(&d);
+    assert_eq!(l.pages.len(), 2, "the paragraph runs over two pages");
+    assert_eq!(footer_shown(&l), ["1/2", "1/2"]);
+
+    // A table cell on the second page.
+    let mut d = Document::from_text("First\nSecond");
+    d.para_mut(StoryRef::Body, &Path::top(1)).unwrap().props.page_break_before = Some(true);
+    d.insert_block(StoryRef::Body, &Path::top(2), Block::Table(wordcraft_doc::Table::new(1, 1, 300.0))).unwrap();
+    let cell = Path(vec![2, 0, 0, 0]);
+    d.para_mut(StoryRef::Body, &cell).unwrap().insert_text(0, "In a cell", &Default::default()).unwrap();
+    mark(&mut d, &cell, 0, "Cell");
+    page_ref_footer(&mut d, &["Cell"]);
+    assert_eq!(footer_shown(&lay(&d)), ["2", "2"]);
+
+    // The second section numbers its pages in lower-case roman numerals.
+    let mut d = Document::from_text("Arabic\nRoman 1\nRoman 2");
+    d.para_mut(StoryRef::Body, &Path::top(2)).unwrap().props.page_break_before = Some(true);
+    let n = d.para(StoryRef::Body, &Path::top(2)).unwrap().len();
+    mark(&mut d, &Path::top(2), n, "End");
+    let first = d.last_section.clone();
+    d.para_mut(StoryRef::Body, &Path::top(0)).unwrap().section = Some(Box::new(first));
+    d.last_section.page_num_start = Some(1);
+    d.last_section.page_num_format = wordcraft_doc::section::NumFormat::LowerRoman;
+    page_ref_footer(&mut d, &["End"]);
+    assert_eq!(footer_shown(&lay(&d)), ["", "ii", "ii"], "the first section has no footer of its own");
+
+    // Two bookmarks of the same name: the first in the document counts.
+    let mut d = Document::from_text("First\nSecond");
+    d.para_mut(StoryRef::Body, &Path::top(1)).unwrap().props.page_break_before = Some(true);
+    mark(&mut d, &Path::top(1), 0, "Twice");
+    mark(&mut d, &Path::top(0), 0, "Twice");
+    page_ref_footer(&mut d, &["Twice"]);
+    assert_eq!(footer_shown(&lay(&d)), ["1", "1"]);
+}
+
+/// A text box in a footer resolves its page references; one in the body keeps its result.
+#[test]
+fn page_references_in_footer_text_boxes_are_resolved() {
+    use wordcraft_doc::para::{Float, ShapeKind, Wrap};
+    let text_box = |d: &mut Document| {
+        let mut p = Paragraph::new();
+        let field = InlineObject::Field { instr: "PAGEREF End".into(), result: "9".into(), locked: false, code: false };
+        p.insert_object(0, field, &Default::default()).unwrap();
+        let story = d.add_part(PartKind::TextBox, vec![para_block(p)]);
+        InlineObject::Shape {
+            kind: ShapeKind::TextBox,
+            w: 100.0,
+            h: 40.0,
+            fill: None,
+            stroke: None,
+            stroke_width: 0.0,
+            float: Float { wrap: Wrap::Inline, ..Default::default() },
+            story: Some(story),
+            freeform: None,
+            effects: Default::default(),
+            extra: Default::default(),
+        }
+    };
+    let box_text = |l: &DocLayout, story: Option<u32>| -> Vec<String> {
+        l.pages
+            .iter()
+            .flat_map(|p| p.items.iter().chain(&p.footer))
+            .flat_map(|it| match it {
+                Placed::Lines { story: StoryRef::Part(id), para, .. } if Some(*id) == story => para.shown.iter().map(|s| s.1.clone()).collect(),
+                _ => vec![],
+            })
+            .collect()
+    };
+    let mut d = Document::from_text("First\nSecond");
+    d.para_mut(StoryRef::Body, &Path::top(1)).unwrap().props.page_break_before = Some(true);
+    let n = d.para(StoryRef::Body, &Path::top(1)).unwrap().len();
+    mark(&mut d, &Path::top(1), n, "End");
+    let in_footer = text_box(&mut d);
+    let footer_box = in_footer.text_box();
+    let mut fp = Paragraph::with_text("Footer ", Default::default());
+    let n = fp.len();
+    fp.insert_object(n, in_footer, &Default::default()).unwrap();
+    let id = d.add_part(PartKind::Footer, vec![para_block(fp)]);
+    d.last_section.footers.default = Some(id);
+    let in_body = text_box(&mut d);
+    let body_box = in_body.text_box();
+    d.para_mut(StoryRef::Body, &Path::top(0)).unwrap().insert_object(0, in_body, &Default::default()).unwrap();
+    let l = lay(&d);
+    assert!(box_text(&l, footer_box).iter().all(|t| t == "2") && !box_text(&l, footer_box).is_empty(), "{:?}", box_text(&l, footer_box));
+    assert_eq!(box_text(&l, body_box), ["9"]);
+}

@@ -235,6 +235,9 @@ pub fn merge_formatting(s: &Session, frag: &mut Fragment) {
                     run.props.strike = Some(true);
                 }
                 run.props.link = src.link;
+                // Tracked changes are not formatting: text deleted in the source stays deleted.
+                run.props.ins = src.ins;
+                run.props.del = src.del;
             }
             p.touch();
         });
@@ -257,8 +260,8 @@ pub fn insert(s: &mut Session, mut frag: Fragment) -> Result<(), CmdError> {
         for b in &mut frag.blocks {
             each_para(b, 0, &mut |p| {
                 for run in &mut p.runs {
+                    // Text deleted in the source stays deleted: inserted, then deleted.
                     run.props.ins = Some(r);
-                    run.props.del = None;
                     run.props.fmt_change = None;
                 }
                 p.mark.ins = None;
@@ -304,6 +307,50 @@ pub(crate) fn each_para(b: &mut Block, depth: usize, f: &mut dyn FnMut(&mut Para
     }
 }
 
+/// Point a tracked formatting change at its renumbered revision (dropped when it has none).
+fn remap_change<T>(c: &mut Option<Box<wordcraft_doc::props::PropChange<T>>>, rev: &dyn Fn(&mut Option<u32>)) {
+    let mut r = c.as_ref().map(|c| c.rev);
+    rev(&mut r);
+    match (r, c.as_mut()) {
+        (Some(v), Some(x)) => x.rev = v,
+        _ => *c = None,
+    }
+}
+
+/// [`remap_change`] for the table, row and cell formatting changes in `b` (bounded depth).
+fn remap_table_changes(b: &mut Block, depth: usize, rev: &dyn Fn(&mut Option<u32>)) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    if let Block::Table(t) = b {
+        remap_change(&mut t.props.fmt_change, rev);
+        for row in &mut t.rows {
+            remap_change(&mut row.props.fmt_change, rev);
+            for cell in &mut row.cells {
+                remap_change(&mut cell.props.fmt_change, rev);
+                for cb in &mut cell.blocks {
+                    remap_table_changes(Arc::make_mut(cb), depth + 1, rev);
+                }
+            }
+        }
+    }
+}
+
+/// Section breaks brought in from another document keep their page, but their header and
+/// footer ids are that document's: clear them (and the different first page that went with
+/// them) so the sections link to the previous section's headers and footers, as in Word.
+pub(crate) fn unlink_sections(blocks: &mut [Block]) {
+    for b in blocks {
+        each_para(b, 0, &mut |p| {
+            if let Some(sec) = p.section.as_deref_mut() {
+                sec.headers = Default::default();
+                sec.footers = Default::default();
+                sec.title_page = false;
+            }
+        });
+    }
+}
+
 /// Turn an imported document into a fragment of the session's document: bring over the media,
 /// lists and styles it refers to (renumbered so they can't collide with ours).
 fn adopt(s: &mut Session, src: Document) -> Fragment {
@@ -332,6 +379,14 @@ fn adopt(s: &mut Session, src: Document) -> Fragment {
             s.doc.styles.upsert(st.clone());
         }
     }
+    // Tracked changes the source carries (RTF revisions) point at its own revisions: add them
+    // after ours and renumber.
+    let rev_base = u32::try_from(s.doc.revisions.len()).unwrap_or(u32::MAX);
+    let src_revs = src.revisions.len();
+    s.doc.revisions.extend(src.revisions.iter().cloned());
+    let rev = |i: &mut Option<u32>| {
+        *i = i.filter(|v| (*v as usize) < src_revs).and_then(|v| rev_base.checked_add(v));
+    };
     let mut blocks: Vec<Block> = src.body.iter().map(|b| (**b).clone()).collect();
     // Pasted pictures fit our text width, like Insert › Pictures (layout keeps their size).
     let max_w = crate::io::text_width(&s.doc);
@@ -345,6 +400,21 @@ fn adopt(s: &mut Session, src: Document) -> Fragment {
             {
                 n.num = num_map.get(&n.num).copied().unwrap_or(0);
             }
+            for r in &mut p.runs {
+                rev(&mut r.props.ins);
+                rev(&mut r.props.del);
+                remap_change(&mut r.props.fmt_change, &rev);
+            }
+            rev(&mut p.mark.ins);
+            rev(&mut p.mark.del);
+            remap_change(&mut p.mark.fmt_change, &rev);
+            remap_change(&mut p.props.fmt_change, &rev);
+            let mut n = p.props.num_change.as_ref().map(|c| c.rev);
+            rev(&mut n);
+            match (n, p.props.num_change.as_mut()) {
+                (Some(v), Some(c)) => c.rev = v,
+                _ => p.props.num_change = None,
+            }
             for o in &mut p.objects {
                 if let wordcraft_doc::InlineObject::Image { media: key, .. } = o
                     && let Some(k) = media.get(key.as_str())
@@ -354,6 +424,10 @@ fn adopt(s: &mut Session, src: Document) -> Fragment {
             }
         });
     }
+    for b in &mut blocks {
+        remap_table_changes(b, 0, &rev);
+    }
+    unlink_sections(&mut blocks);
     // Text box stories the imported shapes show; pasting gives each a new story of its own.
     let parts = src.parts.into_iter().filter(|(_, p)| p.kind == wordcraft_doc::PartKind::TextBox).collect();
     Fragment { blocks, parts }

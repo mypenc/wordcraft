@@ -93,6 +93,18 @@ impl Document {
         self.story(story).map(|bl| scan_story(story, bl).ranges).unwrap_or_default()
     }
 
+    /// `p` moved past the range-field ends right after it. A click just after a field's result
+    /// lands before its end marker (the marker takes no room); typing or inserting there belongs
+    /// after the field, as in Word, not in its result.
+    pub fn past_field_ends(&self, p: &Pos) -> Pos {
+        let Some(para) = self.para_at(p) else { return p.clone() };
+        let mut off = p.off;
+        while matches!(para.object_at(off), Some(InlineObject::FieldEnd)) {
+            off += OBJ.len_utf8();
+        }
+        Pos { off, ..p.clone() }
+    }
+
     /// Whether any story holds a range-field marker without its partner.
     pub fn has_unbalanced_field_ranges(&self) -> bool {
         self.story_refs().into_iter().any(|s| self.story(s).is_some_and(|bl| !scan_story(s, bl).orphans.is_empty()))

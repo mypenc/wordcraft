@@ -9,12 +9,27 @@ use wordcraft_doc::{Block, Blocks, Paragraph, StoryRef, Table};
 use wordcraft_geom::Rect;
 
 use crate::para::{CellText, ClKind, ParaLayout};
-use crate::{BoxLayout, Ctx, Placed, layout_box};
+use crate::{BoxContext, BoxLayout, Ctx, Placed, layout_box};
 
 pub struct RowLayout {
     pub height: f32,
     /// Items relative to the table's top-left (x) and the row's top (y).
     pub items: Vec<Placed>,
+    /// The room the row keeps below its text: the bottom cell margin and border band. Part of a
+    /// row split across pages keeps it too.
+    pub bottom: f32,
+    /// The row's cells: the items each one owns and where its content ends.
+    pub cells: Vec<CellPart>,
+}
+
+/// A cell of a [`RowLayout`].
+pub struct CellPart {
+    /// Its items in the row's `items` (its fill, text, borders and cell area).
+    pub items: std::ops::Range<usize>,
+    /// Where its content ends below the row's top, its last paragraph's space after included
+    /// (what the part of the row left on a page must hold); `None` for turned text and a cell
+    /// covered by a vertical merge.
+    pub end: Option<f32>,
 }
 
 pub struct TableLayout {
@@ -86,9 +101,10 @@ fn default_margins(t: &Table, style: Option<&TableStyleProps>) -> [f32; 4] {
     t.props.cell_margins.or(style.and_then(|s| s.parts.cell_margins)).unwrap_or(DEFAULT_MARGINS)
 }
 
-/// The margins (top, left, bottom, right; points) inside cell `cell` of row `row`: its own, else
-/// the table's defaults, as the layout uses them. The app's ruler measures a cell's indents from
-/// them.
+/// The margins (top, left, bottom, right; points) of cell `cell` of row `row`: its own, else the
+/// table's defaults. The layout uses the left and right ones as they are (the app's ruler
+/// measures a cell's indents from them) but gives every cell in a row the row's largest top and
+/// bottom margins.
 pub fn cell_margins(doc: &wordcraft_doc::Document, t: &Table, row: usize, cell: usize) -> [f32; 4] {
     let style = t.props.style.as_deref().and_then(|id| doc.styles.table_style(id));
     t.rows.get(row).and_then(|r| r.cells.get(cell)).and_then(|c| c.props.margins).unwrap_or_else(|| default_margins(t, style.as_ref()))
@@ -410,20 +426,31 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
         span: usize,
         /// Turned text: `items` are still in the turned frame (placed in the second pass).
         turned: Option<Turned>,
+        /// Where the content ends below the cell's top (before vertical alignment).
+        end: f32,
     }
     let mut rows: Vec<Vec<CellBox>> = Vec::with_capacity(nrows);
     let mut heights: Vec<f32> = Vec::with_capacity(nrows);
+    let mut bottoms: Vec<f32> = Vec::with_capacity(nrows);
     for (ri, row) in t.rows.iter().enumerate() {
         let mut g = 0usize;
         let mut cells = Vec::with_capacity(row.cells.len());
         let mut rh = 0.0f32;
         // The tallest cell margins plus border bands in the row.
         let mut row_insets = 0.0f32;
+        let mut row_below = 0.0f32;
         // Every cell an empty one with a hidden end-of-cell mark: the row is only its borders.
         let mut collapsed = true;
         let is_header = header_rows && ri == 0;
         let is_total = t.props.look.total_row && ri + 1 == nrows && nrows > 1;
         let band = banded(t, style.as_ref(), ri);
+        // Word gives every cell in a row the row's largest top and bottom margins: a cell without
+        // its own lines up with a neighbour that has 5.65pt ones.
+        let (row_top, row_bottom) = row
+            .cells
+            .iter()
+            .map(|c| c.props.margins.unwrap_or(margins_def))
+            .fold((0.0f32, 0.0f32), |(top, bottom), m| (top.max(m[0]), bottom.max(m[2])));
         for (ci, cell) in row.cells.iter().enumerate() {
             let span = cell.span();
             let x0 = colx.get(g).copied().unwrap_or(acc);
@@ -431,8 +458,8 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             // Right to left: grid columns run from the right edge, and the start (left) margin
             // is on the cell's right.
             let (x0, x1) = if rtl { ((acc - x1).max(0.0), (acc - x0).max(0.0)) } else { (x0, x1) };
-            let margins = cell.props.margins.unwrap_or(margins_def);
-            let margins = if rtl { [margins[0], margins[3], margins[2], margins[1]] } else { margins };
+            let m = cell.props.margins.unwrap_or(margins_def);
+            let margins = if rtl { [row_top, m[3], row_bottom, m[1]] } else { [row_top, m[1], row_bottom, m[3]] };
             let cw = (x1 - x0 - margins[1] - margins[3]).max(4.0);
             let mut fill = cell.props.shading;
             let region = region_of(t, style.as_ref(), ri, g, span, ncols);
@@ -513,20 +540,21 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
                 // grows to fit (the second pass lays them out again if the row ends up taller).
                 let snap = (ctx.counters.clone(), ctx.eq_count);
                 let len = match (row.props.height, row.props.height_rule) {
-                    (Some(h), HeightRule::Exact) if h > 0.0 => (h - insets).clamp(4.0, TURNED_LIMIT),
+                    (Some(h), HeightRule::Exact) if h > 0.0 => (h + row_bottom - insets).clamp(4.0, TURNED_LIMIT),
                     _ => {
-                        let probe = layout_box(ctx, story, &cell.blocks, &cpath, TURNED_MAX, text, depth, None).items;
+                        let probe = layout_box(ctx, story, &cell.blocks, &cpath, TURNED_MAX, BoxContext::Cell(text), depth, None).items;
                         (ctx.counters, ctx.eq_count) = (snap.0.clone(), snap.1);
                         natural_length(&probe).clamp(4.0, TURNED_MAX)
                     }
                 };
-                let BoxLayout { items, height, floats_bottom, .. } = layout_box(ctx, story, &cell.blocks, &cpath, len, text, depth, None);
+                let BoxLayout { items, height, floats_bottom, .. } =
+                    layout_box(ctx, story, &cell.blocks, &cpath, len, BoxContext::Cell(text), depth, None);
                 let across = height.max(floats_bottom);
                 turned = Some(Turned { turn, len, across, snap, region, ci, top: margins[0] + band_t });
                 (items, len)
             } else {
                 let BoxLayout { mut items, mut height, floats_bottom, last_top } =
-                    layout_box(ctx, story, &cell.blocks, &cpath, cw, text, depth, None);
+                    layout_box(ctx, story, &cell.blocks, &cpath, cw, BoxContext::Cell(text), depth, None);
                 // A hidden end-of-cell mark: an empty last paragraph takes no room (Word for
                 // Windows: a row of empty such cells is only its borders).
                 if cell.props.hide_mark && cell.blocks.last().and_then(|b| b.as_para()).is_some_and(|p| p.text.is_empty()) {
@@ -541,10 +569,12 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
                 (items, height.max(floats_bottom))
             };
             let h = h + insets;
+            let end = h - margins[2] - band_b;
             if cell.props.vmerge != VMerge::Restart {
                 rh = rh.max(h);
             }
             row_insets = row_insets.max(insets);
+            row_below = row_below.max(margins[2] + band_b);
             cells.push(CellBox {
                 items,
                 h,
@@ -558,16 +588,20 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
                 g,
                 span,
                 turned,
+                end,
             });
             g += span;
         }
         // Word adds the cells' top and bottom margins and border bands to an at-least row height:
         // a 30pt row with 5pt margins and 0.5pt borders is 40.5pt tall even when its text needs less.
+        // An exact height gains only the bottom margin: it runs from the top border to the bottom
+        // of the text area (a 35pt row with 4pt margins steps 39pt).
         let rh = match (row.props.height, row.props.height_rule) {
-            (Some(h), HeightRule::Exact) if h > 0.0 => h,
+            (Some(h), HeightRule::Exact) if h > 0.0 => h + row_bottom,
             (Some(h), _) if h > 0.0 => rh.max(h + row_insets),
             _ => rh,
         };
+        bottoms.push(row_below);
         heights.push(if collapsed && !cells.is_empty() { rh.max(0.0) } else { rh.max(4.0) });
         rows.push(cells);
     }
@@ -609,7 +643,9 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
     for (ri, cells) in rows.into_iter().enumerate() {
         let rh = heights.get(ri).copied().unwrap_or(0.0);
         let mut items = Vec::new();
+        let mut parts = Vec::with_capacity(cells.len());
         for (ci, c) in cells.into_iter().enumerate() {
+            let first = items.len();
             // A restart cell spans several rows: its height is their sum.
             let mut span_h = rh;
             if c.vmerge == VMerge::Restart {
@@ -630,6 +666,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
                 VAlign::Center => ((span_h - c.h) / 2.0).max(0.0),
                 VAlign::Bottom => (span_h - c.h).max(0.0),
             };
+            let end = (c.vmerge != VMerge::Continue && c.turned.is_none()).then_some(c.end + dy);
             let mut cell_items = c.items;
             if let Some(tn) = c.turned {
                 dy = 0.0;
@@ -645,7 +682,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
                     let text = cell_text.iter().find(|(r, _)| *r == tn.region).map(|(_, c)| c);
                     // Same list numbers as the first layout: lay it out from the same counters.
                     let now = (std::mem::replace(&mut ctx.counters, tn.snap.0), std::mem::replace(&mut ctx.eq_count, tn.snap.1));
-                    let b = layout_box(ctx, story, &cell.blocks, &cpath, len, text, depth, None);
+                    let b = layout_box(ctx, story, &cell.blocks, &cpath, len, BoxContext::Cell(text), depth, None);
                     (cell_items, across) = (b.items, b.height.max(b.floats_bottom));
                     (ctx.counters, ctx.eq_count) = now;
                 }
@@ -671,13 +708,17 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             }
             let b = c.borders;
             let (x0, x1, y0, y1) = (c.x, c.x + c.w, 0.0, rh);
+            // Horizontal edges run on over half of each visible vertical edge, so the corners
+            // close the way Word draws them instead of leaving a notch at thick borders.
+            let half = |o: Option<Border>| o.filter(Border::is_visible).map_or(0.0, |e| e.width / 2.0);
+            let (hx0, hx1) = (x0 - half(b.left), x1 + half(b.right));
             let top_vis = c.vmerge != VMerge::Continue;
             if top_vis && let Some(e) = b.top.filter(Border::is_visible) {
-                items.push(Placed::Rule { x0, y0, x1, y1: y0, border: e });
+                items.push(Placed::Rule { x0: hx0, y0, x1: hx1, y1: y0, border: e });
             }
             let last_of_merge = c.vmerge == VMerge::None || !cont.get(ri + 1).is_some_and(|v| v.contains(&c.g));
             if last_of_merge && let Some(e) = b.bottom.filter(Border::is_visible) {
-                items.push(Placed::Rule { x0, y0: y1, x1, y1, border: e });
+                items.push(Placed::Rule { x0: hx0, y0: y1, x1: hx1, y1, border: e });
             }
             if let Some(e) = b.left.filter(Border::is_visible) {
                 items.push(Placed::Rule { x0, y0, x1: x0, y1, border: e });
@@ -693,8 +734,9 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
                 cell: ci,
                 story,
             });
+            parts.push(CellPart { items: first..items.len(), end });
         }
-        out.push(RowLayout { height: rh, items });
+        out.push(RowLayout { height: rh, items, bottom: bottoms.get(ri).copied().unwrap_or(0.0), cells: parts });
     }
     TableLayout { x, width: total, rows: out }
 }
@@ -702,157 +744,251 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
 /// Split a row at `cut` (points below the row's top) so the part above fits on this page.
 /// Paragraph lines break between lines; fills, vertical rules and cell areas are cut; the
 /// rest moves up to the top of the continuation. `None` when no line fits above the cut.
+///
+/// Like Word, the part left on the page keeps the cells' bottom margin and border below its
+/// text and a cell's last paragraph its space after (a row only that much taller than the room
+/// left splits rather than moving on whole), and widow control keeps two lines of a paragraph on
+/// either side of the break. Each cell's text goes on at the top of the continuation, and the
+/// continuation is as tall as the cell needing the most room, and at least the rest of the row
+/// (a minimum height holds over the pages).
 pub fn split_row(row: &RowLayout, cut: f32) -> Option<(RowLayout, RowLayout)> {
-    if cut <= 0.0 || cut >= row.height {
+    // Also rejects a NaN cut.
+    if !(cut > 0.0 && cut < row.height) {
         return None;
     }
-    // Where each paragraph splits, and how far up the continuation moves.
-    let mut first_moved = f32::MAX;
-    let mut kept_any = false;
-    for it in &row.items {
-        // Turned text moves as a whole, like a picture.
-        if let Some(r) = it.turned_bounds() {
-            if r.bottom() <= cut + 0.01 {
-                kept_any = true;
-            } else {
-                first_moved = first_moved.min(r.y);
-            }
-            continue;
-        }
-        match it {
-            Placed::Lines { para, l0, l1, y, .. } => {
-                let base = para.lines.get(*l0).map(|l| l.top).unwrap_or(0.0);
-                for k in *l0..*l1 {
-                    let Some(l) = para.lines.get(k) else { continue };
-                    let (top, bottom) = (y + l.top - base, y + l.top - base + l.height);
-                    if bottom <= cut + 0.01 {
-                        kept_any = true;
-                    } else {
-                        first_moved = first_moved.min(top);
-                        break;
-                    }
-                }
-            }
-            Placed::Image { rect, .. } | Placed::Shape { rect, .. } | Placed::Graphic { rect, .. } | Placed::Clip { rect, .. } => {
-                if rect.bottom() <= cut + 0.01 {
-                    kept_any = true;
-                } else {
-                    first_moved = first_moved.min(rect.y);
-                }
-            }
-            _ => {}
-        }
-    }
-    if !kept_any {
-        return None;
-    }
-    // Every line fits and only a nested table's cell runs past the cut (a floating table's
-    // fixed-height row, say): split there rather than move the whole row on. A row that is just
-    // taller than its text moves on whole, as in Word.
+    let limit = cut - row.bottom.clamp(0.0, cut);
+    let fits = |bottom: f32| bottom <= limit + 0.01;
+    // Each cell's items: every item of a row is in one of its cells.
+    let cells: Vec<&[Placed]> = row.cells.iter().map(|c| row.items.get(c.items.clone()).unwrap_or(&[])).collect();
+    // A nested table's cell is deeper than the row's own.
     let own_depth = row.items.iter().filter_map(|it| if let Placed::Cell { table, .. } = it { Some(table.0.len()) } else { None }).min();
-    let nested_past_cut =
-        row.items.iter().any(|it| matches!(it, Placed::Cell { rect, table, .. } if Some(table.0.len()) > own_depth && rect.bottom() > cut + 0.01));
-    if first_moved == f32::MAX && nested_past_cut {
-        first_moved = cut;
+    // The first line of each paragraph that moves on (`l1` when all of them stay), by cell and
+    // item.
+    let splits: Vec<Vec<usize>> = cells
+        .iter()
+        .zip(&row.cells)
+        .map(|(items, c)| {
+            // Where the cell's text ends: the paragraph ending lowest is the cell's last.
+            let lowest =
+                items.iter().filter_map(|it| text_lines(it).and_then(|(p, l0, l1, y)| crate::item_bottom(y, p, l0, l1))).fold(f32::MIN, f32::max);
+            items
+                .iter()
+                .map(|it| {
+                    let Some((para, l0, l1, y)) = text_lines(it) else { return 0 };
+                    // The cell's last paragraph ends with the cell's content (its space after).
+                    let last = l1 == para.lines.len() && crate::item_bottom(y, para, l0, l1).is_some_and(|b| b >= lowest - 0.01);
+                    line_split(para, (l0, l1), y, limit, c.end.filter(|_| last))
+                })
+                .collect()
+        })
+        .collect();
+    // The top of the first thing that moves on in each cell.
+    let mut kept_any = false;
+    let mut moved = vec![f32::MAX; cells.len()];
+    for ((items, splits), m) in cells.iter().zip(&splits).zip(&mut moved) {
+        for (it, &split) in items.iter().zip(splits) {
+            let top = if let Some(r) = it.turned_bounds() {
+                // Turned text moves as a whole, like a picture.
+                if fits(r.bottom()) {
+                    kept_any = true;
+                    None
+                } else {
+                    Some(r.y)
+                }
+            } else {
+                match it {
+                    Placed::Lines { para, l0, l1, y, .. } => {
+                        kept_any |= split > *l0;
+                        let base = para.lines.get(*l0).map(|l| l.top).unwrap_or(0.0);
+                        (split < *l1).then(|| para.lines.get(split).map_or(*y, |l| y + l.top - base))
+                    }
+                    Placed::Image { rect, .. } | Placed::Shape { rect, .. } | Placed::Graphic { rect, .. } | Placed::Clip { rect, .. } => {
+                        if fits(rect.bottom()) {
+                            kept_any = true;
+                            None
+                        } else {
+                            Some(rect.y)
+                        }
+                    }
+                    // A nested table's cell the cut runs through goes on from the cut, so what is
+                    // below the cut keeps its size and the text after it stays below it (a
+                    // floating table's fixed-height row in an otherwise fitting cell splits the
+                    // row there). A row that is just taller than its text (a minimum height)
+                    // moves on whole, as in Word.
+                    Placed::Cell { rect, table, .. } if Some(table.0.len()) > own_depth && rect.y < cut && rect.bottom() > cut + 0.01 => Some(cut),
+                    _ => None,
+                }
+            };
+            if let Some(top) = top {
+                *m = m.min(top);
+            }
+        }
     }
-    if first_moved == f32::MAX {
+    let first_moved = moved.iter().copied().fold(f32::MAX, f32::min);
+    if !kept_any || first_moved == f32::MAX {
         return None;
     }
-    // Keep a little of the cell's top margin on the continuation.
-    let shift = (first_moved - 2.0).max(0.0);
-    let (mut a, mut b) = (Vec::new(), Vec::new());
-    for it in &row.items {
-        if let Some(r) = it.turned_bounds() {
-            let mut it = it.clone();
-            if r.bottom() <= cut + 0.01 {
-                a.push(it);
-            } else {
-                it.translate(0.0, -shift);
-                b.push(it);
-            }
-            continue;
+    // How far up things move: each cell's first line that moves on goes to the top of the
+    // continuation, keeping a little of the cell's top margin.
+    let shift_to = |top: f32| (top - 2.0).max(0.0);
+    let shifts: Vec<f32> = moved.iter().map(|&m| shift_to(if m < f32::MAX { m } else { first_moved })).collect();
+    // The continuation is as tall as the cell needing the most room (what it moves on and the
+    // bottom margin, the rest of the row for turned text), and at least the rest of the row.
+    let full = (row.height - shift_to(first_moved)).max(4.0);
+    let mut need = row.height - cut;
+    for ((c, &m), &s) in row.cells.iter().zip(&moved).zip(&shifts) {
+        if m < f32::MAX {
+            need = need.max(c.end.map_or(row.height, |e| e + row.bottom) - s);
         }
-        match it {
-            Placed::Lines { story, path, para, l0, l1, x, y, turn } => {
-                let base = para.lines.get(*l0).map(|l| l.top).unwrap_or(0.0);
-                let mut split = *l1;
-                for k in *l0..*l1 {
-                    let Some(l) = para.lines.get(k) else { continue };
-                    if y + l.top - base + l.height > cut + 0.01 {
-                        split = k;
-                        break;
-                    }
-                }
-                if split > *l0 {
-                    a.push(Placed::Lines { story: *story, path: path.clone(), para: para.clone(), l0: *l0, l1: split, x: *x, y: *y, turn: *turn });
-                }
-                if split < *l1 {
-                    let top = para.lines.get(split).map(|l| y + l.top - base).unwrap_or(*y);
-                    b.push(Placed::Lines {
-                        story: *story,
-                        path: path.clone(),
-                        para: para.clone(),
-                        l0: split,
-                        l1: *l1,
-                        x: *x,
-                        y: top - shift,
-                        turn: *turn,
-                    });
-                }
-            }
-            Placed::Image { rect, .. }
-            | Placed::Shape { rect, .. }
-            | Placed::Graphic { rect, .. }
-            | Placed::Clip { rect, .. }
-            | Placed::Object { rect, .. } => {
-                if rect.bottom() <= cut + 0.01 {
-                    a.push(it.clone());
+    }
+    let height = need.clamp(4.0, full);
+    // What runs to the row's bottom (cell areas, shading, side borders) ends at the
+    // continuation's.
+    let rest = (row.height - height).max(0.0);
+    let geo_shift = |bottom: f32, shift: f32| if bottom >= row.height - 0.01 { rest } else { shift };
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    let mut parts = Vec::with_capacity(cells.len());
+    for (((c, items), splits), &shift) in row.cells.iter().zip(&cells).zip(&splits).zip(&shifts) {
+        let start = b.len();
+        for (it, &split) in items.iter().zip(splits) {
+            if let Some(r) = it.turned_bounds() {
+                let mut it = it.clone();
+                if fits(r.bottom()) {
+                    a.push(it);
                 } else {
-                    let mut it = it.clone();
                     it.translate(0.0, -shift);
                     b.push(it);
                 }
+                continue;
             }
-            // Shading and cell areas: the part above the cut stays, the rest moves up with the
-            // continuation (a nested table's cell below the cut moves whole).
-            Placed::Fill { rect, color } => {
-                let (above, below) = split_rect(*rect, cut, shift);
-                a.extend(above.map(|rect| Placed::Fill { rect, color: *color }));
-                b.extend(below.map(|rect| Placed::Fill { rect, color: *color }));
-            }
-            Placed::Cell { rect, covered, table, row: r, cell, story } => {
-                let (above, below) = split_rect(*rect, cut, shift);
-                let cell_at = |rect| Placed::Cell { rect, covered: *covered, table: table.clone(), row: *r, cell: *cell, story: *story };
-                a.extend(above.map(cell_at));
-                b.extend(below.map(cell_at));
-            }
-            Placed::Rule { x0, y0, x1, y1, border } => {
-                if (y0 - y1).abs() < 0.01 {
-                    // Horizontal: the top edge stays, the bottom edge moves; both fragments close.
-                    if *y0 <= 0.01 {
-                        a.push(it.clone());
-                        b.push(Placed::Rule { x0: *x0, y0: 0.0, x1: *x1, y1: 0.0, border: *border });
-                    } else if *y0 >= row.height - 0.01 {
-                        a.push(Placed::Rule { x0: *x0, y0: cut, x1: *x1, y1: cut, border: *border });
-                        b.push(Placed::Rule { x0: *x0, y0: y0 - shift, x1: *x1, y1: y1 - shift, border: *border });
-                    } else if *y0 <= cut {
+            match it {
+                Placed::Lines { story, path, para, l0, l1, x, y, turn } => {
+                    let base = para.lines.get(*l0).map(|l| l.top).unwrap_or(0.0);
+                    if split > *l0 {
+                        a.push(Placed::Lines {
+                            story: *story,
+                            path: path.clone(),
+                            para: para.clone(),
+                            l0: *l0,
+                            l1: split,
+                            x: *x,
+                            y: *y,
+                            turn: *turn,
+                        });
+                    }
+                    if split < *l1 {
+                        let top = para.lines.get(split).map(|l| y + l.top - base).unwrap_or(*y);
+                        b.push(Placed::Lines {
+                            story: *story,
+                            path: path.clone(),
+                            para: para.clone(),
+                            l0: split,
+                            l1: *l1,
+                            x: *x,
+                            y: top - shift,
+                            turn: *turn,
+                        });
+                    }
+                }
+                Placed::Image { rect, .. }
+                | Placed::Shape { rect, .. }
+                | Placed::Graphic { rect, .. }
+                | Placed::Clip { rect, .. }
+                | Placed::Object { rect, .. } => {
+                    if fits(rect.bottom()) {
                         a.push(it.clone());
                     } else {
-                        b.push(Placed::Rule { x0: *x0, y0: y0 - shift, x1: *x1, y1: y1 - shift, border: *border });
+                        let mut it = it.clone();
+                        it.translate(0.0, -shift);
+                        b.push(it);
                     }
-                } else {
-                    let (t, bt) = (y0.min(*y1), y0.max(*y1));
-                    if t < cut {
-                        a.push(Placed::Rule { x0: *x0, y0: t, x1: *x1, y1: bt.min(cut), border: *border });
-                    }
-                    if bt > cut {
-                        b.push(Placed::Rule { x0: *x0, y0: (t - shift).max(0.0), x1: *x1, y1: bt - shift, border: *border });
+                }
+                // Shading and cell areas: the part above the cut stays, the rest moves up with the
+                // continuation (a nested table's cell below the cut moves whole).
+                Placed::Fill { rect, color } => {
+                    let (above, below) = split_rect(*rect, cut, geo_shift(rect.bottom(), shift));
+                    a.extend(above.map(|rect| Placed::Fill { rect, color: *color }));
+                    b.extend(below.map(|rect| Placed::Fill { rect, color: *color }));
+                }
+                Placed::Cell { rect, covered, table, row: r, cell, story } => {
+                    let (above, below) = split_rect(*rect, cut, geo_shift(rect.bottom(), shift));
+                    let cell_at = |rect| Placed::Cell { rect, covered: *covered, table: table.clone(), row: *r, cell: *cell, story: *story };
+                    a.extend(above.map(cell_at));
+                    b.extend(below.map(cell_at));
+                }
+                Placed::Rule { x0, y0, x1, y1, border } => {
+                    if (y0 - y1).abs() < 0.01 {
+                        // Horizontal: the top edge stays, the bottom edge moves; both fragments close.
+                        if *y0 <= 0.01 {
+                            a.push(it.clone());
+                            b.push(Placed::Rule { x0: *x0, y0: 0.0, x1: *x1, y1: 0.0, border: *border });
+                        } else if *y0 >= row.height - 0.01 {
+                            a.push(Placed::Rule { x0: *x0, y0: cut, x1: *x1, y1: cut, border: *border });
+                            b.push(Placed::Rule { x0: *x0, y0: y0 - rest, x1: *x1, y1: y1 - rest, border: *border });
+                        } else if *y0 <= cut {
+                            a.push(it.clone());
+                        } else {
+                            b.push(Placed::Rule { x0: *x0, y0: y0 - shift, x1: *x1, y1: y1 - shift, border: *border });
+                        }
+                    } else {
+                        let (t, bt) = (y0.min(*y1), y0.max(*y1));
+                        if t < cut {
+                            a.push(Placed::Rule { x0: *x0, y0: t, x1: *x1, y1: bt.min(cut), border: *border });
+                        }
+                        if bt > cut {
+                            let shift = geo_shift(bt, shift);
+                            b.push(Placed::Rule { x0: *x0, y0: (t - shift).max(0.0), x1: *x1, y1: bt - shift, border: *border });
+                        }
                     }
                 }
             }
         }
+        parts.push(CellPart { items: start..b.len(), end: c.end.map(|e| e - shift) });
     }
-    Some((RowLayout { height: cut, items: a }, RowLayout { height: (row.height - shift).max(4.0), items: b }))
+    // The part left on the page is placed and never split again.
+    Some((
+        RowLayout { height: cut, items: a, bottom: row.bottom, cells: Vec::new() },
+        RowLayout { height, items: b, bottom: row.bottom, cells: parts },
+    ))
+}
+
+/// A cell paragraph's placed lines (not turned text): the paragraph, its lines `l0..l1` and the
+/// top of line `l0`.
+fn text_lines(it: &Placed) -> Option<(&ParaLayout, usize, usize, f32)> {
+    match it {
+        Placed::Lines { para, l0, l1, y, .. } if it.turned_bounds().is_none() => Some((para, *l0, *l1, *y)),
+        _ => None,
+    }
+}
+
+/// The first of lines `l0..l1` of `para` (placed with line `l0`'s top at `y`) that does not fit
+/// above `limit`: the last line of a cell's last paragraph needs room down to the cell's content
+/// `end`, its space after. Widow control keeps two lines on either side of the break, or moves
+/// the paragraph on whole.
+fn line_split(para: &ParaLayout, (l0, l1): (usize, usize), y: f32, limit: f32, end: Option<f32>) -> usize {
+    let n = para.lines.len();
+    let mut k = l0;
+    while k < l1 {
+        let Some(bottom) = crate::item_bottom(y, para, l0, k + 1) else { break };
+        let bottom = if k + 1 == n { end.map_or(bottom, |e| e.max(bottom)) } else { bottom };
+        if bottom > limit + 0.01 {
+            break;
+        }
+        k += 1;
+    }
+    // The body's rule differs: there a widow takes a line along only when three or more lines are
+    // on the page (`place_para_in_flow`).
+    if para.rp.widow_control && k > l0 && k < l1 {
+        // A widow: take one more line along.
+        if n - k == 1 {
+            k -= 1;
+        }
+        // An orphan (the first line alone): the paragraph moves on whole.
+        if l0 == 0 && k == 1 {
+            k = 0;
+        }
+    }
+    k
 }
 
 /// The parts of `r` above `cut` and below it, the latter moved up by `shift` (onto the
@@ -955,7 +1091,7 @@ fn blocks_content(ctx: &mut Ctx, blocks: &Blocks, text: Option<&CellText>, depth
         let (l, h) = match &**b {
             Block::Para(p) => {
                 let label = list_level(ctx, p).map(|l| (String::new(), l));
-                para_content(&ctx.para_labelled(p, UNBOUNDED, text, &[], label))
+                ctx.para_measured(p, UNBOUNDED, text, label, para_content)
             }
             // A nested table: its fixed width, else its columns' but at least its preferred width
             // (its own, else its grid's when it has preferred widths at all).

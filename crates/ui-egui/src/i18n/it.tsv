@@ -85,6 +85,7 @@
 	Enter formatting for number:	Formato del numero:
 	Follow number with:	Dopo il numero:
 	Formatting	Formattazione
+	In the margin	A margine
 	Include level number from:	Includi numero di livello da:
 	Ink	Penna
 	Insertions and Deletions	Inserimenti ed eliminazioni
@@ -98,6 +99,7 @@
 	Number alignment:	Allineamento numero:
 	Number format	Formato numero
 	Number style for this level:	Stile numero per questo livello:
+	Only for the selected text	Solo per il testo selezionato
 	Outside border	Bordo esterno
 	Restart list after:	Riavvia elenco dopo:
 	Right border	Bordo destro
@@ -1455,6 +1457,7 @@
 	Square	Incorniciato
 	Through	Passante
 	Toggle Unicode Character	Attiva/disattiva carattere Unicode
+	Type Character Code	Digita codice carattere
 	Top and Bottom	Sopra e sotto
 	Wrap Text Sides	Lati del testo a capo
 	Arrows	Frecce
@@ -1514,6 +1517,8 @@
 	Mirror indents	Rientri speculari
 	Overtype	Sovrascrittura
 	Overtype (typing replaces the characters after the caret)	Sovrascrittura (il testo digitato sostituisce i caratteri dopo il cursore)
+	Show alignment guides when moving pictures and shapes	Mostra le guide di allineamento durante lo spostamento di immagini e forme
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Gli oggetti spostati si agganciano ai bordi e al centro della pagina, ai margini e agli altri oggetti. Tieni premuto Alt per spostarli liberamente.
 	Page display	Visualizzazione pagina
 	Paragraph marks	Segni di paragrafo
 	Personalize	Personalizza
@@ -2045,6 +2050,7 @@
 	Hyphenation Options…	Opzioni sillabazione…
 	Hyphenation zone:	Area di sillabazione:
 	Italian	Italiano
+	Croatian	Croato
 	Japanese	Giapponese
 	Korean	Coreano
 	Limit consecutive hyphens to:	Limita trattini consecutivi a:
@@ -2113,8 +2119,6 @@
 	Annotation Reference	Rimando commento
 	Annotation Subject	Oggetto commento
 	Annotation Text	Testo commento
-	B4 (JIS)   10.12" × 14.33"	B4 (JIS)   10,12" × 14,33"
-	B5 (JIS)   7.17" × 10.12"	B5 (JIS)   7,17" × 10,12"
 	Baseline Dots	Puntini sulla linea di base
 	Basic Math	Matematica di base
 	Binomial Coefficient	Coefficiente binomiale
@@ -2199,13 +2203,10 @@
 	Empty Matrices	Matrici vuote
 	Endnote Reference	Rimando nota di chiusura
 	Endnote Text	Testo nota di chiusura
-	Envelope #10   4.12" × 9.50"	Busta n. 10   4,12" × 9,50"
 	Envelope Address	Indirizzo busta
-	Envelope DL   4.33" × 8.66"	Busta DL   4,33" × 8,66"
 	Envelope Return	Mittente busta
 	Equal Equal	Uguale uguale
 	Equal by Definition	Uguale per definizione
-	Executive   7.25" × 10.50"	Executive   7,25" × 10,50"
 	Exponential	Esponenziale
 	File name:	Nome file:
 	Floor	Parte intera inferiore
@@ -2269,8 +2270,6 @@
 	Left Subscript-Superscript	Pedice e apice a sinistra
 	Leftwards Arrow Above	Freccia verso sinistra sopra
 	Leftwards Harpoon Above	Arpione verso sinistra sopra
-	Legal   8.50" × 14.00"	Legale   8,50" × 14,00"
-	Letter   8.50" × 11.00"	Lettera   8,50" × 11,00"
 	Letter-Like Symbols	Simboli simili a lettere
 	Limit	Limite
 	Limit Example	Esempio di limite
@@ -2366,7 +2365,6 @@
 	Stack Object (Three)	Oggetto pila (tre)
 	Stacked Fraction	Frazione in colonna
 	Stacked, no bar	In colonna, senza linea
-	Statement   5.50" × 8.50"	Statement   5,50" × 8,50"
 	Strong	Forte
 	Subscript-Superscript	Pedice-apice
 	Subscripts and Superscripts	Pedici e apici
@@ -2389,7 +2387,6 @@
 	TOC {n}	Sommario {n}
 	Table Grid	Griglia tabella
 	Table of Figures	Indice delle figure
-	Tabloid   11.00" × 17.00"	Tabloid   11,00" × 17,00"
 	Tangent Function	Funzione tangente
 	Tangent formula	Formula della tangente
 	Text over Colon Equal	Testo sopra due punti uguale
@@ -2451,6 +2448,31 @@ preview	Title	Esempio
 	Hindi	Hindi
 	Context	Contesto
 	System	Sistema
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtra destinatari
+	Sort Recipients	Ordina destinatari
+	Filter and Sort	Filtra e ordina
+	And	E
+	Or	O
+	Comparison	Confronto
+	Compare to	Confronta con
+	Add Condition	Aggiungi condizione
+	Remove condition	Rimuovi condizione
+	Sort by	Ordina per
+	Then by	Poi per
+	Ascending	Crescente
+	Descending	Decrescente
+	Equal to	Uguale a
+	Not equal to	Diverso da
+	Less than	Minore di
+	Greater than	Maggiore di
+	Less than or equal	Minore o uguale a
+	Greater than or equal	Maggiore o uguale a
+	Is blank	È vuoto
+	Is not blank	Non è vuoto
+	Contains	Contiene
+	Does not contain	Non contiene
+	{count} of {total} recipients will be merged.	Destinatari da unire: {count} su {total}.
 	Show KeyTips (Alt or F10)	Mostra i suggerimenti tasti (Alt o F10)
 	Reading	Lettura
 	Reading Column Width	Larghezza colonna di lettura
@@ -2460,8 +2482,23 @@ preview	Title	Esempio
 	Correct accidental usage of cAPS LOCK key	Correggi l'uso accidentale del tasto bLOC mAIUSC
 	Region:	Area geografica:
 	Automatic ({region})	Automatico ({region})
+	Text of the nearest paragraph with a given style (running headers)	Testo del paragrafo più vicino con uno stile specificato (intestazioni correnti)
+	Style name:	Nome stile:
+	Take the last match on the page	Prendi l'ultima corrispondenza della pagina
+	Show its list number	Mostra il suo numero di elenco
+	Show its number relative to this field	Mostra il suo numero rispetto a questo campo
+	Show its number with all higher levels	Mostra il suo numero con tutti i livelli superiori
+	Number only, without the label's words	Solo il numero, senza le parole dell'etichetta
+	Add whether it is above or below	Aggiungi se si trova più in alto o più in basso
 	Search	Cerca
 	Title Bar	Barra del titolo
+	Copy to	Copia in
+
+# Document naming and account controls.
+	Rename Document	Rinomina documento
+	Document name	Nome del documento
+	Rename	Rinomina
+	Account	Account
 	Privacy Options	Opzioni di privacy
 	Trust Center	Centro protezione
 	Privacy for this document	Privacy di questo documento
@@ -2469,3 +2506,55 @@ preview	Title	Esempio
 	Leave out the date and time of comments and tracked changes when saving	Ometti data e ora di commenti e revisioni al salvataggio
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Il documento che stai modificando conserva nomi e date; solo il file salvato li omette.
 	Privacy Settings	Impostazioni di privacy attuali
+	Waiting for the save to finish…	In attesa del termine del salvataggio…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Il salvataggio di {name} è stato annullato: il documento è ancora aperto e non è andato perso nulla.
+	Paper	Carta
+	Paper size:	Dimensioni carta:
+	Custom size	Dimensioni personalizzate
+	More Paper Sizes…	Altre dimensioni carta…
+	The margins don't fit on a page this size; make the margins smaller first.	I margini non entrano in una pagina di queste dimensioni; riduci prima i margini.
+	Full Screen	Schermo intero
+	Full\nScreen	Schermo\nintero
+	Use the browser's full screen (F11)	Usa lo schermo intero del browser (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} pollici
+	{name}   {height} × {width} mm	{name}   {height} × {width} mm
+	{width} × {height} mm	{width} × {height} mm
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Ricercatore richiede un servizio online; WordCraft mantiene i tuoi documenti offline.
+	These settings will be used for new documents.	Queste impostazioni verranno usate per i nuovi documenti.
+	can't split at the first row	impossibile dividere la tabella alla prima riga
+	select two or more cells to merge	seleziona due o più celle da unire
+	there is no ink to replay	non c’è input penna da riprodurre
+	there's no citation after the caret	non c’è nessuna citazione dopo il cursore
+	this item is already at the top level	questo elemento è già al livello superiore
+	Envelope #10	Busta n. 10
+	Envelope DL	Busta DL
+	Reading Mode	Modalità di lettura
+	Column width	Larghezza colonna
+	Text size	Dimensioni testo
+	Edit Document	Modifica documento
+	Go to what:	Vai a:
+	Type +2 or -1 to move from the page you are on.	Digita +2 o -1 per spostarti dalla pagina corrente.
+	Suggested	Suggerimenti
+	Set Proofing Language…	Imposta lingua di correzione…
+	Language Preferences…	Preferenze lingua…
+
+# Cross-reference dialog (#1003)
+	For which item:	Per quale elemento:
+	Heading	Titolo
+	Heading text	Testo del titolo
+	Insert reference to:	Inserisci riferimento a:
+	Reference type:	Tipo di riferimento:
+
+# Dictionaries folder (#1063)
+	Dictionaries	Dizionari
+	Dictionaries folder:	Cartella dei dizionari:
+	Not set: the system's usual places	Non impostata: i percorsi abituali del sistema
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	I file Hunspell .aff e .dic in questa cartella (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) hanno la precedenza su quelli di sistema.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: nessun dizionario trovato
+
+# Backstage › Recover (#586)
+	Recover	Ripristina

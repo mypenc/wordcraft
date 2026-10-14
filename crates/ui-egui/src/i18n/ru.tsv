@@ -189,6 +189,8 @@
 	Delete Style	Удалить стиль
 	Delete Table	Удалить таблицу
 	Design	Дизайн
+	In the margin	На полях
+	Only for the selected text	Только для выделенного текста
 	No document is open. Create a document or open one first.	Нет открытого документа. Сначала создайте или откройте документ.
 	Search	Поиск
 	Title Bar	Строка заголовка
@@ -1151,15 +1153,6 @@ preview	Title	Пример
 	Gallery	Галерея
 	Sketchbook	Скетчбук
 	Studio	Студия
-	Letter   8.50" × 11.00"	Letter   8,50" × 11,00"
-	Legal   8.50" × 14.00"	Legal   8,50" × 14,00"
-	Executive   7.25" × 10.50"	Executive   7,25" × 10,50"
-	Statement   5.50" × 8.50"	Statement   5,50" × 8,50"
-	Tabloid   11.00" × 17.00"	Tabloid   11,00" × 17,00"
-	B4 (JIS)   10.12" × 14.33"	B4 (JIS)   10,12" × 14,33"
-	B5 (JIS)   7.17" × 10.12"	B5 (JIS)   7,17" × 10,12"
-	Envelope #10   4.12" × 9.50"	Конверт №10   4,12" × 9,50"
-	Envelope DL   4.33" × 8.66"	Конверт DL   4,33" × 8,66"
 	Plain Table 1	Простая таблица 1
 	Grid Table 1 Light	Таблица-сетка 1, светлая
 	Grid Table 4 – Blue	Таблица-сетка 4 — синяя
@@ -1744,6 +1737,7 @@ preview	Title	Пример
 	Selected Fields	Выделенные поля
 	Toggle Field Codes	Коды/значения полей
 	Toggle Unicode Character	Преобразовать знак Юникода
+	Type Character Code	Ввести код символа
 	Trademark Sign	Знак товарного знака
 	Unlink Fields	Разорвать связь с полями
 	Unlock Fields	Разблокировать поля
@@ -2375,6 +2369,7 @@ preview	Title	Пример
 	Hyphenation Options…	Параметры расстановки переносов…
 	Hyphenation zone:	Зона переноса слов:
 	Italian	Итальянский
+	Croatian	Хорватский
 	Japanese	Японский
 	Korean	Корейский
 	Limit consecutive hyphens to:	Максимум последовательных переносов:
@@ -2430,6 +2425,8 @@ preview	Title	Пример
 	No words yet. Add to Dictionary on a misspelled word puts it here.	Слов пока нет. Команда «Добавить в словарь» для слова с ошибкой помещает его сюда.
 	Overtype	Замена
 	Overtype (typing replaces the characters after the caret)	Замена (вводимый текст заменяет символы после курсора)
+	Show alignment guides when moving pictures and shapes	Показывать направляющие выравнивания при перемещении рисунков и фигур
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Перемещаемые объекты притягиваются к краям и центру страницы, к полям и к другим объектам. Удерживайте Alt, чтобы перемещать свободно.
 	Page display	Отображение страницы
 	Paragraph marks	Знаки абзаца
 	Personalize	Персонализация
@@ -2467,6 +2464,39 @@ preview	Title	Пример
 	AutoFit Column by Double-Clicking	Автоподбор ширины столбца двойным щелчком
 	Region:	Регион:
 	Automatic ({region})	Автоматически ({region})
+	Text of the nearest paragraph with a given style (running headers)	Текст ближайшего абзаца с заданным стилем (живые колонтитулы)
+	Style name:	Имя стиля:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Фильтр получателей
+	Sort Recipients	Сортировка получателей
+	Filter and Sort	Фильтр и сортировка
+	And	И
+	Or	Или
+	Comparison	Сравнение
+	Compare to	Значение
+	Add Condition	Добавить условие
+	Remove condition	Удалить условие
+	Sort by	Сортировать по
+	Then by	Затем по
+	Ascending	По возрастанию
+	Descending	По убыванию
+	Equal to	Равно
+	Not equal to	Не равно
+	Less than	Меньше
+	Greater than	Больше
+	Less than or equal	Меньше или равно
+	Greater than or equal	Больше или равно
+	Is blank	Пусто
+	Is not blank	Не пусто
+	Contains	Содержит
+	Does not contain	Не содержит
+	{count} of {total} recipients will be merged.	Получателей для слияния: {count} из {total}.
+	Take the last match on the page	Брать последнее совпадение на странице
+	Show its list number	Показывать его номер в списке
+	Show its number relative to this field	Показывать его номер относительно этого поля
+	Show its number with all higher levels	Показывать его номер со всеми верхними уровнями
+	Number only, without the label's words	Только номер, без слов метки
+	Add whether it is above or below	Добавлять, выше он или ниже
 	Start-up	Запуск
 	Show the Start screen when WordCraft starts	Показывать начальный экран при запуске WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Вкл.: WordCraft открывается на странице Файл › Главная с пустым документом, шаблонами и недавними документами. Выкл.: открывается пустой документ.
@@ -2477,6 +2507,13 @@ preview	Title	Пример
 	Level 7	Уровень 7
 	Level 8	Уровень 8
 	Level 9	Уровень 9
+	Copy to	Копировать в
+
+# Document naming and account controls.
+	Rename Document	Переименовать документ
+	Document name	Имя документа
+	Rename	Переименовать
+	Account	Учётная запись
 	Privacy Options	Параметры конфиденциальности
 	Trust Center	Центр управления безопасностью
 	Privacy for this document	Конфиденциальность этого документа
@@ -2484,3 +2521,55 @@ preview	Title	Пример
 	Leave out the date and time of comments and tracked changes when saving	Не сохранять дату и время примечаний и отслеживаемых изменений
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Редактируемый документ сохраняет имена и даты; их не будет только в сохранённом файле.
 	Privacy Settings	Текущие параметры конфиденциальности
+	Waiting for the save to finish…	Ожидание завершения сохранения…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Сохранение {name} отменено. Документ по-прежнему открыт, ничего не потеряно.
+	Paper	Бумага
+	Paper size:	Размер бумаги:
+	Custom size	Другой размер
+	More Paper Sizes…	Другие размеры бумаги…
+	The margins don't fit on a page this size; make the margins smaller first.	Поля не помещаются на странице такого размера; сначала уменьшите поля.
+	Full Screen	Во весь экран
+	Full\nScreen	Во весь\nэкран
+	Use the browser's full screen (F11)	Используйте полноэкранный режим браузера (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} дюйма
+	{name}   {height} × {width} mm	{name}   {height} × {width} мм
+	{width} × {height} mm	{width} × {height} мм
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Исследователю нужен онлайн-сервис, а WordCraft работает с документами без подключения к интернету.
+	These settings will be used for new documents.	Эти параметры будут использоваться для новых документов.
+	can't split at the first row	нельзя разделить таблицу по первой строке
+	select two or more cells to merge	выделите две или более ячеек для объединения
+	there is no ink to replay	нет рукописного ввода для воспроизведения
+	there's no citation after the caret	после курсора нет ссылки на источник
+	this item is already at the top level	этот элемент уже на верхнем уровне
+	Envelope #10	Конверт №10
+	Envelope DL	Конверт DL
+	Reading Mode	Режим чтения
+	Column width	Ширина столбца
+	Text size	Размер текста
+	Edit Document	Редактировать документ
+	Go to what:	Перейти к:
+	Type +2 or -1 to move from the page you are on.	Введите +2 или -1, чтобы перейти на столько страниц от текущей.
+	Suggested	Предлагаемые
+	Set Proofing Language…	Выбрать язык проверки правописания…
+	Language Preferences…	Языковые параметры…
+
+# Cross-reference dialog (#1003)
+	For which item:	Для какого элемента:
+	Heading	Заголовок
+	Heading text	Текст заголовка
+	Insert reference to:	Вставить ссылку на:
+	Reference type:	Тип ссылки:
+
+# Dictionaries folder (#1063)
+	Dictionaries	Словари
+	Dictionaries folder:	Папка словарей:
+	Not set: the system's usual places	Не задана: стандартные расположения в системе
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Файлы Hunspell .aff и .dic из этой папки (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) используются раньше системных.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: словарь не найден
+
+# Backstage › Recover (#586)
+	Recover	Восстановить

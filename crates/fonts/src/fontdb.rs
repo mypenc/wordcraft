@@ -459,6 +459,11 @@ fn read_fallback_file(path: &std::path::Path) -> Option<Vec<u8>> {
 /// Families preferred for right-to-left scripts (Persian, Arabic, Urdu, Hebrew) when the
 /// document's font lacks them: open fonts with full Persian coverage first (the Persian-only
 /// letters پ چ ژ گ, the Persian digits), then the platforms' own.
+/// Right-to-left script fonts (Hebrew, Arabic, Persian, Syriac…) in fallback order.
+/// Windows prioritizes David/Miriam (Office) and Segoe UI (standard).
+/// macOS prioritizes Helvetica, Geeza Pro (system), and SF fonts.
+/// Linux uses Noto fonts.
+#[cfg(windows)]
 pub const RTL_FALLBACKS: &[&str] = &[
     "Vazirmatn",
     "Noto Naskh Arabic",
@@ -468,13 +473,31 @@ pub const RTL_FALLBACKS: &[&str] = &[
     "Shabnam",
     "Samim",
     "Noto Sans Hebrew",
+    "David",
+    "Miriam",
     "Segoe UI",
     "Tahoma",
-    "Geeza Pro",
-    "SF Arabic",
     "Arial",
     "DejaVu Sans",
 ];
+
+#[cfg(target_os = "macos")]
+pub const RTL_FALLBACKS: &[&str] = &[
+    "Helvetica",
+    "Vazirmatn",
+    "Noto Naskh Arabic",
+    "Noto Sans Arabic",
+    "Noto Sans Hebrew",
+    "Geeza Pro",
+    "SF Arabic",
+    "Arial",
+    "Tahoma",
+    "DejaVu Sans",
+];
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub const RTL_FALLBACKS: &[&str] =
+    &["Noto Naskh Arabic", "Noto Sans Arabic", "Noto Sans Hebrew", "Vazirmatn", "Segoe UI", "Arial", "Tahoma", "DejaVu Sans"];
 
 /// Families tried (when installed) for characters the loaded fonts lack: CJK, symbols, emoji.
 #[cfg(not(target_arch = "wasm32"))]

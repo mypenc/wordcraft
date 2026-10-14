@@ -176,6 +176,37 @@ pub fn page_lines(page: &Page, story: StoryRef) -> Vec<LineHit<'_>> {
     v
 }
 
+/// Of `lines`, the one nearest the caret moving up (`dir < 0`) or down: the lowest above it or
+/// the highest below it.
+fn nearest<'a, 'b>(lines: &[&'b LineHit<'a>], dir: i32) -> Option<&'b LineHit<'a>> {
+    if dir < 0 { lines.iter().copied().max_by(|a, b| a.top.total_cmp(&b.top)) } else { lines.iter().copied().min_by(|a, b| a.top.total_cmp(&b.top)) }
+}
+
+/// The line of `lines` to go to: of the nearest one and the lines of the other cells in its table
+/// row, the one across page x `gx` (else the one horizontally nearest it), on a tie the nearer.
+fn in_row<'a, 'b>(lines: &[&'b LineHit<'a>], gx: f32, dir: i32) -> Option<&'b LineHit<'a>> {
+    let n = nearest(lines, dir)?;
+    let off = |l: &LineHit| (l.left - gx).max(gx - l.right).max(0.0);
+    lines
+        .iter()
+        .copied()
+        .filter(|l| (l.path == n.path && l.li == n.li) || beside(n.path, l.path))
+        .min_by(|a, b| off(a).total_cmp(&off(b)).then(if dir < 0 { b.top.total_cmp(&a.top) } else { a.top.total_cmp(&b.top) }))
+}
+
+/// Whether paragraph `l` is in another cell of the table row paragraph `p` is in: where their
+/// paths part is a cell index (`[block, row, cell, block, …]`).
+fn beside(p: &Path, l: &Path) -> bool {
+    p.0.iter().zip(&l.0).position(|(x, y)| x != y).is_some_and(|i| i % 3 == 2)
+}
+
+/// Whether paragraph `l` comes between paragraphs `a` and `b` (either way round) in document
+/// order, not in another cell of a table row either of them is in (that stands beside it).
+fn between(a: &Path, b: &Path, l: &Path) -> bool {
+    let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+    lo < l && l < hi && !beside(a, l) && !beside(b, l)
+}
+
 /// The position in turned text (a table cell's text direction) of `story` under page point
 /// (x, y), if there is turned text there.
 fn turned_hit(page: &Page, story: StoryRef, x: f32, y: f32) -> Option<Pos> {
@@ -321,12 +352,23 @@ impl DocLayout {
 
     /// Which header/footer (if any) is at (x, y) on a page — for double-click editing.
     pub fn header_footer_at(&self, page: usize, y: f32) -> Option<(StoryRef, bool)> {
+        let (story, header) = self.header_footer_zone(page, y)?;
+        story.map(|s| (s, header))
+    }
+
+    /// Whether y on `page` is in its header area (above the body: `Some((_, true))`) or footer
+    /// area (below it: `Some((_, false))`), with the story shown there — `None` when the page
+    /// has no header/footer yet (double-clicking there creates one, #960).
+    pub fn header_footer_zone(&self, page: usize, y: f32) -> Option<(Option<StoryRef>, bool)> {
         let p = self.pages.get(page)?;
+        if !y.is_finite() {
+            return None;
+        }
         if y < p.body.y {
-            return p.header_story.map(|id| (StoryRef::Part(id), true));
+            return Some((p.header_story.map(StoryRef::Part), true));
         }
         if y > p.body.bottom() {
-            return p.footer_story.map(|id| (StoryRef::Part(id), false));
+            return Some((p.footer_story.map(StoryRef::Part), false));
         }
         None
     }
@@ -435,18 +477,21 @@ impl DocLayout {
                 }
             })
             .collect();
-        let target = if dir < 0 {
-            cands
-                .iter()
-                .filter(|l| gx >= l.left - 2.0 && gx <= l.right + 2.0)
-                .max_by(|a, b| a.top.total_cmp(&b.top))
-                .or_else(|| cands.iter().max_by(|a, b| a.top.total_cmp(&b.top)))
-        } else {
-            cands
-                .iter()
-                .filter(|l| gx >= l.left - 2.0 && gx <= l.right + 2.0)
-                .min_by(|a, b| a.top.total_cmp(&b.top))
-                .or_else(|| cands.iter().min_by(|a, b| a.top.total_cmp(&b.top)))
+        let across: Vec<&LineHit> = cands.iter().copied().filter(|l| gx >= l.left - 2.0 && gx <= l.right + 2.0).collect();
+        let target = match nearest(&across, dir) {
+            // The nearest line across `gx`, unless lines between the caret's paragraph and that
+            // line's in document order come before it on the way: a table row whose cells' text
+            // `gx` misses (left of the table, or in the gap between two cells) is the next line,
+            // as in Word.
+            Some(t) => {
+                let skipped: Vec<&LineHit> = cands
+                    .iter()
+                    .copied()
+                    .filter(|l| (if dir < 0 { l.top > t.top } else { l.top < t.top }) && between(&pos.path, t.path, l.path))
+                    .collect();
+                if skipped.is_empty() { Some(t) } else { in_row(&skipped, gx, dir) }
+            }
+            None => in_row(&cands, gx, dir),
         };
         if let Some(l) = target {
             let off = l.para.off_at_x(l.li, gx - l.x);

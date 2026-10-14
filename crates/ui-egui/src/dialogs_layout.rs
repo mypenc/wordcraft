@@ -526,16 +526,25 @@ fn envelopes_ui(app: &mut WordApp, ui: &mut Ui, f: &mut EnvelopeForm) -> bool {
     cancel
 }
 
-/// `DL  110 × 220 mm` / `#10  4.13 × 9.5 in`: metric sizes in millimetres, the others in inches.
+/// `DL   110 × 220 mm` / `#10   4.13 × 9.5 in`: metric sizes in millimetres, the others in
+/// inches. The pattern is translated (the unit's name, the order) and the numbers use the
+/// region's decimal separator.
 pub(crate) fn envelope_label(name: &str, w: f32, h: f32) -> String {
     let short = name.strip_prefix("Envelope ").unwrap_or(name);
-    if short.starts_with('#') || short == "Monarch" {
+    let (template, w, h) = if short.starts_with('#') || short == "Monarch" {
         let i = |pt: f32| ((pt / 72.0) * 100.0).round() / 100.0;
-        format!("{short}   {} × {} in", i(h), i(w))
+        (tl!("{name}   {height} × {width} in"), i(w), i(h))
     } else {
         let mm = |pt: f32| (pt * 25.4 / 72.0).round();
-        format!("{short}   {} × {} mm", mm(h), mm(w))
-    }
+        (tl!("{name}   {height} × {width} mm"), mm(w), mm(h))
+    };
+    crate::i18n::fmt(template, &[("name", short), ("height", &with_decimal(h.to_string())), ("width", &with_decimal(w.to_string()))])
+}
+
+/// A number written with `.` rewritten with the region's decimal separator (`2,625`).
+fn with_decimal(n: String) -> String {
+    let sep = crate::options::decimal();
+    if sep == '.' { n } else { n.replace('.', sep.encode_utf8(&mut [0; 4])) }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -586,8 +595,19 @@ fn product_label(i: usize) -> String {
         "return" => tl!("Return address labels"),
         _ => tl!("Address labels"),
     };
-    let paper = tl!(p.paper);
-    format!("{kind}, {} × {}, {} ({paper})", p.cols, p.rows, p.size_text())
+    // Inches on Letter, millimetres on A4, as the sheets are sold.
+    let size = if p.paper == "A4" {
+        let mm = |pt: f32| with_decimal(format!("{:.1}", pt * 25.4 / 72.0));
+        crate::i18n::fmt(tl!("{width} × {height} mm"), &[("width", &mm(p.width)), ("height", &mm(p.height))])
+    } else {
+        let i = |pt: f32| with_decimal((((pt / 72.0) * 1000.0).round() / 1000.0).to_string());
+        format!("{}\" × {}\"", i(p.width), i(p.height))
+    };
+    let (columns, rows) = (p.cols.to_string(), p.rows.to_string());
+    crate::i18n::fmt(
+        tl!("{kind}, {columns} × {rows}, {size} ({paper})"),
+        &[("kind", kind), ("columns", &columns), ("rows", &rows), ("size", &size), ("paper", tl!(p.paper))],
+    )
 }
 
 fn labels_ui(app: &mut WordApp, ui: &mut Ui, f: &mut LabelsForm) -> bool {

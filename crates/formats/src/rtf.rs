@@ -25,6 +25,8 @@ use crate::model::{self, Cell, FBlock, FTable, Flow, Fmt, Inline, Kind, ListInfo
 const MAX_GROUPS: usize = 512;
 /// Largest picture we decode (bytes).
 const MAX_PICT: usize = 64 << 20;
+/// Most sections we read (`\sect`); later breaks end paragraphs only.
+const MAX_SECTIONS: usize = 10_000;
 
 // ---------------------------------------------------------------------------------------------
 // Export
@@ -87,6 +89,8 @@ struct Writer {
     t: Tables,
     /// List definitions: per list, the ordered flag per level.
     lists: Vec<[bool; 9]>,
+    /// Authors of tracked changes (`\revtbl` entries after "Unknown"), when the text has any.
+    authors: Option<Vec<String>>,
 }
 
 const HEAD_SIZES: [f32; 6] = [20.0, 16.0, 14.0, 12.0, 12.0, 11.0];
@@ -102,8 +106,36 @@ fn style_num(k: Kind) -> Option<u32> {
 }
 
 impl Writer {
+    /// `\revtbl` index of a tracked change's author (0 = "Unknown").
+    fn author(&mut self, a: &str) -> usize {
+        let authors = self.authors.get_or_insert_with(Vec::new);
+        let a = a.trim();
+        if a.is_empty() {
+            return 0;
+        }
+        match authors.iter().position(|x| x == a) {
+            Some(i) => i + 1,
+            None => {
+                authors.push(a.to_string());
+                authors.len()
+            }
+        }
+    }
+
     fn run(&mut self, t: &str, f: &Fmt, out: &mut String) {
         let mut ctl = String::new();
+        if let Some(m) = &f.ins {
+            ctl.push_str(&format!("\\revised\\revauth{}", self.author(&m.author)));
+            if let Some(d) = iso_to_dttm(&m.date) {
+                ctl.push_str(&format!("\\revdttm{}", d as i32));
+            }
+        }
+        if let Some(m) = &f.del {
+            ctl.push_str(&format!("\\deleted\\revauthdel{}", self.author(&m.author)));
+            if let Some(d) = iso_to_dttm(&m.date) {
+                ctl.push_str(&format!("\\revdttmdel{}", d as i32));
+            }
+        }
         if f.bold {
             ctl.push_str("\\b");
         }
@@ -395,11 +427,65 @@ fn rtf_date(s: &str) -> Option<String> {
     Some(format!("\\yr{y}\\mo{mo}\\dy{d}\\hr{h}\\min{mi}"))
 }
 
+fn days_in_month(y: u32, m: u32) -> u32 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+/// Day of the week, 0 = Sunday (Sakamoto's method).
+fn weekday(y: u32, m: u32, d: u32) -> u32 {
+    const T: [u32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    let y = if m < 3 { y.saturating_sub(1) } else { y };
+    (y + y / 4 - y / 100 + y / 400 + T.get(m.saturating_sub(1) as usize).copied().unwrap_or(0) + d) % 7
+}
+
+/// An RTF revision date (DTTM, RTF 1.9.1 "Revision Marks": minute in bits 0–5, hour 6–10, day
+/// 11–15, month 16–19, year − 1900 20–28, weekday 29–31) as ISO 8601 (`2024-03-15T10:30:00Z`).
+/// Zero or an impossible date is no date. DTTM has no time zone or seconds: times are read as
+/// UTC (`Z`).
+pub fn dttm_to_iso(v: u32) -> Option<String> {
+    let (mi, h, d, mo, y) = (v & 0x3F, (v >> 6) & 0x1F, (v >> 11) & 0x1F, (v >> 16) & 0xF, 1900 + ((v >> 20) & 0x1FF));
+    if v == 0 || mi > 59 || h > 23 || d == 0 || d > days_in_month(y, mo) {
+        return None;
+    }
+    Some(format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:00Z"))
+}
+
+/// An ISO 8601 date (`YYYY-MM-DD`, optionally `THH:MM…`; seconds and zone ignored) as an RTF
+/// DTTM; `None` when it isn't one or falls outside DTTM's years (1900–2411). DTTM has no time
+/// zone or seconds: the clock time is written as given (WordCraft keeps UTC, `Z`), and seconds
+/// and any offset are dropped.
+pub fn iso_to_dttm(s: &str) -> Option<u32> {
+    let num = |a: usize, b: usize| s.get(a..b).filter(|t| t.bytes().all(|c| c.is_ascii_digit())).and_then(|t| t.parse::<u32>().ok());
+    let sep = |i: usize, c: &[&str]| s.get(i..i + 1).is_some_and(|t| c.contains(&t));
+    let (y, mo, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    if !sep(4, &["-"]) || !sep(7, &["-"]) {
+        return None;
+    }
+    let (h, mi) = if s.len() > 10 {
+        if !sep(10, &["T", " "]) || !sep(13, &[":"]) {
+            return None;
+        }
+        (num(11, 13)?, num(14, 16)?)
+    } else {
+        (0, 0)
+    };
+    if !(1900..=2411).contains(&y) || mi > 59 || h > 23 || d == 0 || d > days_in_month(y, mo) {
+        return None;
+    }
+    Some(mi | (h << 6) | (d << 11) | (mo << 16) | ((y - 1900) << 20) | (weekday(y, mo, d) << 29))
+}
+
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
-    let flow = model::from_doc(doc);
+    let flow = model::from_doc_tracked(doc);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
-    let mut w = Writer { t: Tables { fonts: vec![base_font], colors: Vec::new() }, lists: Vec::new() };
+    let mut w = Writer { t: Tables { fonts: vec![base_font], colors: Vec::new() }, lists: Vec::new(), authors: None };
     let mut body = String::new();
     w.blocks(&flow.blocks, false, "\\par", &mut body, 0);
     export_with(&flow.meta, &w, &body, &doc.last_section)
@@ -436,6 +522,13 @@ fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionPro
         out.push_str("}\n{\\*\\listoverridetable");
         for i in 1..=w.lists.len() {
             out.push_str(&format!("{{\\listoverride\\listid{i}\\listoverridecount0\\ls{i}}}"));
+        }
+        out.push_str("}\n");
+    }
+    if let Some(authors) = &w.authors {
+        out.push_str("{\\*\\revtbl {Unknown;}");
+        for a in authors {
+            out.push_str(&format!("{{{};}}", esc(&a.replace(';', ","))));
         }
         out.push_str("}\n");
     }
@@ -480,6 +573,23 @@ enum Dest {
     FldInst,
     Pict,
     Bookmark,
+    /// The author table of tracked changes (`\revtbl`).
+    RevTbl,
+}
+
+/// Most authors read from a `\revtbl` (hostile input).
+const MAX_REV_AUTHORS: usize = 10_000;
+
+/// Tracked-change character properties: `\revised` / `\deleted`, their authors (`\revtbl`
+/// indices) and dates (DTTM).
+#[derive(Clone, Copy, Debug, Default)]
+struct RevSt {
+    ins: bool,
+    del: bool,
+    auth: i32,
+    authdel: i32,
+    dttm: u32,
+    dttmdel: u32,
 }
 
 /// Which header or footer a `\header…`/`\footer…` group is: footer or header, and the pages
@@ -517,6 +627,7 @@ struct Output {
 struct St {
     dest: Dest,
     fmt: Fmt,
+    rev: RevSt,
     uc: usize,
     hidden: bool,
     // Paragraph properties.
@@ -550,6 +661,7 @@ impl Default for St {
         St {
             dest: Dest::Body,
             fmt: Fmt::default(),
+            rev: RevSt::default(),
             uc: 1,
             hidden: false,
             align: None,
@@ -639,6 +751,56 @@ impl PageGeom {
     }
 }
 
+/// Section formatting (`\sectd` resets it): the section's page words (`\pgwsxn`…, over the
+/// document's `\paperw`…), its break, columns, page numbering and title page.
+#[derive(Clone, Debug, Default)]
+struct SecFmt {
+    page: PageGeom,
+    start: wordcraft_doc::section::SectionStart,
+    cols: Option<i32>,
+    colsx: Option<i32>,
+    linebetcol: bool,
+    pgn_restart: bool,
+    pgn_start: Option<i32>,
+    pgn_fmt: wordcraft_doc::section::NumFormat,
+    title_page: bool,
+}
+
+impl SecFmt {
+    /// The section's properties over the document's page (`doc`); headers and footers unset.
+    fn props(&self, doc: &PageGeom) -> wordcraft_doc::SectionProps {
+        let p = &self.page;
+        let page = PageGeom {
+            w: p.w.or(doc.w),
+            h: p.h.or(doc.h),
+            left: p.left.or(doc.left),
+            right: p.right.or(doc.right),
+            top: p.top.or(doc.top),
+            bottom: p.bottom.or(doc.bottom),
+            header: p.header.or(doc.header),
+            footer: p.footer.or(doc.footer),
+            // A section that gives its own page size or orientation has its own orientation;
+            // the document's `\landscape` only applies to sections that give neither.
+            landscape: if p.w.is_some() || p.h.is_some() || p.landscape { p.landscape } else { doc.landscape },
+        };
+        let mut s = page.section();
+        s.start = self.start;
+        if let Some(n) = self.cols {
+            s.columns.count = n.clamp(1, 45) as u32;
+        }
+        if let Some(x) = self.colsx {
+            s.columns.space = (x as f32 / 20.0).clamp(0.0, 1584.0);
+        }
+        s.columns.separator = self.linebetcol;
+        if self.pgn_restart {
+            s.page_num_start = Some(self.pgn_start.unwrap_or(1).clamp(0, 32_767) as u32);
+        }
+        s.page_num_format = self.pgn_fmt;
+        s.title_page = self.title_page;
+        s
+    }
+}
+
 #[derive(Default)]
 struct Reader {
     st: St,
@@ -654,14 +816,17 @@ struct Reader {
     ansicpg: u16,
     /// The default font (`\deff`), whose charset applies before any `\f`.
     deff: i32,
+    /// The document's page (`\paperw`, `\margl`…) and the current section's formatting.
     page: PageGeom,
+    sec: SecFmt,
+    /// The headers and footers of each section ended so far (`\sect`); `hf_parts` holds the
+    /// current section's.
+    section_parts: Vec<Vec<(HeaderFooter, Vec<FBlock>)>>,
     /// The header or footer being read: the group depth it started at, which one, and the
     /// body's output, put back when the group closes.
     hf: Option<(usize, HeaderFooter, Box<Output>)>,
-    /// Headers and footers read, in order.
+    /// The current section's headers and footers, in order.
     hf_parts: Vec<(HeaderFooter, Vec<FBlock>)>,
-    /// `\titlepg`: the first page has its own header and footer.
-    title_page: bool,
     /// The cell border side being described (`\clbrdrt`, `l`, `b`, `r`): its line style, width
     /// and colour follow.
     cell_side: Option<char>,
@@ -692,6 +857,9 @@ struct Reader {
     pict_sx: f32,
     pict_sy: f32,
     bkmk: Option<(usize, String)>,
+    /// Authors of tracked changes (`\revtbl`), and the entry being read.
+    rev_authors: Vec<String>,
+    rev_name: String,
     skip_chars: usize,
     pending_high: Option<u16>,
     // Output.
@@ -762,11 +930,73 @@ impl Reader {
         }
         self.close_table();
         let part = self.swap_output(*body);
-        // A document names each one once; a repeat (another section's) replaces it.
+        // A section names each one once; a repeat replaces it.
         self.hf_parts.retain(|(w, _)| *w != which);
         if self.hf_parts.len() < 16 {
             self.hf_parts.push((which, part.body));
         }
+    }
+
+    /// `\sect`: end the paragraph, and with it the section, which takes its formatting and the
+    /// headers and footers read since the last break. Inside a header, footer or table, and past
+    /// [`MAX_SECTIONS`], it only ends the paragraph.
+    fn end_section(&mut self) {
+        self.end_para(false);
+        if self.hf.is_some() || self.st.intbl || self.section_parts.len() + 1 >= MAX_SECTIONS {
+            return;
+        }
+        let props = self.sec.props(&self.page);
+        if let Some(FBlock::Para(p)) = self.body.last_mut() {
+            p.section = Some(Box::new(props));
+            self.section_parts.push(std::mem::take(&mut self.hf_parts));
+        }
+    }
+
+    /// A section formatting word: applied to the current section, unless it's inside a header
+    /// or footer (whose `\sectd` isn't the body's). False when `w` isn't one.
+    fn section_word(&mut self, w: &str, p: Option<i32>) -> bool {
+        use wordcraft_doc::section::{NumFormat, SectionStart};
+        let on = p != Some(0);
+        let pv = p.unwrap_or(0);
+        // Inside a header or footer the word is read into a scratch copy and dropped.
+        let mut scratch;
+        let sec = if self.hf.is_some() {
+            scratch = self.sec.clone();
+            &mut scratch
+        } else {
+            &mut self.sec
+        };
+        match w {
+            "sectd" => *sec = SecFmt::default(),
+            "titlepg" => sec.title_page = on,
+            "pgwsxn" => sec.page.w = Some(pv),
+            "pghsxn" => sec.page.h = Some(pv),
+            "marglsxn" => sec.page.left = Some(pv),
+            "margrsxn" => sec.page.right = Some(pv),
+            "margtsxn" => sec.page.top = Some(pv),
+            "margbsxn" => sec.page.bottom = Some(pv),
+            "headery" => sec.page.header = Some(pv),
+            "footery" => sec.page.footer = Some(pv),
+            "lndscpsxn" => sec.page.landscape = on,
+            "sbknone" => sec.start = SectionStart::Continuous,
+            "sbkcol" => sec.start = SectionStart::NextColumn,
+            "sbkpage" => sec.start = SectionStart::NextPage,
+            "sbkeven" => sec.start = SectionStart::EvenPage,
+            "sbkodd" => sec.start = SectionStart::OddPage,
+            "cols" => sec.cols = Some(pv),
+            "colsx" => sec.colsx = Some(pv),
+            "linebetcol" => sec.linebetcol = on,
+            "pgnrestart" => sec.pgn_restart = true,
+            "pgncont" => sec.pgn_restart = false,
+            "pgnstarts" => sec.pgn_start = Some(pv),
+            "pgndec" => sec.pgn_fmt = NumFormat::Decimal,
+            "pgnucrm" => sec.pgn_fmt = NumFormat::UpperRoman,
+            "pgnlcrm" => sec.pgn_fmt = NumFormat::LowerRoman,
+            "pgnucltr" => sec.pgn_fmt = NumFormat::UpperLetter,
+            "pgnlcltr" => sec.pgn_fmt = NumFormat::LowerLetter,
+            _ => return false,
+        }
+        true
     }
 
     fn open(&mut self) {
@@ -789,6 +1019,7 @@ impl Reader {
         match closing {
             Dest::FontTbl if !self.font_name.is_empty() => self.commit_font(),
             Dest::StyleSheet if !self.style_name.is_empty() => self.commit_style(),
+            Dest::RevTbl if !self.rev_name.trim().is_empty() => self.commit_author(),
             Dest::Info(k) => {
                 let t = std::mem::take(&mut self.info_text).trim().to_string();
                 match k {
@@ -822,6 +1053,20 @@ impl Reader {
         if self.hf.as_ref().is_some_and(|(d, _, _)| self.depth() < *d) {
             self.end_header_footer();
         }
+    }
+
+    fn commit_author(&mut self) {
+        let name = std::mem::take(&mut self.rev_name).trim().to_string();
+        if self.rev_authors.len() < MAX_REV_AUTHORS {
+            self.rev_authors.push(name);
+        }
+    }
+
+    /// The tracked-change mark for `\revtbl` author index `i` and DTTM `dttm`; an index outside
+    /// the table is "Unknown".
+    fn rev_mark(&self, i: i32, dttm: u32) -> model::RevMark {
+        let author = usize::try_from(i).ok().and_then(|i| self.rev_authors.get(i)).cloned().unwrap_or_else(|| "Unknown".to_string());
+        model::RevMark { author, date: dttm_to_iso(dttm).unwrap_or_default(), id: None }
     }
 
     fn commit_font(&mut self) {
@@ -872,7 +1117,14 @@ impl Reader {
                 if self.st.hidden {
                     return;
                 }
-                let f = self.st.fmt.clone();
+                let mut f = self.st.fmt.clone();
+                let r = self.st.rev;
+                if r.ins {
+                    f.ins = Some(self.rev_mark(r.auth, r.dttm));
+                }
+                if r.del {
+                    f.del = Some(self.rev_mark(r.authdel, r.dttmdel));
+                }
                 self.para.push_text(s, &f);
                 self.para_has = true;
             }
@@ -936,6 +1188,15 @@ impl Reader {
                     && n.len() < 256
                 {
                     n.push_str(s);
+                }
+            }
+            Dest::RevTbl => {
+                for c in s.chars() {
+                    if c == ';' {
+                        self.commit_author();
+                    } else if self.rev_name.len() < 256 {
+                        self.rev_name.push(c);
+                    }
                 }
             }
             Dest::Skip | Dest::ListTable | Dest::ListOverride => {}
@@ -1141,6 +1402,7 @@ impl Reader {
             "keywords" if self.in_info() => Some(Dest::Info(4)),
             "doccomm" if self.in_info() => Some(Dest::Info(5)),
             "listtable" => Some(Dest::ListTable),
+            "revtbl" => Some(Dest::RevTbl),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
             // Transparent wrapper: read the nested pict without changing the destination.
@@ -1163,10 +1425,8 @@ impl Reader {
             | "listtext" | "object" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst"
             | "do" | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
-            | "rsidtbl" | "generator" | "mmathPr" | "pgdsctbl" | "filetbl" | "revtbl" | "listpicture" | "userprops" | "docvar" | "objdata"
-            | "fontemb" | "fontfile" | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pn" | "pgptbl" => {
-                Some(Dest::Skip)
-            }
+            | "rsidtbl" | "generator" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb"
+            | "fontfile" | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pn" | "pgptbl" => Some(Dest::Skip),
             "creatim" if self.in_info() => {
                 self.in_creatim = true;
                 Some(Dest::Skip)
@@ -1297,6 +1557,9 @@ impl Reader {
                 }
                 return;
             }
+            // Author names take Unicode escapes like the other text destinations.
+            Dest::RevTbl if !matches!(w, "u" | "uc") => return,
+            Dest::RevTbl => {}
             Dest::Pict => {
                 match w {
                     "pngblip" => self.pict_kind = 1,
@@ -1316,7 +1579,7 @@ impl Reader {
         }
         match w {
             "par" => self.end_para(false),
-            "sect" => self.end_para(false),
+            "sect" => self.end_section(),
             "cell" => self.end_cell(),
             "nestcell" => self.end_para(true),
             "row" => self.end_row(),
@@ -1351,13 +1614,22 @@ impl Reader {
             "uc" => self.st.uc = pv.clamp(0, 8) as usize,
             "plain" => {
                 self.st.fmt = Fmt { link: self.st.fmt.link.clone(), ..Default::default() };
+                self.st.rev = RevSt::default();
                 self.st.hidden = false;
             }
             "pard" => {
                 let field = self.st.field;
-                let (dest, fmt, uc, hidden) = (self.st.dest, self.st.fmt.clone(), self.st.uc, self.st.hidden);
-                self.st = St { dest, fmt, uc, hidden, field, ..Default::default() };
+                // Revision marks are character formatting, which `\pard` leaves alone.
+                let (dest, fmt, rev, uc, hidden) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc, self.st.hidden);
+                self.st = St { dest, fmt, rev, uc, hidden, field, ..Default::default() };
             }
+            "revised" => self.st.rev.ins = on,
+            "deleted" => self.st.rev.del = on,
+            "revauth" => self.st.rev.auth = pv,
+            "revauthdel" => self.st.rev.authdel = pv,
+            // DTTMs are 32-bit patterns, written signed or unsigned.
+            "revdttm" => self.st.rev.dttm = pv as u32,
+            "revdttmdel" => self.st.rev.dttmdel = pv as u32,
             "b" => self.st.fmt.bold = on,
             "i" => self.st.fmt.italic = on,
             "ul" | "uld" | "uldash" | "uldashd" | "uldashdd" | "uldb" | "ulth" | "ulw" | "ulwave" | "ulhwave" | "ulldash" | "ulthd" => {
@@ -1474,16 +1746,14 @@ impl Reader {
                     b.color = color;
                 }
             }
-            "titlepg" => self.title_page = on,
-            "paperw" | "pgwsxn" => self.page.w = Some(pv),
-            "paperh" | "pghsxn" => self.page.h = Some(pv),
-            "margl" | "marglsxn" => self.page.left = Some(pv),
-            "margr" | "margrsxn" => self.page.right = Some(pv),
-            "margt" | "margtsxn" => self.page.top = Some(pv),
-            "margb" | "margbsxn" => self.page.bottom = Some(pv),
-            "headery" => self.page.header = Some(pv),
-            "footery" => self.page.footer = Some(pv),
-            "landscape" | "lndscpsxn" => self.page.landscape = on,
+            "paperw" => self.page.w = Some(pv),
+            "paperh" => self.page.h = Some(pv),
+            "margl" => self.page.left = Some(pv),
+            "margr" => self.page.right = Some(pv),
+            "margt" => self.page.top = Some(pv),
+            "margb" => self.page.bottom = Some(pv),
+            "landscape" => self.page.landscape = on,
+            _ if self.section_word(w, p) => {}
             "cellx" => {
                 self.cell_side = None;
                 let mut d = std::mem::take(&mut self.def_cur);
@@ -1550,9 +1820,11 @@ fn parse_with_page(bytes: &[u8]) -> Result<(Flow, PageGeom, Option<String>), Str
 struct Parsed {
     flow: Flow,
     page: PageGeom,
+    /// The last section's properties (the others are on the paragraphs that end them).
+    last_section: wordcraft_doc::SectionProps,
     default_font: Option<String>,
-    headers_footers: Vec<(HeaderFooter, Vec<FBlock>)>,
-    title_page: bool,
+    /// Each section's headers and footers, in order, the last section's last.
+    headers_footers: Vec<Vec<(HeaderFooter, Vec<FBlock>)>>,
 }
 
 fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
@@ -1603,6 +1875,12 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
                     let param = if k > d0 {
                         let v = std::str::from_utf8(bytes.get(d0..k).unwrap_or(b"0")).ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
                         let v = if neg { -v } else { v };
+                        // A date (DTTM) is a 32-bit pattern some writers put unsigned.
+                        let v = if matches!(word, "revdttm" | "revdttmdel") && v > i64::from(i32::MAX) && v <= i64::from(u32::MAX) {
+                            v - (1i64 << 32)
+                        } else {
+                            v
+                        };
                         Some(v.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32)
                     } else {
                         if neg {
@@ -1722,11 +2000,22 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
         r.meta.created = format!("{y:04}-{:02}-{:02}T{:02}:{:02}:00Z", mo.clamp(1, 12), d.clamp(1, 31), h.min(23), mi.min(59));
     }
     let mut blocks = std::mem::take(&mut r.body);
+    // A file that ends with `\sect` ends its last section there: no empty one follows, and
+    // header or footer groups after that `\sect` (a section without text) are dropped.
+    let mut last_section = r.sec.props(&r.page);
+    let mut headers_footers = std::mem::take(&mut r.section_parts);
+    if let Some(FBlock::Para(p)) = blocks.last_mut()
+        && let Some(s) = p.section.take()
+    {
+        last_section = *s;
+    } else {
+        headers_footers.push(std::mem::take(&mut r.hf_parts));
+    }
     if blocks.is_empty() {
         blocks.push(FBlock::Para(Para::default()));
     }
     let default_font = r.fonts.get(&r.deff).filter(|n| !model::is_mono(n)).cloned();
-    Ok(Parsed { flow: Flow { blocks, meta: r.meta }, page: r.page, default_font, headers_footers: r.hf_parts, title_page: r.title_page })
+    Ok(Parsed { flow: Flow { blocks, meta: r.meta }, page: r.page, last_section, default_font, headers_footers })
 }
 
 /// The column grid of a table from its rows' cell right edges: every distinct edge starts a grid
@@ -1768,19 +2057,38 @@ fn column_grid(rows: &mut [Vec<Cell>], rights: &[Vec<i32>]) -> Vec<f32> {
 
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
-    let Parsed { flow, page, default_font, headers_footers, title_page } = parse_full(bytes)?;
-    let mut doc = model::to_doc_in(&flow, page.section());
-    for (which, blocks) in &headers_footers {
-        let blocks = model::part_blocks(&mut doc, blocks);
-        let id = doc.add_part(if which.footer { wordcraft_doc::PartKind::Footer } else { wordcraft_doc::PartKind::Header }, blocks);
-        let set = if which.footer { &mut doc.last_section.footers } else { &mut doc.last_section.headers };
-        match which.pages {
-            HfPages::Default => set.default = Some(id),
-            HfPages::First => set.first = Some(id),
-            HfPages::Even => set.even = Some(id),
+    let Parsed { flow, last_section, default_font, headers_footers, .. } = parse_full(bytes)?;
+    let mut doc = model::to_doc_in(&flow, last_section);
+    // Each section's own headers and footers; those it leaves out stay linked to the previous.
+    let mut sets = Vec::with_capacity(headers_footers.len());
+    for parts in &headers_footers {
+        let (mut headers, mut footers) = (wordcraft_doc::section::HeaderSet::default(), wordcraft_doc::section::HeaderSet::default());
+        for (which, blocks) in parts {
+            let blocks = model::part_blocks(&mut doc, blocks);
+            let id = doc.add_part(if which.footer { wordcraft_doc::PartKind::Footer } else { wordcraft_doc::PartKind::Header }, blocks);
+            let set = if which.footer { &mut footers } else { &mut headers };
+            match which.pages {
+                HfPages::Default => set.default = Some(id),
+                HfPages::First => set.first = Some(id),
+                HfPages::Even => set.even = Some(id),
+            }
+        }
+        sets.push((headers, footers));
+    }
+    let mut sets = sets.into_iter();
+    for b in &mut doc.body {
+        if let wordcraft_doc::Block::Para(p) = &**b
+            && p.section.is_some()
+            && let wordcraft_doc::Block::Para(p) = std::sync::Arc::make_mut(b)
+            && let Some(s) = p.section.as_deref_mut()
+            && let Some((h, f)) = sets.next()
+        {
+            (s.headers, s.footers) = (h, f);
         }
     }
-    doc.last_section.title_page = title_page;
+    if let Some((h, f)) = sets.next() {
+        (doc.last_section.headers, doc.last_section.footers) = (h, f);
+    }
     // RTF's paragraph defaults are single spacing and no space around paragraphs; what a file
     // wants beyond that it states on each paragraph.
     let dp = &mut doc.styles.default_para;
@@ -2079,6 +2387,240 @@ mod tests {
             "{inl:?}"
         );
         assert_eq!(texts(&f).last().map(String::as_str), Some("Normal:Café"));
+    }
+
+    /// A hand-written RTF with tracked changes: Alice inserts "added ", Bob deletes "gone", and
+    /// "both" is inserted by Alice then deleted by Bob.
+    pub(crate) const TRACKED: &[u8] = br"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}{\*\revtbl {Unknown;}{Alice;}{Bob;}}
+\pard Keep {\revised\revauth1\revdttm-1480361314 added }text{\deleted\revauthdel2\revdttmdel-2016341499  gone} end{\revised\revauth1\revdttm-1480361314\deleted\revauthdel2\revdttmdel-2016341499  both}.\par}";
+
+    /// (text, insertion (author, date), deletion (author, date)) of each run of the first paragraph.
+    #[allow(clippy::type_complexity)]
+    fn tracked_runs(doc: &Document) -> Vec<(String, Option<(String, String)>, Option<(String, String)>)> {
+        let rev = |i: Option<u32>, kind: wordcraft_doc::RevisionKind| {
+            i.map(|i| {
+                let r = doc.revisions.get(i as usize).unwrap();
+                assert_eq!(r.kind, kind);
+                (r.author.clone(), r.date.clone())
+            })
+        };
+        let Some(wordcraft_doc::Block::Para(p)) = doc.body.first().map(|b| &**b) else { panic!("no paragraph") };
+        p.run_ranges()
+            .map(|(r, cp)| {
+                (p.text[r].to_string(), rev(cp.ins, wordcraft_doc::RevisionKind::Insert), rev(cp.del, wordcraft_doc::RevisionKind::Delete))
+            })
+            .collect()
+    }
+
+    fn expected_tracked() -> Vec<(String, Option<(String, String)>, Option<(String, String)>)> {
+        let a = Some(("Alice".to_string(), "2024-03-15T10:30:00Z".to_string()));
+        let b = Some(("Bob".to_string(), "2025-01-02T08:05:00Z".to_string()));
+        vec![
+            ("Keep ".into(), None, None),
+            ("added ".into(), a.clone(), None),
+            ("text".into(), None, None),
+            (" gone".into(), None, b.clone()),
+            (" end".into(), None, None),
+            (" both".into(), a, b),
+            (".".into(), None, None),
+        ]
+    }
+
+    #[test]
+    fn tracked_changes_import_with_authors_and_dates() {
+        let doc = import(TRACKED).unwrap();
+        assert_eq!(tracked_runs(&doc), expected_tracked());
+        // One revision per (kind, author, date).
+        assert_eq!(doc.revisions.len(), 2);
+    }
+
+    #[test]
+    fn tracked_changes_survive_export_and_import() {
+        let doc = import(TRACKED).unwrap();
+        let rtf = export(&doc);
+        assert!(rtf.contains("{\\*\\revtbl {Unknown;}{Alice;}{Bob;}}"), "{rtf}");
+        assert!(rtf.contains("\\deleted\\revauthdel2\\revdttmdel-2016341499"), "{rtf}");
+        let back = import(rtf.as_bytes()).unwrap();
+        assert_eq!(tracked_runs(&back), expected_tracked());
+    }
+
+    #[test]
+    fn plain_text_export_still_drops_deleted_text() {
+        // Only RTF keeps the deletions: the shared flow for other formats leaves them out.
+        let doc = import(TRACKED).unwrap();
+        let flow = model::from_doc(&doc);
+        assert_eq!(texts(&flow), vec!["Normal:Keep added text end."]);
+    }
+
+    #[test]
+    fn dttm_converts_to_and_from_iso() {
+        assert_eq!(dttm_to_iso(-1480361314i32 as u32).as_deref(), Some("2024-03-15T10:30:00Z"));
+        assert_eq!(dttm_to_iso(-2016341499i32 as u32).as_deref(), Some("2025-01-02T08:05:00Z"));
+        assert_eq!(iso_to_dttm("2024-03-15T10:30:00Z"), Some(-1480361314i32 as u32));
+        assert_eq!(iso_to_dttm("2025-01-02T08:05:59.123+02:00"), Some(-2016341499i32 as u32));
+        assert_eq!(iso_to_dttm("2000-02-29T00:00:00Z").and_then(dttm_to_iso).as_deref(), Some("2000-02-29T00:00:00Z"));
+        // Zero, out-of-range fields and impossible days are no date.
+        assert_eq!(dttm_to_iso(0), None);
+        assert_eq!(dttm_to_iso(13 << 16 | 1 << 11 | 100 << 20), None);
+        assert_eq!(dttm_to_iso(2 << 16 | 30 << 11 | 101 << 20), None);
+        assert_eq!(dttm_to_iso(1 << 16 | 1 << 11 | 100 << 20 | 60), None);
+        assert_eq!(iso_to_dttm(""), None);
+        assert_eq!(iso_to_dttm("1899-12-31T00:00:00Z"), None);
+        assert_eq!(iso_to_dttm("2024-02-30T00:00:00Z"), None);
+        assert_eq!(iso_to_dttm("2024-1é-01T00:00:00Z"), None);
+        assert_eq!(iso_to_dttm("2024-03-15"), iso_to_dttm("2024-03-15T00:00:00Z"));
+    }
+
+    #[test]
+    fn hostile_revision_tables_and_indices() {
+        // An author index past the table, a negative one, and a malformed table.
+        let rtf = br"{\rtf1{\*\revtbl {Unknown;}{Ann}{;}{\b;}}{\revised\revauth99999999 a}{\deleted\revauthdel-5\revdttmdel4294967295 b}{\revised\revauth1 c}\par}";
+        let doc = import(rtf).unwrap();
+        let runs = tracked_runs(&doc);
+        assert_eq!(runs.first().and_then(|r| r.1.clone()), Some(("Unknown".to_string(), String::new())));
+        assert_eq!(runs.get(1).and_then(|r| r.2.clone()), Some(("Unknown".to_string(), String::new())));
+        assert_eq!(runs.get(2).and_then(|r| r.1.clone()), Some(("Ann".to_string(), String::new())));
+        // A huge table is capped, and indices past the cap are "Unknown".
+        let mut rtf = String::from("{\\rtf1{\\*\\revtbl ");
+        for i in 0..20_000 {
+            rtf.push_str(&format!("{{A{i};}}"));
+        }
+        rtf.push_str("}{\\revised\\revauth15000 x}{\\revised\\revauth9999 y}\\par}");
+        let doc = import(rtf.as_bytes()).unwrap();
+        let runs = tracked_runs(&doc);
+        assert_eq!(runs.first().and_then(|r| r.1.clone()).map(|a| a.0).as_deref(), Some("Unknown"));
+        assert_eq!(runs.get(1).and_then(|r| r.1.clone()).map(|a| a.0).as_deref(), Some("A9999"));
+        // Unterminated table and revision words outside the body never panic.
+        for bad in [&br"{\rtf1{\*\revtbl {Al"[..], br"{\rtf1{\*\revtbl \revised\deleted{x}}y\par}", br"{\rtf1\revauth\revdttm\deleted"] {
+            let _ = import(bad);
+        }
+    }
+
+    #[test]
+    fn unicode_author_names_survive_import_and_round_trip() {
+        // `\uN` in the author table: "José" and "Дмитрий" (not "Jos?" / "???????").
+        let rtf = br"{\rtf1\uc1{\*\revtbl {Unknown;}{Jos\u233?;}{\u1044?\u1084?\u1080?\u1090?\u1088?\u1080?\u1081?;}}{\revised\revauth1 a}{\deleted\revauthdel2 b}\par}";
+        let authors = |d: &Document| tracked_runs(d).into_iter().map(|r| (r.1.map(|a| a.0), r.2.map(|a| a.0))).collect::<Vec<_>>();
+        let want = vec![(Some("José".to_string()), None), (None, Some("Дмитрий".to_string()))];
+        let doc = import(rtf).unwrap();
+        assert_eq!(authors(&doc), want);
+        let back = import(export(&doc).as_bytes()).unwrap();
+        assert_eq!(authors(&back), want);
+    }
+
+    #[test]
+    fn pard_keeps_revision_marks() {
+        // Revision marks are character formatting: `\pard` resets paragraph formatting only.
+        let rtf = br"{\rtf1{\*\revtbl {Unknown;}{Bob;}}\deleted\revauthdel1 gone\par\pard more\par}";
+        let doc = import(rtf).unwrap();
+        let Some(wordcraft_doc::Block::Para(p)) = doc.body.get(1).map(|b| &**b) else { panic!("no second paragraph") };
+        assert_eq!(p.text, "more");
+        let del = p.props_of_char(0).del.and_then(|i| doc.revisions.get(i as usize));
+        assert_eq!(del.map(|r| (r.kind, r.author.as_str())), Some((wordcraft_doc::RevisionKind::Delete, "Bob")));
+    }
+
+    #[test]
+    fn sections_keep_their_page_columns_numbering_and_headers() {
+        use wordcraft_doc::section::{NumFormat, SectionStart};
+        // A4 portrait → landscape restarting at 1 with its own header → continuous two columns
+        // → portrait. A `\sectd` inside a footer group is the footer's, not the body's.
+        let rtf = br"{\rtf1\ansi\paperw11906\paperh16838\margl1134\margr1134
+\sectd\headery708\footery708
+{\header \pard One head\par}
+{\footer \pard Page {\field{\*\fldinst PAGE}{\fldrslt 1}}\sectd\par}
+\pard First\par\sect
+\sectd\lndscpsxn\pgwsxn16838\pghsxn11906\headery708\pgnrestart\pgnstarts1\pgnlcrm\titlepg
+{\header \pard Two head\par}
+{\headerf \pard Two first\par}
+{\footer \pard Two foot\sectd\lndscpsxn\par}
+\pard Second\par
+\trowd\cellx2000\pard\intbl cell\cell\row
+\pard{\sect}
+\sectd\lndscpsxn\pgwsxn16838\pghsxn11906\headery708\sbknone\pgnrestart\cols2\colsx567\linebetcol
+\pard Third\sect
+\sectd\headery708\sbkodd
+\pard Fourth\par}";
+        let d = import(rtf).unwrap();
+        let secs = d.sections();
+        assert_eq!(secs.len(), 4, "{secs:?}");
+        let s: Vec<&wordcraft_doc::SectionProps> = secs.iter().map(|(_, s)| *s).collect();
+        // Page size and orientation; the document's margins apply to every section.
+        for (i, land) in [(0, false), (1, true), (2, true), (3, false)] {
+            assert_eq!(s[i].landscape, land, "section {i}");
+            let (w, h) = if land { (841.9, 595.3) } else { (595.3, 841.9) };
+            assert!((s[i].page_w - w).abs() < 0.1 && (s[i].page_h - h).abs() < 0.1, "section {i}: {} x {}", s[i].page_w, s[i].page_h);
+            assert!((s[i].margin_left - 56.7).abs() < 0.1, "section {i}");
+            assert!((s[i].header - 35.4).abs() < 0.1, "section {i}");
+        }
+        // Break types.
+        assert_eq!(
+            s.iter().map(|s| s.start).collect::<Vec<_>>(),
+            [SectionStart::NextPage, SectionStart::NextPage, SectionStart::Continuous, SectionStart::OddPage]
+        );
+        // Columns.
+        assert_eq!(s[2].columns.count, 2);
+        assert!((s[2].columns.space - 28.35).abs() < 0.01 && s[2].columns.separator);
+        assert_eq!(s[0].columns.count, 1);
+        assert_eq!(s[3].columns.count, 1);
+        // Page numbering: restart at 1 (lower roman) in 2 and 3; section 4 carries on.
+        assert_eq!(s.iter().map(|s| s.page_num_start).collect::<Vec<_>>(), [None, Some(1), Some(1), None]);
+        assert_eq!(s[1].page_num_format, NumFormat::LowerRoman);
+        assert_eq!(s[0].page_num_format, NumFormat::Decimal);
+        assert!(!s[0].title_page && s[1].title_page && !s[3].title_page);
+        // Headers and footers: sections 1 and 2 have their own; 3 and 4 inherit (none set).
+        let text = |id: Option<u32>| {
+            let p = id.and_then(|id| d.parts.get(&id)).unwrap();
+            p.blocks
+                .iter()
+                .filter_map(|b| if let wordcraft_doc::Block::Para(p) = &**b { Some(p.text.clone()) } else { None })
+                .collect::<Vec<_>>()
+                .join("|")
+        };
+        assert_eq!(text(s[0].headers.default), "One head");
+        assert!(text(s[0].footers.default).starts_with("Page"));
+        assert_eq!(text(s[1].headers.default), "Two head");
+        assert_eq!(text(s[1].headers.first), "Two first");
+        assert_eq!(text(s[1].footers.default), "Two foot");
+        assert!(s[0].headers.first.is_none());
+        for i in [2, 3] {
+            assert_eq!((s[i].headers, s[i].footers), Default::default(), "section {i}");
+        }
+        // Each section ends on its own paragraph, after the text it holds.
+        let body_text = |i: usize| match d.body.get(i).map(|b| &**b) {
+            Some(wordcraft_doc::Block::Para(p)) => p.text.clone(),
+            _ => "<table>".into(),
+        };
+        assert_eq!(body_text(secs[0].0 - 1), "First");
+        assert_eq!(body_text(secs[1].0 - 1), "<table>");
+        assert_eq!(body_text(secs[2].0), "Third");
+        assert_eq!(body_text(secs[3].0), "Fourth");
+        // A landscape document default doesn't turn a section that gives its own portrait page.
+        let d = import(br"{\rtf1\ansi\paperw16838\paperh11906\landscape\sectd a\sect\sectd\pgwsxn11906\pghsxn16838 b\par}").unwrap();
+        let secs = d.sections();
+        assert_eq!(secs.len(), 2);
+        assert!(secs[0].1.landscape && secs[0].1.page_w > secs[0].1.page_h, "{:?}", secs[0].1);
+        assert!(!secs[1].1.landscape && secs[1].1.page_w < secs[1].1.page_h, "{:?}", secs[1].1);
+    }
+
+    #[test]
+    fn sections_are_capped_and_a_trailing_sect_adds_no_empty_section() {
+        // A file that ends with `\sect` has no empty section after it.
+        let d = import(br"{\rtf1\ansi\sectd\sbknone a\sect\sectd\lndscpsxn b\sect}").unwrap();
+        let secs = d.sections();
+        assert_eq!(secs.len(), 2, "{secs:?}");
+        assert!(secs[1].1.landscape && !secs[0].1.landscape);
+        // Hostile: a flood of section breaks with headers is capped and never panics.
+        let mut rtf = b"{\\rtf1\\ansi".to_vec();
+        for _ in 0..(MAX_SECTIONS + 50) {
+            rtf.extend_from_slice(b"\\sectd\\cols99999\\colsx-5\\pgnrestart\\pgnstarts-7{\\header h\\par}{\\footerl f\\par}x\\sect");
+        }
+        rtf.push(b'}');
+        let d = import(&rtf).unwrap();
+        let secs = d.sections();
+        assert_eq!(secs.len(), MAX_SECTIONS);
+        // Each section keeps its own header and footer; the ones past the cap replace the last's.
+        assert!(d.parts.len() <= 2 * MAX_SECTIONS, "{}", d.parts.len());
+        assert!(secs.iter().all(|(_, s)| s.columns.count <= 45 && s.columns.space >= 0.0 && s.page_num_start == Some(0)));
     }
 
     #[test]

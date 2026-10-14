@@ -265,6 +265,9 @@ pub struct Tokens {
     /// Selection-frame handles (pictures, shapes, text boxes) and their shadow.
     pub handle: Color32,
     pub handle_shadow: Color32,
+    /// Alignment guides while moving a picture or shape: drawn on the page, so legible on white
+    /// paper in both themes.
+    pub guide: Color32,
     pub menu: Color32,
     pub blue: Color32,
     pub red: Color32,
@@ -305,6 +308,7 @@ impl Tokens {
             page_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x22),
             handle: Color32::WHITE,
             handle_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x28),
+            guide: Color32::from_rgb(0xC0, 0x28, 0x8C),
             menu: Color32::WHITE,
             blue: Color32::from_rgb(0x2F, 0x6F, 0xD0),
             red: Color32::from_rgb(0xD1, 0x3B, 0x3B),
@@ -336,15 +340,17 @@ impl Tokens {
             input: Color32::from_rgb(0x1E, 0x1E, 0x1E),
             input_border: Color32::from_rgb(0x7A, 0x7A, 0x7A),
             group_label: Color32::from_rgb(0xA0, 0xA0, 0xA0),
-            ruler: Color32::from_rgb(0x2E, 0x2E, 0x2E),
-            ruler_margin: Color32::from_rgb(0x45, 0x45, 0x45),
-            ruler_tick: Color32::from_rgb(0xA0, 0xA0, 0xA0),
+            // The text area is lighter than the margins, as in the light theme (#1148).
+            ruler: Color32::from_rgb(0x45, 0x45, 0x45),
+            ruler_margin: Color32::from_rgb(0x2E, 0x2E, 0x2E),
+            ruler_tick: Color32::from_rgb(0xB4, 0xB4, 0xB4),
             status_bar: Color32::from_rgb(0x1F, 0x1F, 0x1F),
             selection: Color32::from_rgba_unmultiplied(0x7A, 0x93, 0xF0, 0x55),
             find_highlight: Color32::from_rgba_unmultiplied(0xC8, 0xA8, 0x00, 0x70),
             page_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x60),
             handle: Color32::from_rgb(0xF2, 0xF2, 0xF2),
             handle_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x5A),
+            guide: Color32::from_rgb(0xE0, 0x4C, 0xB0),
             menu: Color32::from_rgb(0x2B, 0x2B, 0x2B),
             blue: Color32::from_rgb(0x6C, 0x9B, 0xEA),
             red: Color32::from_rgb(0xEE, 0x6A, 0x6A),
@@ -706,6 +712,18 @@ mod tests {
                 let r = contrast(t.input_border, bg);
                 assert!(r >= 3.0, "dark={}: input_border on {name} is {r:.2}:1", t.dark);
             }
+        }
+    }
+
+    /// #1148: on both rulers the text area is lighter than the margins in both themes, as in the
+    /// light theme, and the numbers drawn on it still reach 4.5:1.
+    #[test]
+    fn ruler_text_area_is_lighter_than_its_margins() {
+        let lum = |c: egui::Color32| contrast(c, egui::Color32::BLACK);
+        for t in [super::Tokens::light(), super::Tokens::dark()] {
+            assert!(lum(t.ruler) > lum(t.ruler_margin), "dark={}: ruler text area is darker than its margins", t.dark);
+            let r = contrast(t.ruler_tick, t.ruler);
+            assert!(r >= 4.5, "dark={}: ruler numbers on the text area are {r:.2}:1", t.dark);
         }
     }
 

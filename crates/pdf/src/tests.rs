@@ -429,9 +429,20 @@ fn shapes_have_paths() {
         ShapeKind::Diamond,
         ShapeKind::Triangle,
     ] {
-        assert!(shape_path(k, &r).is_some(), "{k:?}");
+        assert!(shape_path(k, &r, None).is_some(), "{k:?}");
     }
-    assert!(shape_path(ShapeKind::Ellipse, &Rect::new(0.0, 0.0, f32::NAN, 1.0)).is_none());
+    // A line or connector may be flat (horizontal or vertical); a closed shape may not.
+    for k in [ShapeKind::Line, ShapeKind::StraightConnector] {
+        assert!(shape_path(k, &Rect::new(0.0, 5.0, 10.0, 0.0), None).is_some(), "{k:?} horizontal");
+        assert!(shape_path(k, &Rect::new(5.0, 0.0, 0.0, 10.0), None).is_some(), "{k:?} vertical");
+        assert!(shape_path(k, &Rect::new(5.0, 5.0, 0.0, 0.0), None).is_none(), "{k:?} without length");
+        // Hostile sizes reach `shape_path` unclamped through the public fields.
+        for (w, h) in [(f32::NAN, 0.0), (f32::INFINITY, 0.0), (10.0, f32::NEG_INFINITY), (-10.0, 0.0), (0.0, -10.0), (10.0, -1.0)] {
+            assert!(shape_path(k, &Rect { x: 0.0, y: 0.0, w, h }, None).is_none(), "{k:?} {w} x {h}");
+        }
+    }
+    assert!(shape_path(ShapeKind::Rectangle, &Rect::new(0.0, 5.0, 10.0, 0.0), None).is_none());
+    assert!(shape_path(ShapeKind::Ellipse, &Rect::new(0.0, 0.0, f32::NAN, 1.0), None).is_none());
     assert_eq!(parse_iso("2024-02-03T04:05:06Z"), Some((2024, 2, 3, 4, 5, 6)));
     assert_eq!(parse_iso("garbage"), None);
     assert_eq!(civil(0), (1970, 1, 1, 0, 0, 0));
@@ -458,6 +469,32 @@ fn fields_put_their_shown_text_in_the_text_layer() {
     assert_eq!(text.len(), 2);
     assert!(text.iter().all(|t| !t.contains('\u{FFFC}')), "{text:?}");
     assert!(squash(&text[0]).contains("Page 1 of 2") && squash(&text[1]).contains("Page 2 of 2"), "{text:?}");
+}
+
+/// #775: a running header `STYLEREF "Heading 1"` shows each page's chapter in the PDF.
+#[test]
+fn styleref_headers_show_each_page_s_chapter() {
+    let mut d = Document::new();
+    let mut h = Paragraph::new();
+    let field = InlineObject::Field { instr: r#"STYLEREF "Heading 1""#.into(), result: "Stale".into(), locked: false, code: false };
+    h.insert_object(0, field, &CharProps::default()).unwrap();
+    let id = d.add_part(wordcraft_doc::PartKind::Header, vec![para_block(h)]);
+    d.last_section.headers.default = Some(id);
+    d.body = ["Alpha", "Beta"]
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let mut p = Paragraph::with_text(&format!("Chapter{t}"), CharProps::default()).styled("Heading1");
+            p.props.page_break_before = Some(i > 0);
+            para_block(p)
+        })
+        .collect();
+    let text = extract_text(&export(&d, &PdfOptions::default()).unwrap());
+    assert_eq!(text.len(), 2);
+    let pages: Vec<String> = text.iter().map(|t| squash(t)).collect();
+    assert_eq!(pages[0].matches("ChapterAlpha").count(), 2, "{pages:?}");
+    assert_eq!(pages[1].matches("ChapterBeta").count(), 2, "{pages:?}");
+    assert!(!pages.iter().any(|p| p.contains("Stale")), "{pages:?}");
 }
 
 /// Bundled Source Sans 3 renamed to `family`, with glyph `gid` turned into a composite glyph whose
@@ -533,6 +570,79 @@ fn count_glyphs_and_paths(bytes: &[u8]) -> (usize, usize) {
     (n.0, n.1)
 }
 
+/// The filled paths drawn, over every page, in page space.
+fn filled_paths(bytes: &[u8]) -> Vec<kurbo::BezPath> {
+    use hayro_interpret::font::Glyph;
+    use hayro_interpret::{
+        BlendMode, ClipPath, Context, Device, GlyphDrawMode, Image, InterpreterCache, InterpreterSettings, Paint, PathDrawMode, SoftMask,
+        interpret_page,
+    };
+    use hayro_syntax::Pdf;
+    struct Fills(Vec<kurbo::BezPath>);
+    impl Device<'_> for Fills {
+        fn set_soft_mask(&mut self, _: Option<SoftMask<'_>>) {}
+        fn set_blend_mode(&mut self, _: BlendMode) {}
+        fn draw_path(&mut self, path: &kurbo::BezPath, transform: kurbo::Affine, _: &Paint<'_>, mode: &PathDrawMode) {
+            if matches!(mode, PathDrawMode::Fill(_)) {
+                self.0.push(transform * path.clone());
+            }
+        }
+        fn push_clip_path(&mut self, _: &ClipPath) {}
+        fn push_transparency_group(&mut self, _: f32, _: Option<SoftMask<'_>>, _: BlendMode) {}
+        fn draw_glyph(&mut self, _: &Glyph<'_>, _: kurbo::Affine, _: kurbo::Affine, _: &Paint<'_>, _: &GlyphDrawMode) {}
+        fn draw_image(&mut self, _: Image<'_, '_>, _: kurbo::Affine) {}
+        fn pop_clip_path(&mut self) {}
+        fn pop_transparency_group(&mut self) {}
+    }
+    let pdf = Pdf::new(bytes.to_vec()).expect("parse");
+    let cache = InterpreterCache::new();
+    let mut fills = Fills(Vec::new());
+    for page in pdf.pages().iter() {
+        let mut ctx = Context::new(kurbo::Affine::IDENTITY, kurbo::Rect::new(0.0, 0.0, 1.0, 1.0), &cache, pdf.xref(), InterpreterSettings::default());
+        interpret_page(page, &mut ctx, &mut fills);
+    }
+    fills.0
+}
+
+#[test]
+fn rounded_rectangle_corners_follow_their_radius() {
+    // `roundRect` with its own `adj`: Word's address boxes use small corners (adj 3565: 3.6% of
+    // the shorter side), which were drawn at 16%.
+    use kurbo::Shape;
+    use wordcraft_doc::para::{Anchor, Float, ShapeKind, Wrap};
+    let doc = |corner: Option<u32>| {
+        let float = Float { wrap: Wrap::InFrontOfText, h_rel: Anchor::Page, v_rel: Anchor::Page, x: 72.0, y: 200.0, ..Default::default() };
+        let shape = InlineObject::Shape {
+            kind: ShapeKind::RoundedRectangle,
+            w: 200.0,
+            h: 100.0,
+            fill: Some(wordcraft_doc::props::Rgb(0xD9, 0xD9, 0xD9)),
+            stroke: None,
+            stroke_width: 0.0,
+            float,
+            story: None,
+            freeform: None,
+            effects: Default::default(),
+            extra: wordcraft_doc::connector::ShapeExtra { corner, ..Default::default() },
+        };
+        let mut p = Paragraph::with_text("Anchor", CharProps::default());
+        p.insert_object(0, shape, &CharProps::default()).unwrap();
+        let mut d = Document::new();
+        d.body = vec![para_block(p)];
+        d
+    };
+    // Whether the shape covers the point `inset` points in from a corner of its frame.
+    let covers = |corner: Option<u32>, inset: f64| {
+        let fills = filled_paths(&export(&doc(corner), &PdfOptions { tagged: false, ..Default::default() }).unwrap());
+        let shape = fills.iter().find(|p| (p.bounding_box().width() - 200.0).abs() < 0.5).expect("the shape is filled");
+        let b = shape.bounding_box();
+        shape.contains((b.x0 + inset, b.y0 + inset).into())
+    };
+    assert!(covers(Some(0), 1.0), "square corner");
+    assert!(!covers(Some(3_565), 1.0) && covers(Some(3_565), 4.0), "3.565 pt corner");
+    assert!(!covers(None, 4.0), "16 pt corner by default");
+}
+
 #[test]
 fn unsubsettable_font_is_drawn_as_outlines() {
     let db = wordcraft_fonts::FontDb::global();
@@ -557,6 +667,43 @@ fn unsubsettable_font_is_drawn_as_outlines() {
     let (glyphs, paths) = count_glyphs_and_paths(&bytes);
     assert_eq!(glyphs, 0, "no text in the font krilla can't subset");
     assert!(paths > 0, "its glyphs are drawn as outlines");
+}
+
+#[test]
+fn flat_lines_in_a_group_are_drawn() {
+    // A horizontal divider inside a group has no height (`a:ext cy="0"`): it used to be left out
+    // of the PDF, though the screen drew it. A floating line on its own gets a 1 pt frame.
+    use wordcraft_doc::para::{Anchor, Float, GroupChild, ShapeKind, Wrap};
+    let line = |w: f32, h: f32| InlineObject::Shape {
+        kind: ShapeKind::Line,
+        w,
+        h,
+        fill: None,
+        stroke: Some(wordcraft_doc::props::Rgb(192, 0, 0)),
+        stroke_width: 1.5,
+        float: Float::default(),
+        story: None,
+        freeform: None,
+        effects: Default::default(),
+        extra: Default::default(),
+    };
+    let doc = |children: Vec<GroupChild>| {
+        let float = Float { wrap: Wrap::InFrontOfText, h_rel: Anchor::Page, v_rel: Anchor::Page, x: 72.0, y: 200.0, ..Default::default() };
+        let group = InlineObject::Group { w: 300.0, h: 100.0, float, ch_w: 300.0, ch_h: 100.0, children, canvas: None };
+        let mut p = Paragraph::with_text("Anchor", CharProps::default());
+        p.insert_object(0, group, &CharProps::default()).unwrap();
+        let mut d = Document::new();
+        d.body = vec![para_block(p)];
+        d
+    };
+    let paths = |d: &Document| count_glyphs_and_paths(&export(d, &PdfOptions { tagged: false, ..Default::default() }).unwrap()).1;
+    let empty = paths(&doc(Vec::new()));
+    let flat = paths(&doc(vec![
+        GroupChild { x: 10.0, y: 50.0, obj: line(280.0, 0.0) },
+        GroupChild { x: 150.0, y: 0.0, obj: line(0.0, 100.0) },
+        GroupChild { x: 20.0, y: 20.0, obj: line(0.0, 0.0) },
+    ]));
+    assert_eq!(flat, empty + 2, "the horizontal and the vertical line, not the one without length");
 }
 
 #[test]
@@ -693,6 +840,25 @@ fn metafile_pictures_are_drawn_as_vector_paths() {
     let raw = String::from_utf8_lossy(&bytes);
     assert!(raw.contains("1 0 0 rg"), "the red rectangle is filled as a path");
     assert!(!raw.contains("0.8156"), "the grey placeholder box is not drawn");
+}
+
+/// #1502: an inline picture's Figure carries its own alt text, not the "picture" fallback.
+#[test]
+fn inline_picture_figure_keeps_its_alt_text() {
+    let raw = |alt: &str| {
+        let mut d = Document::new();
+        let media = d.add_media(red_right_half_emf(), "emf");
+        let mut p = Paragraph::with_text("Figure: ", CharProps::default());
+        let n = p.len();
+        let obj = InlineObject::Image { media, w: 70.0, h: 70.0, alt: alt.into(), float: Default::default(), crop: [0.0; 4], ole: None };
+        p.insert_object(n, obj, &CharProps::default()).unwrap();
+        d.body = vec![para_block(p)];
+        String::from_utf8_lossy(&export(&d, &PdfOptions { compress: false, tagged: true, ..Default::default() }).unwrap()).into_owned()
+    };
+    let with = raw("Blue rectangle used as test image");
+    assert!(with.contains("/Alt(Blue rectangle used as test image)"), "inline alt text lost");
+    assert!(!with.contains("/Alt(picture)"));
+    assert!(raw("").contains("/Alt(picture)"), "no alt text keeps the fallback");
 }
 
 /// An EMF file of the given records, with a 25 mm frame and 1000 device pixels across (0.04 per 0.01 mm).
@@ -901,4 +1067,315 @@ fn internal_links_export_in_linear_time() {
     let _ = export(&small, &PdfOptions::default());
     let ratio = fastest(&big) / fastest(&small).max(1e-9);
     assert!(ratio < 9.0, "4x the paragraphs and links took {ratio:.1}x as long (quadratic would be ~16x)");
+}
+
+#[test]
+fn all_caps_and_small_caps_text_extracts_as_displayed() {
+    // #1473: All Caps / Small Caps text is drawn with capital glyphs, so it extracts in capitals
+    // (as Word's PDFs do), and later text without caps keeps its own case: a capital glyph
+    // first drawn for a lowercase letter must not make every later capital read as lowercase.
+    let mut d = Document::new();
+    d.styles.upsert(wordcraft_doc::Style {
+        id: "CapsPara".into(),
+        name: "Caps Para".into(),
+        kind: wordcraft_doc::StyleKind::Paragraph,
+        chr: CharProps { caps: Some(true), ..Default::default() },
+        ..Default::default()
+    });
+    let caps = CharProps { caps: Some(true), ..Default::default() };
+    let small = CharProps { small_caps: Some(true), ..Default::default() };
+    d.body = vec![
+        para_block(Paragraph::with_text("Employment Period. Your employment will begin on the date below.", CharProps::default()).styled("CapsPara")),
+        para_block(Paragraph::with_text("Direct caps on the run: Mixed Case Words.", caps.clone())),
+        para_block(Paragraph::with_text("Plain text, no caps: Employment Period.", CharProps::default())),
+        para_block(Paragraph::with_text("Small caps line: Quiet Words.", small)),
+        para_block(Paragraph::with_text("Straße", caps)),
+        para_block(Paragraph::with_text("Plain again: Straße, Quiet Period.", CharProps::default())),
+    ];
+    let text = extract_text(&export(&d, &PdfOptions::default()).unwrap()).concat();
+    let text = squash(&text);
+    for line in [
+        "EMPLOYMENT PERIOD. YOUR EMPLOYMENT WILL BEGIN ON THE DATE BELOW.",
+        "DIRECT CAPS ON THE RUN: MIXED CASE WORDS.",
+        "Plain text, no caps: Employment Period.",
+        "SMALL CAPS LINE: QUIET WORDS.",
+        "Plain again: Straße, Quiet Period.",
+    ] {
+        assert!(text.contains(line), "missing {line:?} in {text:?}");
+    }
+    // An All Caps ß is drawn today as one S glyph, so it reads as that S: the text layer follows
+    // the glyph drawn. Drawing it as "SS", as Word does, is a separate display issue.
+    assert!(text.contains("STRASE"), "{text:?}");
+}
+
+#[test]
+fn caps_list_labels_extract_as_displayed() {
+    // #1473: a lowercase-letter list label in an All Caps paragraph is drawn with capital glyphs;
+    // it reads as those capitals, and a later plain capital A still reads as "A".
+    let mut d = Document::new();
+    d.styles.upsert(wordcraft_doc::Style {
+        id: "CapsPara".into(),
+        name: "Caps Para".into(),
+        kind: wordcraft_doc::StyleKind::Paragraph,
+        chr: CharProps { caps: Some(true), ..Default::default() },
+        ..Default::default()
+    });
+    let list = d.numbering.add_list(ListKind::Numbered);
+    let mut item = Paragraph::with_text("item", CharProps::default()).styled("CapsPara");
+    item.props.numbering = Some(NumRef { num: list, level: 1 });
+    d.body = vec![para_block(item), para_block(Paragraph::with_text("Plain Apple.", CharProps::default()))];
+    let text = squash(&extract_text(&export(&d, &PdfOptions::default()).unwrap()).concat());
+    assert!(text.contains("A."), "the label reads as the capital drawn: {text:?}");
+    assert!(!text.contains("a."), "no lowercase label: {text:?}");
+    assert!(text.contains("Plain Apple."), "a plain capital A keeps its case: {text:?}");
+}
+
+/// The reporter's four paragraphs from #1383 (Hebrew, Arabic and mixed right-to-left paragraphs,
+/// and a Latin one), then right-to-left words with a lam-alef ligature and with vowel marks.
+fn rtl_sample() -> Document {
+    let mut d = Document::from_text("שלום עולם\nمرحبا بالعالم\nייפוי כח מס' 123 – Power of Attorney\nHello world\nالسلام مَرْحَبًا שָׁלוֹם");
+    // Right to left: all but "Hello world".
+    for i in [0, 1, 2, 4] {
+        let at = wordcraft_doc::Pos::body(i, 0);
+        d.format_paragraphs(&at, &at, &|p: &mut wordcraft_doc::ParaProps| p.bidi = Some(true)).unwrap();
+    }
+    for (i, rtl) in [true, true, true, false, true].into_iter().enumerate() {
+        let Some(Block::Para(p)) = d.body.get(i).map(|b| &**b) else { panic!("paragraph {i}") };
+        assert_eq!(p.props.bidi == Some(true), rtl, "paragraph {i}");
+    }
+    d
+}
+
+/// Each glyph's Unicode text in content-stream order, with its baseline y and its outline's left
+/// and right edges (none for a space); `None` text for a glyph without a ToUnicode entry of its
+/// own (a cluster's extra glyph, covered by ActualText).
+type StreamGlyph = (Option<String>, f64, Option<(f64, f64)>);
+fn stream_glyphs(bytes: &[u8]) -> Vec<StreamGlyph> {
+    use hayro_interpret::font::Glyph;
+    use hayro_interpret::{
+        BlendMode, ClipPath, Context, Device, GlyphDrawMode, Image, InterpreterCache, InterpreterSettings, Paint, PathDrawMode, SoftMask,
+        interpret_page,
+    };
+    use hayro_syntax::Pdf;
+    struct Units(Vec<StreamGlyph>);
+    impl Device<'_> for Units {
+        fn set_soft_mask(&mut self, _: Option<SoftMask<'_>>) {}
+        fn set_blend_mode(&mut self, _: BlendMode) {}
+        fn draw_path(&mut self, _: &kurbo::BezPath, _: kurbo::Affine, _: &Paint<'_>, _: &PathDrawMode) {}
+        fn push_clip_path(&mut self, _: &ClipPath) {}
+        fn push_transparency_group(&mut self, _: f32, _: Option<SoftMask<'_>>, _: BlendMode) {}
+        fn draw_glyph(&mut self, g: &Glyph<'_>, t: kurbo::Affine, gt: kurbo::Affine, _: &Paint<'_>, mode: &GlyphDrawMode) {
+            if matches!(mode, GlyphDrawMode::Stroke(_)) {
+                return;
+            }
+            let text = match g.as_unicode() {
+                Some(hayro_cmap::BfString::Char(c)) => Some(c.to_string()),
+                Some(hayro_cmap::BfString::String(s)) => Some(s),
+                None => None,
+            };
+            let edges = match g {
+                Glyph::Outline(o) if !o.outline().elements().is_empty() => {
+                    use kurbo::Shape;
+                    let b = (t * gt * o.outline()).bounding_box();
+                    Some((b.x0, b.x1))
+                }
+                _ => None,
+            };
+            self.0.push((text, (t * gt * kurbo::Point::ZERO).y, edges));
+        }
+        fn draw_image(&mut self, _: Image<'_, '_>, _: kurbo::Affine) {}
+        fn pop_clip_path(&mut self) {}
+        fn pop_transparency_group(&mut self) {}
+    }
+    let pdf = Pdf::new(bytes.to_vec()).expect("parse");
+    let cache = InterpreterCache::new();
+    let mut out = Units(Vec::new());
+    for page in pdf.pages().iter() {
+        let mut ctx = Context::new(kurbo::Affine::IDENTITY, kurbo::Rect::new(0.0, 0.0, 1.0, 1.0), &cache, pdf.xref(), InterpreterSettings::default());
+        interpret_page(page, &mut ctx, &mut out);
+    }
+    out.0
+}
+
+/// Words as PDF viewers' text extraction (PDFium in Chrome and Edge, pdf.js, poppler) reads them:
+/// glyphs are taken to be in visual order, so a word in a right-to-left script is read with its
+/// glyphs reversed. Words end at spaces, at a jump back to the left, and where the
+/// baseline moves (more than a raised mark does).
+fn viewer_words(bytes: &[u8]) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word: Vec<String> = Vec::new();
+    let mut flush = |word: &mut Vec<String>| {
+        if word.concat().chars().any(wordcraft_fonts::is_rtl) {
+            word.reverse();
+        }
+        if !word.is_empty() {
+            words.push(word.concat());
+        }
+        word.clear();
+    };
+    let mut last_y = None;
+    let mut last_edges: Option<(f64, f64)> = None;
+    for (text, y, edges) in stream_glyphs(bytes) {
+        // A new line, or a letter wholly left of the last one (a jump back): a new word. Hebrew
+        // and Arabic vowel marks sit anywhere over or under their letter.
+        let mark = text.as_deref().is_some_and(|t| t.chars().all(|c| matches!(c, '\u{591}'..='\u{5C7}' | '\u{64B}'..='\u{65F}' | '\u{670}')));
+        let edges = edges.filter(|_| !mark);
+        let apart = matches!((last_edges, edges), (Some((l0, _)), Some((_, x1))) if x1 < l0);
+        if last_y.is_some_and(|l: f64| (l - y).abs() > 6.0) || apart {
+            flush(&mut word);
+        }
+        if !mark {
+            last_y = Some(y);
+        }
+        if edges.is_some() {
+            last_edges = edges;
+        }
+        let Some(text) = text else { continue };
+        if text.chars().all(char::is_whitespace) {
+            flush(&mut word);
+        } else {
+            word.push(text);
+        }
+    }
+    flush(&mut word);
+    words
+}
+
+/// Right-to-left text reads back whole (#1383): Chrome, Edge and other PDF viewers take a run's
+/// glyphs to be written left to right as they appear, and reverse right-to-left words to get
+/// their reading order. Written in reading order instead, `שלום` came back as `םולש`, and Arabic
+/// came apart.
+#[test]
+fn right_to_left_text_extracts_in_logical_order() {
+    let d = rtl_sample();
+    let words = viewer_words(&export(&d, &PdfOptions::default()).unwrap());
+    for w in ["שלום", "עולם", "مرحبا", "بالعالم", "ייפוי", "כח", "123", "Power", "Attorney", "Hello", "world", "السلام", "مَرْحَبًا", "שָׁלוֹם"]
+    {
+        assert!(words.iter().any(|x| x == w), "{w:?} not extracted intact from {words:?}");
+    }
+}
+
+/// Every glyph's outline on the page, as a rounded bounding box in page space (sorted): what the
+/// page looks like, whatever order the glyphs were written in.
+fn glyph_boxes(bytes: &[u8]) -> Vec<[i64; 4]> {
+    use hayro_interpret::font::Glyph;
+    use hayro_interpret::{
+        BlendMode, ClipPath, Context, Device, GlyphDrawMode, Image, InterpreterCache, InterpreterSettings, Paint, PathDrawMode, SoftMask,
+        interpret_page,
+    };
+    use hayro_syntax::Pdf;
+    use kurbo::Shape;
+    struct Boxes(Vec<[i64; 4]>);
+    impl Device<'_> for Boxes {
+        fn set_soft_mask(&mut self, _: Option<SoftMask<'_>>) {}
+        fn set_blend_mode(&mut self, _: BlendMode) {}
+        fn draw_path(&mut self, _: &kurbo::BezPath, _: kurbo::Affine, _: &Paint<'_>, _: &PathDrawMode) {}
+        fn push_clip_path(&mut self, _: &ClipPath) {}
+        fn push_transparency_group(&mut self, _: f32, _: Option<SoftMask<'_>>, _: BlendMode) {}
+        fn draw_glyph(&mut self, g: &Glyph<'_>, t: kurbo::Affine, gt: kurbo::Affine, _: &Paint<'_>, mode: &GlyphDrawMode) {
+            if matches!(mode, GlyphDrawMode::Stroke(_)) {
+                return;
+            }
+            // Spaces have no outline: nothing to see.
+            if let Glyph::Outline(o) = g
+                && !o.outline().elements().is_empty()
+            {
+                let b = (t * gt * o.outline()).bounding_box();
+                let r = |v: f64| (v * 10.0).round() as i64;
+                self.0.push([r(b.x0), r(b.y0), r(b.x1), r(b.y1)]);
+            }
+        }
+        fn draw_image(&mut self, _: Image<'_, '_>, _: kurbo::Affine) {}
+        fn pop_clip_path(&mut self) {}
+        fn pop_transparency_group(&mut self) {}
+    }
+    let pdf = Pdf::new(bytes.to_vec()).expect("parse");
+    let cache = InterpreterCache::new();
+    let mut out = Boxes(Vec::new());
+    for page in pdf.pages().iter() {
+        let mut ctx = Context::new(kurbo::Affine::IDENTITY, kurbo::Rect::new(0.0, 0.0, 1.0, 1.0), &cache, pdf.xref(), InterpreterSettings::default());
+        interpret_page(page, &mut ctx, &mut out);
+    }
+    out.0.sort_unstable();
+    out.0
+}
+
+/// Writing right-to-left runs in reading order doesn't move a glyph: the page draws the same
+/// glyph outlines at the same places as layout put them.
+#[test]
+fn right_to_left_glyphs_stay_where_layout_put_them() {
+    use kurbo::Shape;
+    let d = rtl_sample();
+    let bytes = export(&d, &PdfOptions::default()).unwrap();
+    let got = glyph_boxes(&bytes);
+    // Layout's glyphs, drawn as their outlines (y down from the page top; PDF is y up).
+    let lay = layout(&d, &mut LayoutCache::new(), &LayoutOptions::default());
+    let page = &lay.pages[0];
+    let h = f64::from(page.h);
+    let db = wordcraft_fonts::FontDb::global();
+    let mut want = Vec::new();
+    for item in wordcraft_layout::display::page_display(&d, page, &DisplayOptions::default()) {
+        let Draw::Glyphs { face, size, glyphs, .. } = item else { continue };
+        let scale = f64::from(size) / face.upem.max(1.0);
+        for (g, x, y) in glyphs {
+            let mut o = (*db.outline(&face, g)).clone();
+            if o.elements().is_empty() {
+                continue;
+            }
+            o.apply_affine(
+                kurbo::Affine::new([1.0, 0.0, 0.0, -1.0, 0.0, h])
+                    * kurbo::Affine::translate((f64::from(x), f64::from(y)))
+                    * kurbo::Affine::scale(scale),
+            );
+            let b = o.bounding_box();
+            let r = |v: f64| (v * 10.0).round() as i64;
+            want.push([r(b.x0), r(b.y0), r(b.x1), r(b.y1)]);
+        }
+    }
+    want.sort_unstable();
+    assert!(!want.is_empty());
+    let close = got.len() == want.len() && got.iter().zip(&want).all(|(a, b)| a.iter().zip(b).all(|(p, q)| (p - q).abs() <= 2));
+    assert!(close, "glyphs moved:\n got {got:?}\nwant {want:?}");
+}
+
+/// A separately formatted Latin run inside a right-to-left paragraph is written as it was, left
+/// to right, and the Hebrew around it still reads back whole.
+#[test]
+fn latin_run_in_right_to_left_paragraph_reads_back_whole() {
+    let mut p = Paragraph::with_text("שלום ", CharProps::default());
+    p.props.bidi = Some(true);
+    p.insert_text(p.len(), "Latin words", &CharProps { bold: Some(true), ..Default::default() }).unwrap();
+    p.insert_text(p.len(), " עולם", &CharProps::default()).unwrap();
+    let mut d = Document::new();
+    d.body = vec![para_block(p)];
+    let words = viewer_words(&export(&d, &PdfOptions::default()).unwrap());
+    for w in ["שלום", "Latin", "words", "עולם"] {
+        assert!(words.iter().any(|x| x == w), "{w:?} not extracted intact from {words:?}");
+    }
+}
+
+/// Glyphs already running left to right keep their order: Latin runs are written as before.
+#[test]
+fn left_to_right_glyphs_keep_their_order() {
+    let glyphs = [(1, 0.0, 10.0), (2, 5.0, 10.0), (3, 5.0, 10.0), (4, 9.0, 10.0)];
+    assert!(left_to_right(&glyphs));
+}
+
+/// Right-to-left glyphs (reading order, drawn right to left) are written left to right a
+/// cluster at a time. A letter's vowel mark takes its own character and goes before the letter,
+/// so a viewer reversing the word reads letter then mark; a lam-alef drawn as two glyphs keeps
+/// its glyphs together in shaping order, so no word comes apart.
+#[test]
+fn right_to_left_clusters_are_written_whole_left_to_right() {
+    // Reading order: shin with qamats (mark glyph 2 drawn at x 28, then the letter, glyph 1, at
+    // x 30); lam-alef as two glyphs at x 20 and 16; a one-glyph lam-alef at x 8; final mem at 0.
+    let text = "שָלالاם";
+    let glyphs = [(2, 28.0, 8.0), (1, 30.0, 10.0), (3, 20.0, 10.0), (4, 16.0, 10.0), (5, 8.0, 10.0), (6, 0.0, 10.0)];
+    let ranges = [0..4, 0..4, 4..8, 4..8, 8..12, 12..14];
+    let rev: std::collections::HashMap<u32, char> = [(1, 'ש'), (2, '\u{5B8}'), (6, 'ם')].into_iter().collect();
+    assert!(!left_to_right(&glyphs));
+    let parts = split_clusters(text, &glyphs, &ranges, &rev);
+    assert_eq!(parts, [2..4, 0..2, 4..8, 4..8, 8..12, 12..14]);
+    // Glyph by glyph by x this would be [5, 4, 3, 2, 0, 1]: the lam-alef's glyphs swapped.
+    assert_eq!(visual_order(text, &glyphs, &ranges, &parts), [5, 4, 2, 3, 0, 1]);
 }

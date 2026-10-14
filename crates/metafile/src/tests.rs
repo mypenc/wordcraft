@@ -468,7 +468,7 @@ fn emf_savedc_past_the_stack_cap_stops_the_parse() {
 fn canvas_stops_at_the_byte_budget() {
     // Two 128 MB bitmaps fit the budget; the third would exceed it and stops the canvas.
     let mut cv = Canvas::new();
-    let big = || Rgba { w: 1, h: 1, bottom_up: false, px: vec![0u8; MAX_BYTES / 2] };
+    let big = || Rgba { w: 1, h: 1, px: vec![0u8; MAX_BYTES / 2] };
     cv.bitmap([0.0, 0.0, 1.0, 1.0], big());
     cv.bitmap([0.0, 0.0, 1.0, 1.0], big());
     assert!(!cv.full());
@@ -866,11 +866,11 @@ fn emf_ext_pen_cosmetic_is_a_hairline_and_null_brush_draws_nothing() {
 
 #[test]
 fn flip_tolerates_a_short_pixel_buffer() {
-    let mut img = Rgba { w: 2, h: 2, bottom_up: false, px: vec![1u8; 7] };
+    let mut img = Rgba { w: 2, h: 2, px: vec![1u8; 7] };
     crate::dib::flip(&mut img, true, true);
     assert_eq!(img.px.len(), 7);
     // Three rows held of four: only the rows present swap (0 with 2).
-    let mut img = Rgba { w: 1, h: 4, bottom_up: false, px: (0u8..12).collect() };
+    let mut img = Rgba { w: 1, h: 4, px: (0u8..12).collect() };
     crate::dib::flip(&mut img, false, true);
     assert_eq!(img.px, [8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3]);
 }

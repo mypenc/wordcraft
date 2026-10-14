@@ -25,11 +25,13 @@ pub struct PrintSettings {
     pub collate: bool,
     /// The page shown in the preview (0-based).
     pub preview: usize,
+    /// The preview's zoom (1.0 is the page's real size), or `None` to fit the whole page.
+    pub zoom: Option<f32>,
 }
 
 impl Default for PrintSettings {
     fn default() -> Self {
-        PrintSettings { range: "all".into(), pages: String::new(), parity: "all".into(), copies: 1, collate: true, preview: 0 }
+        PrintSettings { range: "all".into(), pages: String::new(), parity: "all".into(), copies: 1, collate: true, preview: 0, zoom: None }
     }
 }
 
@@ -86,7 +88,9 @@ fn page_texture(app: &WordApp, ctx: &egui::Context, lay: &DocLayout, page: usize
         return Some(t);
     }
     let pg = lay.pages.get(page)?;
-    let scale = (width / pg.w.max(1.0) * ctx.pixels_per_point()).clamp(0.05, 4.0);
+    // Zoomed in, the texture stays within what the GPU takes and is stretched beyond that.
+    let max_side = ctx.input(|i| i.max_texture_side) as f32 / pg.w.max(pg.h).max(1.0);
+    let scale = (width / pg.w.max(1.0) * ctx.pixels_per_point()).clamp(0.05, 4.0).min(max_side);
     let img = wordcraft_render::render_page(&app.session.doc, pg, scale, &Default::default());
     let color = egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &img.to_straight());
     let tex = ctx.load_texture("print_page_preview", color, egui::TextureOptions::LINEAR);
@@ -106,115 +110,142 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     ui.horizontal_top(|ui| {
         ui.vertical(|ui| {
             ui.set_width(380.0);
-            ui.spacing_mut().item_spacing.y = 8.0;
-            let native = app.services.print_native.is_some();
-            let hook = native || app.services.print.is_some();
-            if native {
-                if let Some(discover) = &app.services.printers {
-                    crate::printing::show(&mut app.printing, ui, discover, |label| crate::i18n::t(label).to_owned());
-                }
-                app.ui.print.copies = app.printing.settings.copies;
-            } else if hook {
-                ui.label(tl!("Send the document straight to the system print dialog, or save a copy in another format below."));
-                ui.label(
-                    egui::RichText::new(tl!("The printer, two-sided printing and pages per sheet are chosen in that dialog.")).color(t.text_dim),
-                );
-            } else {
-                ui.label(tl!("Save a copy in another format. Printing goes through a PDF you can print from any viewer."));
-            }
-            ui.add_space(4.0);
-            if hook
-                && ui
-                    .add_enabled(
-                        !native || app.printing.ready(),
-                        egui::Button::new(egui::RichText::new(tl!("Print")).font(medium(13.5))).min_size(vec2(320.0, 34.0)),
-                    )
-                    .clicked()
-            {
-                let params = app.ui.print.params();
-                let _ = app.run("ui.print", params);
-            }
-            if ui
-                .add(egui::Button::new(egui::RichText::new(tl!("Save these pages as PDF…")).font(medium(13.5))).min_size(vec2(320.0, 34.0)))
-                .clicked()
-            {
-                app.print_pdf_dialog();
-            }
-            ui.add_space(6.0);
-
-            if native {
-                if app.ui.print.copies > 1 {
-                    ui.add_enabled(!app.printing.busy(), egui::Checkbox::new(&mut app.ui.print.collate, tl!("Collate copies")));
-                }
-            } else {
-                ui.label(egui::RichText::new(tl!("Copies")).font(medium(13.0)));
-                ui.horizontal(|ui| {
-                    let mut n = app.ui.print.copies;
-                    ui.add(egui::DragValue::new(&mut n).range(1..=wordcraft_engine::print::MAX_COPIES).speed(0.2));
-                    app.ui.print.copies = n.clamp(1, wordcraft_engine::print::MAX_COPIES);
-                    if app.ui.print.copies > 1 {
-                        ui.checkbox(&mut app.ui.print.collate, tl!("Collate copies"));
+            // The settings scroll on their own: the preview beside them keeps the whole height (#1156).
+            egui::ScrollArea::vertical().id_salt("print_settings").show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 8.0;
+                let native = app.services.print_native.is_some();
+                let hook = native || app.services.print.is_some();
+                if native {
+                    if let Some(discover) = &app.services.printers {
+                        crate::printing::show(&mut app.printing, ui, discover, |label| crate::i18n::t(label).to_owned());
                     }
-                });
-            }
-
-            ui.label(egui::RichText::new(tl!("Pages")).font(medium(13.0)));
-            if choice(ui, "print_range", &mut app.ui.print.range, &RANGES) {
-                // Show the first page that will print.
-                app.ui.print.preview = if app.ui.print.range == "all" { 0 } else { current.0.min(total.saturating_sub(1)) };
-            }
-            if app.ui.print.range == "custom" {
-                ui.add(
-                    egui::TextEdit::singleline(&mut app.ui.print.pages)
-                        .hint_text(tl!("Pages like 1-3, 5"))
-                        .desired_width(260.0)
-                        .char_limit(wordcraft_engine::print::MAX_SPEC_CHARS),
-                );
-            }
-            choice(ui, "print_parity", &mut app.ui.print.parity, &PARITIES);
-
-            match wordcraft_engine::print::plan(&app.ui.print.params(), total, current) {
-                Ok(plan) => {
-                    let msg = crate::i18n::fmt(
-                        tl!("{count} of {total} pages will print"),
-                        &[("count", &plan.chosen.to_string()), ("total", &total.to_string())],
+                    app.ui.print.copies = app.printing.settings.copies;
+                } else if hook {
+                    ui.label(tl!("Send the document straight to the system print dialog, or save a copy in another format below."));
+                    ui.label(
+                        egui::RichText::new(tl!("The printer, two-sided printing and pages per sheet are chosen in that dialog.")).color(t.text_dim),
                     );
-                    ui.label(egui::RichText::new(msg).color(t.text_dim));
+                } else {
+                    ui.label(tl!("Save a copy in another format. Printing goes through a PDF you can print from any viewer."));
                 }
-                Err(e) => {
-                    ui.label(egui::RichText::new(e.to_string()).color(t.red));
+                ui.add_space(4.0);
+                if hook
+                    && ui
+                        .add_enabled(
+                            !native || app.printing.ready(),
+                            egui::Button::new(egui::RichText::new(tl!("Print")).font(medium(13.5))).min_size(vec2(320.0, 34.0)),
+                        )
+                        .clicked()
+                {
+                    let params = app.ui.print.params();
+                    let _ = app.run("ui.print", params);
                 }
-            }
-            ui.add_space(8.0);
-            ui.separator();
-            ui.add_space(4.0);
-            if hook {
-                ui.label(tl!("Or save a copy in another format:"));
-            }
-            export_formats(app, ui);
+                if ui
+                    .add(egui::Button::new(egui::RichText::new(tl!("Save these pages as PDF…")).font(medium(13.5))).min_size(vec2(320.0, 34.0)))
+                    .clicked()
+                {
+                    app.print_pdf_dialog();
+                }
+                ui.add_space(6.0);
+
+                if native {
+                    if app.ui.print.copies > 1 {
+                        ui.add_enabled(!app.printing.busy(), egui::Checkbox::new(&mut app.ui.print.collate, tl!("Collate copies")));
+                    }
+                } else {
+                    ui.label(egui::RichText::new(tl!("Copies")).font(medium(13.0)));
+                    ui.horizontal(|ui| {
+                        let mut n = app.ui.print.copies;
+                        ui.add(egui::DragValue::new(&mut n).range(1..=wordcraft_engine::print::MAX_COPIES).speed(0.2));
+                        app.ui.print.copies = n.clamp(1, wordcraft_engine::print::MAX_COPIES);
+                        if app.ui.print.copies > 1 {
+                            ui.checkbox(&mut app.ui.print.collate, tl!("Collate copies"));
+                        }
+                    });
+                }
+
+                ui.label(egui::RichText::new(tl!("Pages")).font(medium(13.0)));
+                if choice(ui, "print_range", &mut app.ui.print.range, &RANGES) {
+                    // Show the first page that will print.
+                    app.ui.print.preview = if app.ui.print.range == "all" { 0 } else { current.0.min(total.saturating_sub(1)) };
+                }
+                if app.ui.print.range == "custom" {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut app.ui.print.pages)
+                            .hint_text(tl!("Pages like 1-3, 5"))
+                            .desired_width(260.0)
+                            .char_limit(wordcraft_engine::print::MAX_SPEC_CHARS),
+                    );
+                }
+                choice(ui, "print_parity", &mut app.ui.print.parity, &PARITIES);
+
+                match wordcraft_engine::print::plan(&app.ui.print.params(), total, current) {
+                    Ok(plan) => {
+                        let msg = crate::i18n::fmt(
+                            tl!("{count} of {total} pages will print"),
+                            &[("count", &plan.chosen.to_string()), ("total", &total.to_string())],
+                        );
+                        ui.label(egui::RichText::new(msg).color(t.text_dim));
+                    }
+                    Err(e) => {
+                        ui.label(egui::RichText::new(e.to_string()).color(t.red));
+                    }
+                }
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(4.0);
+                if hook {
+                    ui.label(tl!("Or save a copy in another format:"));
+                }
+                export_formats(app, ui);
+            });
         });
         ui.add_space(24.0);
         ui.vertical(|ui| preview(app, ui, &lay, total));
     });
 }
 
-/// The preview: one page with Previous/Next.
+/// Room around the page inside the preview pane.
+const PREVIEW_MARGIN: f32 = 10.0;
+/// The preview's bottom bar: the page indicator on the left, the zoom on the right.
+const PREVIEW_BAR: f32 = 34.0;
+
+/// The next preview zoom one step (10%) in or out, from 10% to 500% as in the status bar.
+fn zoom_step(z: f32, up: bool) -> f32 {
+    let z = (z * 10.0).round() / 10.0;
+    (if up { z + 0.1 } else { z - 0.1 }).clamp(0.1, 5.0)
+}
+
+/// The preview (#1156): the page fills the pane, a bar below pages through the document and
+/// zooms; zoomed in, the page scrolls both ways.
 fn preview(app: &mut WordApp, ui: &mut Ui, lay: &DocLayout, total: usize) {
     let t = Tokens::get(ui.ctx());
     let ctx = ui.ctx().clone();
-    let width = 340.0;
     let page = app.ui.print.preview;
-    let aspect = lay.pages.get(page).map_or(11.0 / 8.5, |p| p.h.max(1.0) / p.w.max(1.0)).clamp(0.2, 5.0);
-    let (r, _) = ui.allocate_exact_size(vec2(width, width * aspect), Sense::hover());
-    ui.painter().rect_filled(r.translate(vec2(2.0, 3.0)), 0.0, t.page_shadow);
-    ui.painter().rect(r, 0.0, egui::Color32::WHITE, Stroke::new(1.0, t.border_strong), egui::StrokeKind::Inside);
-    if let Some(tex) = page_texture(app, &ctx, lay, page, width) {
-        ui.painter().image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
-    }
-    ui.add_space(6.0);
+    let (pw, ph) = lay.pages.get(page).map_or((612.0, 792.0), |p| (p.w.max(1.0), p.h.max(1.0)));
+    let pane = vec2(ui.available_width().max(120.0), (ui.available_height() - PREVIEW_BAR).max(120.0));
+    // Screen points per page point.
+    let fit = ((pane.x - 2.0 * PREVIEW_MARGIN) / pw).min((pane.y - 2.0 * PREVIEW_MARGIN) / ph).max(0.01);
+    let scale = app.ui.print.zoom.map_or(fit, |z| z * crate::canvas::PX_PER_PT);
+    let size = vec2(pw * scale, ph * scale);
+    let label = crate::i18n::fmt(tl!("Page {page} of {pages}"), &[("page", &(page + 1).to_string()), ("pages", &total.to_string())]);
+    egui::ScrollArea::both().id_salt("print_preview").auto_shrink(false).max_width(pane.x).max_height(pane.y).show(ui, |ui| {
+        let room = vec2((size.x + 2.0 * PREVIEW_MARGIN).max(ui.available_width()), (size.y + 2.0 * PREVIEW_MARGIN).max(ui.available_height()));
+        let (area, _) = ui.allocate_exact_size(room, Sense::hover());
+        let r = Rect::from_center_size(area.center(), size);
+        let resp = ui.interact(r, ui.id().with("print_preview_page"), Sense::hover());
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, true, &label));
+        ui.painter().rect_filled(r.translate(vec2(2.0, 3.0)), 0.0, t.page_shadow);
+        ui.painter().rect(r, 0.0, egui::Color32::WHITE, Stroke::new(1.0, t.border_strong), egui::StrokeKind::Inside);
+        if let Some(tex) = page_texture(app, &ctx, lay, page, size.x) {
+            ui.painter().image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
+        }
+    });
     ui.horizontal(|ui| {
+        ui.set_height(PREVIEW_BAR);
         let nav = |ui: &mut Ui, icon: &str, tip: &str, enabled: bool| {
             let (r, resp) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::click());
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, tip));
             let col = if enabled { t.icon } else { t.text_disabled };
             if enabled && resp.hovered() {
                 ui.painter().rect_filled(r, 3.0, t.hover);
@@ -225,11 +256,32 @@ fn preview(app: &mut WordApp, ui: &mut Ui, lay: &DocLayout, total: usize) {
         if nav(ui, "chevronLeft", tl!("Previous Page"), page > 0) {
             app.ui.print.preview = page - 1;
         }
-        let label = crate::i18n::fmt(tl!("Page {page} of {pages}"), &[("page", &(page + 1).to_string()), ("pages", &total.to_string())]);
-        ui.label(egui::RichText::new(label).font(regular(13.0)));
+        ui.label(egui::RichText::new(&label).font(regular(13.0)));
         if nav(ui, "chevronRight", tl!("Next Page"), page + 1 < total) {
             app.ui.print.preview = page + 1;
         }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let z = scale / crate::canvas::PX_PER_PT;
+            if nav(ui, "onePage", tl!("One Page"), true) {
+                app.ui.print.zoom = None;
+            }
+            ui.label(egui::RichText::new(format!("{}%", (z * 100.0).round())).font(regular(13.0)));
+            if nav(ui, "plus", tl!("Zoom In"), z < 5.0) {
+                app.ui.print.zoom = Some(zoom_step(z, true));
+            }
+            // A narrow window shortens the slider, then drops it, before it covers the page indicator.
+            let room = ui.available_width() - 26.0 - 2.0 * ui.spacing().item_spacing.x - 12.0;
+            if room >= 40.0 {
+                let mut v = z;
+                ui.spacing_mut().slider_width = room.min(110.0);
+                if ui.add(egui::Slider::new(&mut v, 0.1..=5.0).logarithmic(true).show_value(false)).on_hover_text(tl!("Zoom")).changed() {
+                    app.ui.print.zoom = Some(v.clamp(0.1, 5.0));
+                }
+            }
+            if nav(ui, "minus", tl!("Zoom Out"), z > 0.1) {
+                app.ui.print.zoom = Some(zoom_step(z, false));
+            }
+        });
     });
 }
 

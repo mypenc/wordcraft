@@ -31,8 +31,39 @@ pub(crate) fn set_author(s: &mut Session, v: &Value) -> CmdResult {
     Ok(r)
 }
 
+/// Rename the current file in its directory, or name a document before its first save.
+fn rename(s: &mut Session, v: &Value) -> CmdResult {
+    let name = p::req_str(v, "name")?.trim();
+    if name.is_empty()
+        || name.chars().count() > 200
+        || name.ends_with(['.', ' '])
+        || name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        || matches!(name, "." | "..")
+    {
+        return Err(CmdError::Params("Enter a valid document name (up to 200 characters, without path separators).".into()));
+    }
+    if let Some(path) = &s.path {
+        let mut destination = path.with_file_name(name);
+        // The field edits the stem; retain the original format, including macro/template files.
+        if let Some(ext) = path.extension() {
+            destination.set_file_name(format!("{name}.{}", ext.to_string_lossy()));
+        }
+        if destination != *path {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                crate::io::rename_file(path, &destination).map_err(CmdError::Failed)?;
+            }
+            s.path = Some(destination);
+        }
+    } else {
+        s.file_name = Some(name.to_string());
+    }
+    Ok(json!({"name": name, "path": s.path}))
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
+        CommandSpec::new("file.rename", "Rename Document", "File › Info", rename).params(r#"{"name": string (document name without its extension)}"#).pure(),
         CommandSpec::new("file.new", "New", "File", new).key("Mod+N").params(r#"{"template"?: "blank|sample|letter|resume|report"}"#).pure(),
         CommandSpec::new("file.open", "Open", "File", open)
             .key("Mod+O / Mod+F12")
@@ -174,9 +205,9 @@ fn open(s: &mut Session, v: &Value) -> CmdResult {
     let password = p::str(v, "password");
     let (mut doc, encrypted) = if let Some(data) = p::str(v, "data") {
         let bytes = super::insert::base64_decode(data).ok_or_else(|| CmdError::Params("bad base64".into()))?;
-        crate::io::open_bytes_with(path, &bytes, password).map_err(CmdError::Failed)?
+        crate::io::open_bytes_in(path, &bytes, password, &s.region()).map_err(CmdError::Failed)?
     } else {
-        crate::io::open_path_with(std::path::Path::new(path), password).map_err(CmdError::Failed)?
+        crate::io::open_path_in(std::path::Path::new(path), password, &s.region()).map_err(CmdError::Failed)?
     };
     // Plain text and Markdown carry no language: they are in the editing language.
     let ext = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
@@ -186,6 +217,9 @@ fn open(s: &mut Session, v: &Value) -> CmdResult {
         doc.styles.default_chr.lang = Some(lang.clone());
     }
     s.set_document(doc);
+    if let Some(z) = s.doc.settings.zoom {
+        super::view::restore_zoom(s, z);
+    }
     s.path = Some(path.into());
     // Like Word, a document opened with a password is saved with it again.
     if encrypted {
@@ -207,6 +241,9 @@ fn encrypt(s: &mut Session, v: &Value) -> CmdResult {
         _ => return Err(CmdError::Params("`password` must be a string, or null to remove the password".into())),
     };
     if password != s.password {
+        if password.is_some() {
+            s.clear_recovery_before_password()?;
+        }
         s.password = password;
         s.dirty = true;
     }
@@ -229,6 +266,7 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
             return Err(CmdError::Params("only Word documents (.docx, .docm, .dotx, .dotm) can be saved with a password".into()));
         }
         wordcraft_docx::check_password(pw).map_err(|e| CmdError::Params(e.to_string()))?;
+        s.clear_recovery_before_password()?;
         s.password = Some(crate::io::Password::new(pw));
     }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
@@ -245,7 +283,9 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
     }
     s.stamp_save();
     let password = s.password.as_ref().map(crate::io::Password::as_str);
-    crate::io::save_path_with(&path, &s.doc, password, &opts).map_err(CmdError::Failed)?;
+    // A header/footer just made and left empty isn't saved (#960).
+    let copy = super::insert::saved_copy(s);
+    crate::io::save_path_with(&path, copy.as_ref().unwrap_or(&s.doc), password, &opts).map_err(CmdError::Failed)?;
     let encrypted = password.is_some() && crate::io::can_encrypt(&path.to_string_lossy());
     if ["docx", "docm", "dotx", "dotm", "odt", "rtf", "json", "xml"].contains(&ext.as_str()) {
         s.path = Some(path.clone());
@@ -257,16 +297,8 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
 /// Does `path` hold a Word 2003 XML Document already (so a plain save keeps that format)?
 #[cfg(not(target_arch = "wasm32"))]
 fn is_word_2003_file(path: &std::path::Path) -> bool {
-    use std::io::Read;
-    if crate::file_access::check_read(&path.to_string_lossy()).is_err() {
-        return false;
-    }
-    let Ok(f) = std::fs::File::open(path) else { return false };
-    let mut head = Vec::new();
     // The root element and its namespaces come first.
-    if f.take(64 * 1024).read_to_end(&mut head).is_err() {
-        return false;
-    }
+    let Ok(head) = crate::io::read_file_head(&path.to_string_lossy(), 64 * 1024) else { return false };
     wordcraft_docx::sniff_xml(&head) == wordcraft_docx::XmlKind::WordMl2003
 }
 

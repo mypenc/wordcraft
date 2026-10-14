@@ -265,6 +265,8 @@ Mailings|Create|Labels|mailings.labels
 Mailings|Start Mail Merge|Start Mail Merge|mailings.start
 Mailings|Start Mail Merge|Select Recipients|mailings.recipients
 Mailings|Start Mail Merge|Edit Recipient List|mailings.editRecipients
+Mailings|Start Mail Merge|Filter Recipients|mailings.filterRecipients
+Mailings|Start Mail Merge|Sort Recipients|mailings.sortRecipients
 Mailings|Write & Insert Fields|Highlight Merge Fields|mailings.highlightFields
 Mailings|Write & Insert Fields|Address Block|mailings.addressBlock
 Mailings|Write & Insert Fields|Greeting Line|mailings.greetingLine

@@ -106,6 +106,7 @@
 	Ignore web and file addresses	忽略网址和文件路径
 	Ignore words in capitals	忽略全部大写的单词
 	Ignore words with numbers	忽略包含数字的单词
+	In the margin	在页边
 	Inches	英寸
 	Formatting exceptions	格式例外
 	Include level number from:	包含的级别编号来自：
@@ -139,12 +140,15 @@
 	Number alignment:	编号对齐方式：
 	Number format	编号格式
 	Number style for this level:	此级别的编号样式：
+	Only for the selected text	仅针对所选文字
 	Outside border	外侧框线
 	Make WordCraft the default for Word documents…	将 WordCraft 设为 Word 文档的默认应用…
 	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	今后用 WordCraft 打开 .docx、.doc、.rtf、.odt 文件和 Word 模板。
 	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	打开“设置 › 默认应用”，在其中为 .docx 及其他文档类型选择 WordCraft。
 	Overtype	改写
 	Overtype (typing replaces the characters after the caret)	改写（键入的内容替换插入点后的字符）
+	Show alignment guides when moving pictures and shapes	移动图片和形状时显示对齐参考线
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	移动的对象会吸附到页面的边缘和中心、页边距以及其他对象。按住 Alt 可自由移动。
 	Page display	页面显示
 	Paragraph marks	段落标记
 	Personalize	个性化
@@ -1421,6 +1425,7 @@
 	Demote	降级
 	Go Back	返回上次编辑位置
 	Toggle Unicode Character	切换 Unicode 字符
+	Type Character Code	输入字符代码
 	Toggle Field Codes	切换域代码
 	Edit Field Code	编辑域代码
 	Unlink Fields	取消域链接
@@ -2041,6 +2046,7 @@
 	Hyphenation Options…	断字选项…
 	Hyphenation zone:	断字区：
 	Italian	意大利语
+	Croatian	克罗地亚语
 	Japanese	日语
 	Korean	韩语
 	Limit consecutive hyphens to:	连续断字数限制：
@@ -2087,9 +2093,49 @@
 	AutoFit Column by Double-Clicking	双击自动调整列宽
 	Region:	区域：
 	Automatic ({region})	自动（{region}）
+	Text of the nearest paragraph with a given style (running headers)	具有指定样式的最近段落的文本（书眉）
+	Style name:	样式名称：
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	筛选收件人
+	Sort Recipients	排序收件人
+	Filter and Sort	筛选和排序
+	And	与
+	Or	或
+	Comparison	比较
+	Compare to	比较值
+	Add Condition	添加条件
+	Remove condition	删除条件
+	Sort by	排序依据
+	Then by	然后依据
+	Ascending	升序
+	Descending	降序
+	Equal to	等于
+	Not equal to	不等于
+	Less than	小于
+	Greater than	大于
+	Less than or equal	小于或等于
+	Greater than or equal	大于或等于
+	Is blank	为空
+	Is not blank	不为空
+	Contains	包含
+	Does not contain	不包含
+	{count} of {total} recipients will be merged.	将合并 {total} 位收件人中的 {count} 位。
+	Take the last match on the page	取本页最后一个匹配项
+	Show its list number	显示其列表编号
+	Show its number relative to this field	显示相对于此域的编号
+	Show its number with all higher levels	显示含所有上级层次的编号
+	Number only, without the label's words	只要编号，不要标签中的文字
+	Add whether it is above or below	注明位于上方还是下方
 	Start-up	启动
 	Show the Start screen when WordCraft starts	启动 WordCraft 时显示开始屏幕
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	开：WordCraft 打开时显示“文件 › 开始”，其中有空白文档、模板和最近使用的文档。关：直接打开空白文档。
+	Copy to	复制到
+
+# Document naming and account controls.
+	Rename Document	重命名文档
+	Document name	文档名称
+	Rename	重命名
+	Account	账户
 	Privacy Options	隐私选项
 	Trust Center	信任中心
 	Privacy for this document	此文档的隐私
@@ -2097,3 +2143,48 @@
 	Leave out the date and time of comments and tracked changes when saving	保存时不包含批注和修订的日期与时间
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	正在编辑的文档保留姓名和日期；只有保存的文件中不包含它们。
 	Privacy Settings	当前隐私设置
+	Waiting for the save to finish…	正在等待保存完成…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	已取消保存 {name}，文档仍处于打开状态，没有丢失任何内容。
+	Paper	纸张
+	Paper size:	纸张大小：
+	Custom size	自定义大小
+	More Paper Sizes…	其他纸张大小…
+	The margins don't fit on a page this size; make the margins smaller first.	页边距放不进此大小的页面；请先减小页边距。
+	Full Screen	全屏
+	Full\nScreen	全屏
+	Use the browser's full screen (F11)	请使用浏览器的全屏模式 (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} 英寸
+	{name}   {height} × {width} mm	{name}   {height} × {width} 毫米
+	{width} × {height} mm	{width} × {height} 毫米
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}，{columns} × {rows}，{size}（{paper}）
+	Researcher needs an online service; WordCraft keeps your documents offline.	研究工具需要在线服务；WordCraft 会将你的文档保留在本地。
+	These settings will be used for new documents.	这些设置将用于新文档。
+	can't split at the first row	无法在第一行处拆分表格
+	select two or more cells to merge	请选择两个或更多单元格进行合并
+	there is no ink to replay	没有可重播的墨迹
+	there's no citation after the caret	插入点后没有引文
+	this item is already at the top level	此项已位于最高级别
+	Envelope #10	10 号信封
+	Envelope DL	DL 信封
+	Reading Mode	阅读模式
+	Column width	栏宽
+	Text size	文字大小
+	Edit Document	编辑文档
+	Go to what:	定位目标：
+	Type +2 or -1 to move from the page you are on.	输入 +2 或 -1 可从当前页向后或向前移动。
+	Suggested	建议
+	Set Proofing Language…	设置校对语言…
+	Language Preferences…	语言首选项…
+
+# Dictionaries folder (#1063)
+	Dictionaries	词典
+	Dictionaries folder:	词典文件夹：
+	Not set: the system's usual places	未设置：系统的常用位置
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	此文件夹中的 Hunspell .aff 和 .dic 文件 (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) 优先于系统中的文件。
+	{language}: {file}	{language}：{file}
+	{language}: no dictionary found	{language}：未找到词典
+
+# Backstage › Recover (#586)
+	Recover	恢复

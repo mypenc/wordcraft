@@ -87,6 +87,7 @@
 	Enter formatting for number:	Въведете форматиране за номера:
 	Follow number with:	След номера:
 	Formatting	Форматиране
+	In the margin	На полето
 	Include level number from:	Включване на номер на ниво от:
 	Ink	Мастило
 	Insertions and Deletions	Вмъквания и изтривания
@@ -100,6 +101,7 @@
 	Number alignment:	Подравняване на номера:
 	Number format	Формат на номера
 	Number style for this level:	Стил на номериране за това ниво:
+	Only for the selected text	Само за избрания текст
 	Outside border	Външна граница
 	Restart list after:	Рестартиране на списъка след:
 	Right border	Дясна граница
@@ -1349,6 +1351,7 @@
 	Demote	Понижаване на нивото
 	Go Back	Връщане назад
 	Toggle Unicode Character	Превключване на Unicode знак
+	Type Character Code	Въвеждане на код на знак
 	Toggle Field Codes	Превключване на кодовете на полетата
 	Edit Field Code	Редактиране на кода на полето
 	Unlink Fields	Прекъсване на връзката на полетата
@@ -1717,6 +1720,7 @@
 	Hyphenation Options…	Опции за сричкопренасяне…
 	Hyphenation zone:	Зона на сричкопренасяне:
 	Italian	Италиански
+	Croatian	Хърватски
 	Japanese	Японски
 	Korean	Корейски
 	Limit consecutive hyphens to:	Ограничаване на последователните пренасяния до:
@@ -2027,8 +2031,6 @@
 	AaBbCcDd	АаБбВвГг
 	All - Linear	Всички – линеен формат
 	All - Professional	Всички – професионален формат
-	B4 (JIS)   10.12" × 14.33"	B4 (JIS)   10.12" × 14.33"
-	B5 (JIS)   7.17" × 10.12"	B5 (JIS)   7.17" × 10.12"
 	Body text in a short paragraph to show spacing.	Основен текст в кратък абзац, който показва разстоянията.
 	Book Title	Заглавие на книга
 	CONFIDENTIAL	ПОВЕРИТЕЛНО
@@ -2049,9 +2051,6 @@
 	Emphasis	Акцент
 	Endnote Reference	Препратка към бележка в края
 	Endnote Text	Текст на бележка в края
-	Envelope #10   4.12" × 9.50"	Плик №10   4.12" × 9.50"
-	Envelope DL   4.33" × 8.66"	Плик DL   4.33" × 8.66"
-	Executive   7.25" × 10.50"	Executive   7.25" × 10.50"
 	Footnote Reference	Препратка към бележка под линия
 	Footnote Text	Текст на бележка под линия
 	GB/T 7714	GB/T 7714
@@ -2073,8 +2072,6 @@
 	Intense Reference	Изразена препратка
 	Justification of a display equation	Подравняване на уравнение на отделен ред
 	Keywords	Ключови думи
-	Legal   8.50" × 14.00"	Legal   8.50" × 14.00"
-	Letter   8.50" × 11.00"	Letter   8.50" × 11.00"
 	Level 1	Ниво 1
 	Level 2	Ниво 2
 	Level 3	Ниво 3
@@ -2094,7 +2091,6 @@
 	SIST02	SIST02
 	Show the equation in the line of text	Показване на уравнението в реда на текста
 	Show the equation on a line of its own	Показване на уравнението на отделен ред
-	Statement   5.50" × 8.50"	Statement   5.50" × 8.50"
 	Strong	Удебелен
 	Subject	Тема
 	Subtitle	Подзаглавие
@@ -2102,7 +2098,6 @@
 	Subtle Reference	Лека препратка
 	TOC Heading	Заглавие на съдържание
 	Table Grid	Мрежа на таблица
-	Tabloid   11.00" × 17.00"	Tabloid   11.00" × 17.00"
 	Turabian	Turabian
 	Type equations in LaTeX	Въвеждане на уравнения в LaTeX
 	Type equations in the linear format (UnicodeMath)	Въвеждане на уравнения в линеен формат (UnicodeMath)
@@ -2138,6 +2133,8 @@
 	Mirror indents	Огледални отстъпи
 	Overtype	Заместване
 	Overtype (typing replaces the characters after the caret)	Заместване (въвежданият текст замества знаците след курсора)
+	Show alignment guides when moving pictures and shapes	Показване на водачи за подравняване при преместване на картини и фигури
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Преместените обекти се прилепват към краищата и центъра на страницата, полетата и другите обекти. Задръжте Alt за свободно преместване.
 	Page display	Показване на страницата
 	Paragraph marks	Знаци за абзац
 	Personalize	Персонализиране
@@ -2444,6 +2441,39 @@
 	Pastes the clipboard's picture.	Поставя картината от клипборда.
 	Region:	Регион:
 	Automatic ({region})	Автоматично ({region})
+	Text of the nearest paragraph with a given style (running headers)	Текст на най-близкия абзац с даден стил (текущи колонтитули)
+	Style name:	Име на стил:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Филтриране на получателите
+	Sort Recipients	Сортиране на получателите
+	Filter and Sort	Филтриране и сортиране
+	And	И
+	Or	Или
+	Comparison	Сравнение
+	Compare to	Стойност за сравнение
+	Add Condition	Добавяне на условие
+	Remove condition	Премахване на условието
+	Sort by	Сортиране по
+	Then by	След това по
+	Ascending	Възходящо
+	Descending	Низходящо
+	Equal to	Равно на
+	Not equal to	Не е равно на
+	Less than	По-малко от
+	Greater than	По-голямо от
+	Less than or equal	По-малко или равно на
+	Greater than or equal	По-голямо или равно на
+	Is blank	Празно
+	Is not blank	Не е празно
+	Contains	Съдържа
+	Does not contain	Не съдържа
+	{count} of {total} recipients will be merged.	Ще бъдат обединени {count} от {total} получатели.
+	Take the last match on the page	Взимай последното съвпадение на страницата
+	Show its list number	Показвай номера му в списъка
+	Show its number relative to this field	Показвай номера му спрямо това поле
+	Show its number with all higher levels	Показвай номера му с всички по-горни нива
+	Number only, without the label's words	Само номерът, без думите от етикета
+	Add whether it is above or below	Добавяй дали е отгоре или отдолу
 	Undo 1 Action	Отмяна на 1 действие
 	Undo Actions	Отмяна на действия
 	Undo History	История на отмяната
@@ -2467,6 +2497,13 @@
 	Table Properties…	Свойства на таблица…
 	Search	Търсене
 	Title Bar	Заглавна лента
+	Copy to	Копиране в
+
+# Document naming and account controls.
+	Rename Document	Преименуване на документ
+	Document name	Име на документа
+	Rename	Преименуване
+	Account	Акаунт
 	Privacy Options	Настройки за поверителност
 	Trust Center	Център за сигурност
 	Privacy for this document	Поверителност на този документ
@@ -2474,3 +2511,55 @@
 	Leave out the date and time of comments and tracked changes when saving	Без дата и час на коментарите и проследените промени при запазване
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Документът, който редактирате, запазва имената и датите; само записаният файл ги пропуска.
 	Privacy Settings	Текущи настройки за поверителност
+	Waiting for the save to finish…	Изчакване запазването да приключи…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Запазването на {name} е отменено. Документът остава отворен и нищо не е загубено.
+	Paper	Хартия
+	Paper size:	Размер на хартията:
+	Custom size	Потребителски размер
+	More Paper Sizes…	Още размери на хартията…
+	The margins don't fit on a page this size; make the margins smaller first.	Полетата не се побират на страница с този размер; първо намалете полетата.
+	Full Screen	Цял екран
+	Full\nScreen	Цял\nекран
+	Use the browser's full screen (F11)	Използвайте режима на цял екран на браузъра (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} инча
+	{name}   {height} × {width} mm	{name}   {height} × {width} мм
+	{width} × {height} mm	{width} × {height} мм
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Изследователят изисква онлайн услуга, а WordCraft пази документите ви офлайн.
+	These settings will be used for new documents.	Тези настройки ще се използват за новите документи.
+	can't split at the first row	таблицата не може да се раздели на първия ред
+	select two or more cells to merge	изберете две или повече клетки за обединяване
+	there is no ink to replay	няма мастило за възпроизвеждане
+	there's no citation after the caret	след курсора няма цитиране
+	this item is already at the top level	този елемент вече е на най-горното ниво
+	Envelope #10	Плик №10
+	Envelope DL	Плик DL
+	Reading Mode	Режим за четене
+	Column width	Ширина на колоната
+	Text size	Размер на текста
+	Edit Document	Редактиране на документа
+	Go to what:	Отиване до:
+	Type +2 or -1 to move from the page you are on.	Въведете +2 или -1, за да се преместите спрямо текущата страница.
+	Suggested	Предложения
+	Set Proofing Language…	Задаване на езика за проверка…
+	Language Preferences…	Езикови предпочитания…
+
+# Cross-reference dialog (#1003)
+	For which item:	За кой елемент:
+	Heading	Заглавие
+	Heading text	Текст на заглавието
+	Insert reference to:	Вмъкване на препратка към:
+	Reference type:	Тип препратка:
+
+# Dictionaries folder (#1063)
+	Dictionaries	Речници
+	Dictionaries folder:	Папка с речници:
+	Not set: the system's usual places	Не е зададена: обичайните места в системата
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Файловете .aff и .dic на Hunspell от тази папка (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) се използват преди системните.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: не е намерен речник
+
+# Backstage › Recover (#586)
+	Recover	Възстановяване

@@ -279,9 +279,21 @@ fn set(s: &mut Session, v: &Value) -> CmdResult {
     sel_result(s)
 }
 
-fn select_all(s: &mut Session, _: &Value) -> CmdResult {
+fn select_all(s: &mut Session, v: &Value) -> CmdResult {
+    if s.selects_whole_story() {
+        s.column = None;
+        s.column_mode = false;
+        return sel_result(s);
+    }
+    if !p::bool(v, "whole").unwrap_or(false)
+        && let Some(r) = super::table::grow_select_all(s)
+    {
+        return r;
+    }
     let st = s.sel.focus.story;
     s.sel = Selection { anchor: s.doc.start_of(st), focus: s.doc.end_of(st) };
+    s.column = None;
+    s.column_mode = false;
     sel_result(s)
 }
 

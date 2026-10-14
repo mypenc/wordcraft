@@ -243,6 +243,18 @@ impl FontDb {
         Ok(Installed { font, warning })
     }
 
+    /// Add the fonts a document embeds (#1171) for this run: not recorded as user fonts, never
+    /// stored. Faces already available are kept. Lookups made while the family was missing are
+    /// forgotten ([`FontDb::generation`]), so text set in it now resolves to it. Returns how many
+    /// faces were added.
+    pub fn add_document_fonts(&self, files: Vec<Vec<u8>>) -> usize {
+        let added = self.add_fonts(files);
+        if added > 0 {
+            self.fonts_changed();
+        }
+        added
+    }
+
     /// Check the faces in `sfnt` and add the new ones, recording them as a user font.
     fn add_user_faces(&self, name: &str, sfnt: Vec<u8>, path: Option<PathBuf>) -> Result<UserFont, UserFontError> {
         if self.read_user().fonts.len() >= MAX_USER_FONTS {

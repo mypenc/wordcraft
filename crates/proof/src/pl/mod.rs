@@ -67,6 +67,13 @@ pub fn reload_dictionary() {
     *DICT.write().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
+/// The `.dic` file of the installed Polish dictionary, searching the dictionaries folder and
+/// the system locations now (File › Options › Proofing shows it, #1063); `None` when there is
+/// none. A dictionary given with [`install_dictionary`] has no file and isn't reported.
+pub fn installed_path() -> Option<std::path::PathBuf> {
+    crate::hunspell::find(NAMES).map(|(_, dic)| dic)
+}
+
 /// Is a Polish dictionary available (spelling is checked)?
 pub fn has_dictionary() -> bool {
     !dictionary().is_empty()

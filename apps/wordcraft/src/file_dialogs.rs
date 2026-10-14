@@ -58,8 +58,11 @@ impl Launcher {
             let picking: Picking = match req {
                 FileDialogRequest::Open { purpose } => Box::pin(open_filters(dialog, &purpose).pick_file()),
                 FileDialogRequest::Save { name } => {
-                    let exts = save_exts(&name);
-                    Box::pin(dialog.set_file_name(name).add_filter("Documents", &exts).save_file())
+                    let mut dialog = dialog.set_file_name(name.clone());
+                    for (label, exts) in save_filters(&name) {
+                        dialog = dialog.add_filter(label, &exts);
+                    }
+                    Box::pin(dialog.save_file())
                 }
             };
             let ctx = self.ctx.clone();
@@ -158,9 +161,60 @@ fn save_exts(name: &str) -> Vec<String> {
     exts
 }
 
+/// The "Save as type" list (#1399): one named entry per format, the suggested one first (see
+/// [`save_exts`] for why the order matters).
+///
+/// rfd doesn't report which entry the user picked, so if they choose "PDF" but leave "name.docx"
+/// in the name box, the extension in the name wins, as the format is chosen by extension.
+fn save_filters(name: &str) -> Vec<(String, Vec<String>)> {
+    save_exts(name).into_iter().map(|e| (format!("{} (*.{e})", format_name(&e)), vec![e])).collect()
+}
+
+/// A readable name for a save format's extension.
+fn format_name(ext: &str) -> String {
+    match ext {
+        "docx" => "Word Document".into(),
+        "docm" => "Word Macro-Enabled Document".into(),
+        "dotx" => "Word Template".into(),
+        "dotm" => "Word Macro-Enabled Template".into(),
+        "pdf" => "PDF".into(),
+        "txt" => "Plain Text".into(),
+        "md" => "Markdown".into(),
+        "html" => "Web Page".into(),
+        "rtf" => "Rich Text Format".into(),
+        "odt" => "OpenDocument Text".into(),
+        "tex" => "LaTeX".into(),
+        "png" => "PNG Image".into(),
+        "json" => "JSON".into(),
+        "xml" => "XML".into(),
+        other => other.to_ascii_uppercase(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::save_exts;
+    use super::{save_exts, save_filters};
+
+    /// #1399: the Save dialog's type list has one named entry per format, the suggested one first,
+    /// every savable extension exactly once.
+    #[test]
+    fn save_dialog_lists_one_named_type_per_format() {
+        let filters = save_filters("report.odt");
+        assert_eq!(filters.len(), wordcraft_engine::io::SAVE_EXTS.len());
+        assert_eq!(filters[0].1, vec!["odt".to_string()]);
+        assert!(filters[0].0.contains("OpenDocument"), "{}", filters[0].0);
+        let all: Vec<&String> = filters.iter().flat_map(|(_, e)| e).collect();
+        for e in wordcraft_engine::io::SAVE_EXTS {
+            assert_eq!(all.iter().filter(|x| x.as_str() == *e).count(), 1, "{e}");
+        }
+        assert!(filters.iter().all(|(l, e)| !l.trim().is_empty() && e.len() == 1));
+        let mut labels: Vec<&String> = filters.iter().map(|(l, _)| l).collect();
+        labels.sort();
+        labels.dedup();
+        assert_eq!(labels.len(), filters.len(), "labels are distinct");
+        // Unknown names fall back to Word's format first.
+        assert_eq!(save_filters("no extension")[0].1, vec!["docx".to_string()]);
+    }
 
     /// #689: the Save dialog's default extension is the suggested name's own format, so a file
     /// name the user types without one is saved in the document's format instead of coming back

@@ -43,7 +43,7 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("review.trackingOptions", "Track Changes Options", "Review › Tracking", tracking_options)
             .params(
-                r#"{"comments"?: bool, "ink"?: bool, "insertionsDeletions"?: bool, "formatting"?: bool, "balloons"?: "revisions|inline|commentsAndFormatting", "insertMark"?: "underline|doubleUnderline|bold|italic|strikethrough|colorOnly|none", "insertColor"?: "byAuthor" | "RRGGBB", "deleteMark"?: "strikethrough|doubleStrikethrough|hidden|caret|hash|underline|colorOnly", "deleteColor"?: "byAuthor" | "RRGGBB", "changedLines"?: "outside|left|right|none", "changedLinesColor"?: "auto" | "RRGGBB", "trackFormatting"?: bool} → the options (omit all to read them)"#,
+                r#"{"comments"?: bool, "ink"?: bool, "insertionsDeletions"?: bool, "formatting"?: bool, "balloons"?: "revisions|inline|commentsAndFormatting", "commentDisplay"?: "margin|selected", "insertMark"?: "underline|doubleUnderline|bold|italic|strikethrough|colorOnly|none", "insertColor"?: "byAuthor" | "RRGGBB", "deleteMark"?: "strikethrough|doubleStrikethrough|hidden|caret|hash|underline|colorOnly", "deleteColor"?: "byAuthor" | "RRGGBB", "changedLines"?: "outside|left|right|none", "changedLinesColor"?: "auto" | "RRGGBB", "trackFormatting"?: bool} → the options (omit all to read them)"#,
             )
             .pure(),
         CommandSpec::new("review.wordCount", "Word Count", "Review › Proofing", word_count)
@@ -130,7 +130,9 @@ fn new_comment(s: &mut Session, v: &Value) -> CmdResult {
     let part = s.doc.add_part(PartKind::Comment, vec![para_block(Paragraph::with_text(&text, Default::default()))]);
     let id = s.doc.comments.keys().next_back().map(|k| k + 1).unwrap_or(0);
     let initials = s.user_initials();
-    s.doc.comments.insert(id, Comment { author: s.author.clone(), initials, date: now_iso(), parent: None, resolved: false, part });
+    s.doc
+        .comments
+        .insert(id, Comment { author: s.author.clone(), initials, date: now_iso(), parent: None, resolved: false, part, ..Default::default() });
     let props = Default::default();
     s.doc.insert_object(&b, InlineObject::CommentEnd { id }, &props)?;
     s.doc.insert_object(&a, InlineObject::CommentStart { id }, &props)?;
@@ -147,7 +149,10 @@ fn reply(s: &mut Session, v: &Value) -> CmdResult {
     let part = s.doc.add_part(PartKind::Comment, vec![para_block(Paragraph::with_text(text, Default::default()))]);
     let id = s.doc.comments.keys().next_back().map(|k| k + 1).unwrap_or(0);
     let initials = s.user_initials();
-    s.doc.comments.insert(id, Comment { author: s.author.clone(), initials, date: now_iso(), parent: Some(parent), resolved: false, part });
+    s.doc.comments.insert(
+        id,
+        Comment { author: s.author.clone(), initials, date: now_iso(), parent: Some(parent), resolved: false, part, ..Default::default() },
+    );
     Ok(json!({"id": id}))
 }
 
@@ -161,8 +166,8 @@ fn edit_comment(s: &mut Session, v: &Value) -> CmdResult {
     Ok(json!({"id": id}))
 }
 
-/// Comment anchored around the caret.
-fn comment_at_caret(s: &Session) -> Option<u32> {
+/// The innermost comment whose range holds the caret.
+pub fn comment_range_at_caret(s: &Session) -> Option<u32> {
     let f = &s.sel.focus;
     let p = s.doc.para_at(f)?;
     let mut open: Vec<u32> = Vec::new();
@@ -176,7 +181,14 @@ fn comment_at_caret(s: &Session) -> Option<u32> {
             _ => {}
         }
     }
-    open.last().copied().or_else(|| {
+    open.last().copied()
+}
+
+/// Comment anchored around the caret, else the first one in its paragraph.
+fn comment_at_caret(s: &Session) -> Option<u32> {
+    let f = &s.sel.focus;
+    let p = s.doc.para_at(f)?;
+    comment_range_at_caret(s).or_else(|| {
         p.object_offsets().into_iter().find_map(|o| match p.object_at(o) {
             Some(InlineObject::CommentStart { id }) | Some(InlineObject::CommentEnd { id }) => Some(*id),
             _ => None,
@@ -323,9 +335,12 @@ fn resolve_para(
         return Ok(());
     }
     // An inserted paragraph mark that is rejected, or a deleted one that is accepted, goes away:
-    // the next paragraph joins this one (the split is undone). The mark at the end of a story
-    // or cell can't go, so it just stops being a revision.
-    if ((del.is_some() && accept) || (ins.is_some() && !accept)) && super::join_next_para(s, story, path)? {
+    // the next paragraph joins this one (the split is undone). A paragraph left empty goes away
+    // whole, so the next one keeps its own style and numbering, as in Word. The mark at the end
+    // of a story or cell can't go, so it just stops being a revision.
+    if ((del.is_some() && accept) || (ins.is_some() && !accept))
+        && (super::remove_empty_para(s, story, path)? || super::join_next_para(s, story, path)?)
+    {
         return Ok(());
     }
     let para = s.doc.para_mut(story, path)?;
@@ -901,7 +916,7 @@ fn thesaurus(s: &mut Session, v: &Value) -> CmdResult {
 /// Track Changes Options: change the fields given, return them all. A per-user preference.
 fn tracking_options(s: &mut Session, v: &Value) -> CmdResult {
     use wordcraft_doc::Rgb;
-    use wordcraft_layout::display::{BalloonMode, ChangeBar, DeleteMark, InsertMark};
+    use wordcraft_layout::display::{BalloonMode, ChangeBar, CommentDisplay, DeleteMark, InsertMark};
     let mut m = s.prefs.markup.clone();
     let color = |k: &str, auto: &str, cur: Option<Rgb>| -> Result<Option<Rgb>, CmdError> {
         match p::str(v, k) {
@@ -924,6 +939,9 @@ fn tracking_options(s: &mut Session, v: &Value) -> CmdResult {
     }
     if let Some(x) = pick("balloons") {
         m.balloons = BalloonMode::parse(x).ok_or_else(|| CmdError::Params("`balloons`: revisions|inline|commentsAndFormatting".into()))?;
+    }
+    if let Some(x) = pick("commentDisplay") {
+        m.comment_display = CommentDisplay::parse(x).ok_or_else(|| CmdError::Params("`commentDisplay`: margin|selected".into()))?;
     }
     if let Some(x) = pick("insertMark") {
         m.insert_mark = InsertMark::parse(x).ok_or_else(|| CmdError::Params("unknown `insertMark`".into()))?;
@@ -954,6 +972,7 @@ pub fn tracking_json(m: &wordcraft_layout::display::MarkupOptions) -> Value {
         "insertionsDeletions": m.insertions_deletions,
         "formatting": m.formatting,
         "balloons": m.balloons.name(),
+        "commentDisplay": m.comment_display.name(),
         "insertMark": m.insert_mark.name(),
         "insertColor": hex(m.insert_color, "byAuthor"),
         "deleteMark": m.delete_mark.name(),
@@ -1029,6 +1048,31 @@ mod tests {
         // Unknown choices are refused; reading changes nothing.
         assert!(s.run("review.trackingOptions", &json!({"deleteMark": "sparkles"})).is_err());
         assert_eq!(s.run("review.trackingOptions", &json!({})).unwrap()["insertColor"], "00AA00");
+    }
+
+    /// #1055: comments show in the margin as in Word unless the option says otherwise.
+    #[test]
+    fn comment_display_defaults_to_margin_and_is_validated() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        assert_eq!(s.run("review.trackingOptions", &json!({})).unwrap()["commentDisplay"], "margin");
+        assert_eq!(s.run("review.trackingOptions", &json!({"commentDisplay": "selected"})).unwrap()["commentDisplay"], "selected");
+        assert_eq!(s.run("review.trackingOptions", &json!({})).unwrap()["commentDisplay"], "selected");
+        assert!(s.run("review.trackingOptions", &json!({"commentDisplay": "never"})).is_err());
+        assert_eq!(s.run("review.trackingOptions", &json!({"commentDisplay": "margin"})).unwrap()["commentDisplay"], "margin");
+    }
+
+    /// #1055: the caret's own comment is the one whose range holds it, not any in its paragraph.
+    #[test]
+    fn comment_range_at_caret_needs_the_caret_inside_the_range() {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("one two three"));
+        s.run("select.text", &json!({"text": "two"})).unwrap();
+        let id = s.run("review.newComment", &json!({"text": "note"})).unwrap()["id"].as_u64().unwrap() as u32;
+        s.run("select.text", &json!({"text": "two"})).unwrap();
+        s.run("caret.left", &json!({})).unwrap();
+        assert_eq!(super::comment_range_at_caret(&s), Some(id), "inside the commented text");
+        s.run("select.text", &json!({"text": "three"})).unwrap();
+        assert_eq!(super::comment_range_at_caret(&s), None, "elsewhere in the paragraph");
+        assert_eq!(super::comment_at_caret(&s), Some(id), "the older lookup still falls back to the paragraph's comment");
     }
 
     fn glyph_text(d: &[Draw]) -> String {
@@ -1305,5 +1349,24 @@ mod tests {
         let p = body_para(&s);
         assert_eq!((p.props.align, p.props.fmt_change.is_none()), (Some(wordcraft_doc::props::Align::Center), true));
         assert!(s.run("review.changes", &json!({})).unwrap().as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn rtf_tracked_changes_accept_and_reject_after_opening_and_round_trip() {
+        // Gap 19: an RTF file's tracked insertions and deletions open as tracked changes, also
+        // after a WordCraft → RTF → WordCraft round trip.
+        let rtf: &[u8] = br"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}{\*\revtbl {Unknown;}{Alice;}{Bob;}}
+\pard Keep {\revised\revauth1\revdttm-1480361314 added }text{\deleted\revauthdel2\revdttmdel-2016341499  gone} end{\revised\revauth1\revdttm-1480361314\deleted\revauthdel2\revdttmdel-2016341499  both}.\par}";
+        let opened = wordcraft_formats::rtf::import(rtf).unwrap();
+        let again = wordcraft_formats::rtf::import(wordcraft_formats::rtf::export(&opened).as_bytes()).unwrap();
+        for doc in [opened, again] {
+            for (cmd, want) in [("review.acceptAll", "Keep added text end."), ("review.rejectAll", "Keep text gone end.")] {
+                let mut s = Session::new(doc.clone());
+                assert!(!s.run("review.changes", &json!({})).unwrap().as_array().unwrap().is_empty(), "{cmd}");
+                s.run(cmd, &json!({})).unwrap();
+                assert_eq!(s.doc.plain_text(wordcraft_doc::StoryRef::Body).trim_end(), want, "{cmd}");
+                assert!(s.run("review.changes", &json!({})).unwrap().as_array().unwrap().is_empty(), "{cmd}");
+            }
+        }
     }
 }

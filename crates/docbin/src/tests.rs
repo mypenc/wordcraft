@@ -8,6 +8,7 @@ use proptest::prelude::*;
 use super::read;
 
 mod drawing;
+mod encrypted;
 
 /// Offset in the WordDocument stream where test text pieces are placed (past the FIB).
 const TEXT_FC: u32 = 0x600;
@@ -171,10 +172,10 @@ fn word_6_95_rejected() {
 }
 
 #[test]
-fn encrypted_rejected() {
+fn encrypted_asks_for_a_password() {
     let spec = FibSpec { flags: 0x1100, ..Default::default() };
     let f = cfb_file(&[("WordDocument", &fib_bytes(&spec))]);
-    assert!(matches!(read(&f), Err(super::DocbinError::Encrypted)));
+    assert!(matches!(read(&f), Err(super::DocbinError::PasswordRequired)));
 }
 
 #[test]
@@ -1638,6 +1639,31 @@ fn picture_bytes_are_capped_per_document() {
 }
 
 #[test]
+fn rejected_inline_pictures_are_not_read_again() {
+    // A picture over the cap was located and copied again for every anchor on it.
+    let big = picf_with_png(1200);
+    let small = picf_with_png(300);
+    let data: Vec<u8> = [big.clone(), small.clone()].concat();
+    let mut pics = crate::media::Pictures::default();
+    pics.limit = 1000;
+    assert!(pics.get(&data, 0).is_none(), "over the cap");
+    // The failure is remembered: that place isn't read again, whatever it holds now.
+    assert!(pics.get(&small, 0).is_none());
+    // The rejected picture took nothing off the cap, and anchors sharing a picture share it.
+    let at = big.len() as u32;
+    let fits = pics.get(&data, at).expect("fits");
+    assert_eq!(pics.get(&data, at).map(|p| p.key), Some(fits.key));
+    assert_eq!(pics.media.len(), 1);
+    // Filling the cap exactly works; after that, a place never tried before isn't read.
+    let rest = picf_with_png(700);
+    let rest_at = data.len() as u32;
+    let tail: Vec<u8> = [data, rest.clone(), small].concat();
+    assert!(pics.get(&tail, rest_at).is_some(), "700 more bytes fill the cap");
+    assert!(pics.get(&tail, rest_at + rest.len() as u32).is_none(), "the cap is used up");
+    assert_eq!(pics.media.len(), 2);
+}
+
+#[test]
 fn row_height_of_i16_min_does_not_overflow() {
     // sprmTDyaRowHeight = -32768: negating the i16 overflowed (a debug-build panic).
     let papx = grpprl(&[(0x9407, &i16::MIN.to_le_bytes())]);
@@ -1905,4 +1931,270 @@ fn section_marks_end_paragraphs() {
     let spec = StructSpec { text: "a\u{C}b\r", sections: vec![(4, Vec::new())], papx_entries: vec![(0, 0, Vec::new())], ..spec };
     let doc = read(&struct_doc(&spec)).expect("opens");
     assert_eq!(body_texts(&doc), ["a\u{C}b"]);
+}
+
+// #1380: Word 2000+ tables. Word writes each row as its cell marks plus a separate row-end
+// (TTP) mark, cell shading as 10-byte `Shd`s in `sprmTDefTableShd`/`sprmTDefTableShdRaw` (the
+// `Shd80` palette copy in `sprmTDefTableShd80` is only a fallback), and a horizontally
+// merged row as a row with fewer, wider cells in its own `sprmTDefTable`.
+
+/// A `sprmTDefTable` Prl with `edges` twip boundaries and no TC80s (cb counts the bytes
+/// after it, plus one; Word may store fewer TC80s than cells).
+fn t_def_edges(edges: &[i16]) -> Vec<u8> {
+    let mut body = vec![(edges.len() as u8).saturating_sub(1)];
+    for e in edges {
+        body.extend_from_slice(&e.to_le_bytes());
+    }
+    let mut v = (0xD608u16).to_le_bytes().to_vec();
+    v.extend_from_slice(&((body.len() + 1) as u16).to_le_bytes());
+    v.extend_from_slice(&body);
+    v
+}
+
+/// A variable-length table sprm whose operand is cb then `body`.
+fn sprm_cb(op: u16, body: &[u8]) -> Vec<u8> {
+    let mut v = op.to_le_bytes().to_vec();
+    v.push(body.len() as u8);
+    v.extend_from_slice(body);
+    v
+}
+
+/// `n` copies of a 10-byte `Shd`: cvFore auto, cvBack = `back`, ipat 0 (clear), the way
+/// Word writes a plain cell fill.
+fn shd_clear(back: [u8; 3], n: usize) -> Vec<u8> {
+    let one = [0, 0, 0, 0xFF, back[0], back[1], back[2], 0, 0, 0];
+    one.repeat(n)
+}
+
+/// Word-shaped 5-column table: header row, a shaded body row, a one-cell legend row.
+fn word_table_doc(row1: Vec<u8>, row2: Vec<u8>, row3: Vec<u8>) -> wordcraft_doc::Document {
+    let text = "a\u{7}b\u{7}c\u{7}d\u{7}e\u{7}\u{7}f\u{7}g\u{7}h\u{7}i\u{7}j\u{7}\u{7}legend\u{7}\u{7}tail\r";
+    let in_tbl = grpprl(&[(0x2416, &[0x01]), (0x6649, &[1, 0, 0, 0])]);
+    let ttp = |extra: Vec<u8>| [grpprl(&[(0x2416, &[0x01]), (0x2417, &[0x01]), (0x6649, &[1, 0, 0, 0])]), extra].concat();
+    let spec = StructSpec {
+        text,
+        header_stories: vec![],
+        sections: vec![(text.chars().count() as u32, Vec::new())],
+        chpx_runs: vec![(0, Vec::new())],
+        papx_entries: vec![
+            (0, 0, in_tbl.clone()), // a..e cell marks
+            (10, 0, ttp(row1)),     // row 1 end mark
+            (11, 0, in_tbl.clone()),
+            (21, 0, ttp(row2)),
+            (22, 0, in_tbl),
+            (29, 0, ttp(row3)),
+            (30, 0, Vec::new()), // tail
+        ],
+        plf_lst: Vec::new(),
+        plf_lfo: Vec::new(),
+        note_stories: vec![],
+        endnote_stories: vec![],
+        extra_pairs: Vec::new(),
+        data_stream: Vec::new(),
+    };
+    read(&struct_doc(&spec)).expect("opens")
+}
+
+#[test]
+fn word_table_row_end_mark_and_cell_shading() {
+    let edges5: [i16; 6] = [0, 1440, 2880, 4320, 5760, 7200];
+    // Row 1: the Shd80 fallback first (icoBack 9 = navy, clear), then the exact fill, dark
+    // blue 1C3A70, in sprmTDefTableShd (0xD612) and sprmTDefTableShdRaw (0xD670), as Word
+    // 365 writes it. The exact colours must beat the palette colour.
+    let shd80: Vec<u8> = [0x20u8, 0x01].repeat(5);
+    let row1 = [
+        t_def_edges(&edges5),
+        sprm_cb(0xD609, &shd80),
+        sprm_cb(0xD612, &shd_clear([0x1C, 0x3A, 0x70], 5)),
+        sprm_cb(0xD670, &shd_clear([0x1C, 0x3A, 0x70], 5)),
+    ]
+    .concat();
+    // Row 2: a Shd80 yellow fill (icoBack 7) on every cell, then sprmTDefTableShd with light
+    // blue E8F0FA for cells 0-3 and an automatic Shd for cell 4, which clears its fill.
+    let shd80_yellow: Vec<u8> = [0xE0u8, 0x00].repeat(5);
+    let shd2 = [shd_clear([0xE8, 0xF0, 0xFA], 4), vec![0, 0, 0, 0xFF, 0, 0, 0, 0xFF, 0, 0]].concat();
+    let row2 = [t_def_edges(&edges5), sprm_cb(0xD609, &shd80_yellow), sprm_cb(0xD612, &shd2)].concat();
+    // Row 3: one cell from the first edge to the last, filled FFF2CC.
+    let row3 = [t_def_edges(&[0, 7200]), sprm_cb(0xD612, &shd_clear([0xFF, 0xF2, 0xCC], 1))].concat();
+    let doc = word_table_doc(row1, row2, row3);
+    let tbl = doc.body.iter().find_map(|b| b.as_table()).expect("table");
+    assert_eq!(tbl.grid.len(), 5, "grid columns");
+    assert_eq!(tbl.rows.len(), 3);
+    let counts: Vec<usize> = tbl.rows.iter().map(|r| r.cells.len()).collect();
+    assert_eq!(counts, [5, 5, 1], "cells per row (the row-end mark is not a cell)");
+    let shd = |r: usize| tbl.rows[r].cells.iter().map(|c| c.props.shading).collect::<Vec<_>>();
+    assert_eq!(shd(0), vec![Some(wordcraft_doc::Rgb(0x1C, 0x3A, 0x70)); 5], "exact fill beats the Shd80 palette colour");
+    let light = Some(wordcraft_doc::Rgb(0xE8, 0xF0, 0xFA));
+    assert_eq!(shd(1), vec![light, light, light, light, None], "automatic Shd clears the Shd80 fill");
+    assert_eq!(shd(2), vec![Some(wordcraft_doc::Rgb(0xFF, 0xF2, 0xCC))], "legend fill");
+    let legend = tbl.rows[2].cells[0].blocks.iter().filter_map(|b| b.as_para()).map(|p| p.text.clone()).collect::<String>();
+    assert_eq!(legend, "legend");
+    let tail = doc.body.last().and_then(|b| b.as_para()).expect("tail para");
+    assert_eq!(tail.text, "tail");
+}
+
+#[test]
+fn word97_shd80_clear_fill_shows_its_background() {
+    // Word 97 writes only sprmTDefTableShd80: a plain fill is pattern clear (ipat 0) with
+    // the colour in icoBack. Cells: icoBack 7 (yellow), icoBack 16 (silver), auto (none),
+    // solid (ipat 1) with icoFore 2 (blue).
+    let shd80: Vec<u8> = [0xE0u16, 16 << 5, 0, (1 << 10) | 2].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let papx = sprm_cb(0xD609, &shd80);
+    let row = crate::table::decode(&papx);
+    assert_eq!(row.shading_of(0), Some(wordcraft_doc::Rgb(255, 255, 0)));
+    assert_eq!(row.shading_of(1), Some(wordcraft_doc::Rgb(192, 192, 192)));
+    assert_eq!(row.shading_of(2), None);
+    assert_eq!(row.shading_of(3), Some(wordcraft_doc::Rgb(0, 0, 255)));
+}
+
+#[test]
+fn shd_arrays_keep_to_their_cell_ranges() {
+    // sprmTDefTableShd and sprmTDefTableShdRaw cover cells 0-21; their 2nd and 3rd forms
+    // cover 22-43 and 44-62. An over-long first array must not reach cell 22.
+    let red = shd_clear([0xFF, 0, 0], 1);
+    let green = shd_clear([0, 0xFF, 0], 1);
+    let blue = shd_clear([0, 0, 0xFF], 1);
+    let over_long = shd_clear([0x11, 0x22, 0x33], 23);
+    for (first, second, third) in [(0xD612u16, 0xD616u16, 0xD60Cu16), (0xD670, 0xD671, 0xD672)] {
+        let papx = [sprm_cb(second, &green), sprm_cb(third, &blue), sprm_cb(first, &over_long)].concat();
+        let row = crate::table::decode(&papx);
+        assert_eq!(row.shading_of(21), Some(wordcraft_doc::Rgb(0x11, 0x22, 0x33)), "{first:04X}");
+        assert_eq!(row.shading_of(22), Some(wordcraft_doc::Rgb(0, 0xFF, 0)), "{second:04X} keeps cell 22");
+        assert_eq!(row.shading_of(44), Some(wordcraft_doc::Rgb(0, 0, 0xFF)), "{third:04X} starts at cell 44");
+        let papx = sprm_cb(first, &red);
+        assert_eq!(crate::table::decode(&papx).shading_of(0), Some(wordcraft_doc::Rgb(0xFF, 0, 0)));
+    }
+}
+
+#[test]
+fn hostile_table_shading_and_spans_are_safe() {
+    // SHD arrays longer than the row, odd lengths, empty ones; itcMac past 63; edges that
+    // run backwards or past the grid; merges past the row's end.
+    // (Kept small: the fixture's single PAPX page holds every row's grpprl.)
+    let long = shd_clear([1, 2, 3], 6);
+    let rows: Vec<(Vec<u8>, Vec<u8>, Vec<u8>)> = vec![
+        ([sprm_cb(0xD612, &long), sprm_cb(0xD616, &long)].concat(), sprm_cb(0xD60C, &long), sprm_cb(0xD670, &long)),
+        (sprm_cb(0xD612, &[1, 2, 3, 4, 5, 6, 7]), sprm_cb(0xD670, &[]), sprm_cb(0xD672, &long[..13])),
+        (
+            {
+                let mut v = (0xD608u16).to_le_bytes().to_vec();
+                v.extend_from_slice(&[0xFF, 0x00, 200]);
+                v.extend_from_slice(&[0x10; 24]);
+                v
+            },
+            t_def_edges(&[7200, 0, -5, 30000]),
+            t_def_edges(&[-32000, 32000]),
+        ),
+        (t_def_edges(&[0]), t_def_edges(&[]), [t_def_edges(&[0, 100, i16::MAX]), sprm_cb(0xD612, &long)].concat()),
+        (grpprl(&[(0x5624, &[0, 200])]), grpprl(&[(0x5624, &[200, 3])]), grpprl(&[(0x5624, &[1, 255])])),
+    ];
+    for (r1, r2, r3) in rows {
+        let doc = word_table_doc(r1, r2, r3);
+        let text = doc.plain_text(wordcraft_doc::StoryRef::Body);
+        assert!(text.contains("legend") && text.contains("tail"), "{text:?}");
+        if let Some(t) = doc.body.iter().find_map(|b| b.as_table()) {
+            assert!(t.grid.len() <= 63);
+            for r in &t.rows {
+                assert!(r.cells.iter().all(|c| c.props.span <= 63));
+            }
+        }
+    }
+    // A row that is only a row-end mark (no cell marks before it), with an out-of-range
+    // merge and a SHD array, then a normal row.
+    // The second variant's sprmTDefTable is truncated to a single edge (itcMac 3), which
+    // must not turn the lone row-end mark into a row with no cells.
+    let text = "\u{7}a\u{7}\u{7}tail\r";
+    let ttp = |extra: Vec<u8>| [grpprl(&[(0x2416, &[0x01]), (0x2417, &[0x01]), (0x6649, &[1, 0, 0, 0])]), extra].concat();
+    let one_edge = {
+        let mut v = (0xD608u16).to_le_bytes().to_vec();
+        v.extend_from_slice(&4u16.to_le_bytes()); // cb: itcMac + one edge, plus one
+        v.extend_from_slice(&[3, 0, 0]);
+        v
+    };
+    for lone in [[t_def_edges(&[0, 1440]), grpprl(&[(0x5624, &[0, 9])]), sprm_cb(0xD612, &long)].concat(), one_edge] {
+        let spec = one_section(
+            text,
+            Vec::new(),
+            vec![
+                (0, 0, ttp(lone)),
+                (1, 0, grpprl(&[(0x2416, &[0x01]), (0x6649, &[1, 0, 0, 0])])),
+                (3, 0, ttp(t_def_edges(&[0, 1440]))),
+                (4, 0, Vec::new()),
+            ],
+        );
+        let doc = read(&struct_doc(&spec)).expect("opens");
+        let text = doc.plain_text(wordcraft_doc::StoryRef::Body);
+        assert!(text.contains('a') && text.contains("tail"), "{text:?}");
+        for t in doc.body.iter().filter_map(|b| b.as_table()) {
+            assert!(t.rows.iter().all(|r| !r.cells.is_empty()), "no zero-cell rows");
+        }
+    }
+}
+
+#[test]
+fn nil_raw_shading_keeps_the_earlier_colour() {
+    // In sprmTDefTableShdRaw (and its 2nd/3rd forms) a nil Shd (ipat 0xFFFF) means "as the
+    // table style shades it", so it must not override sprmTDefTableShd; automatic clears.
+    let blue = shd_clear([0, 0, 0xFF], 1);
+    let red = shd_clear([0xFF, 0, 0], 1);
+    let nil = vec![0, 0, 0, 0xFF, 0, 0, 0, 0xFF, 0xFF, 0xFF];
+    let auto = vec![0, 0, 0, 0xFF, 0, 0, 0, 0xFF, 0, 0];
+    let papx = [sprm_cb(0xD612, &[blue.clone(), blue.clone(), blue.clone()].concat()), sprm_cb(0xD670, &[nil.clone(), red, auto].concat())].concat();
+    let row = crate::table::decode(&papx);
+    assert_eq!(row.shading_of(0), Some(wordcraft_doc::Rgb(0, 0, 0xFF)), "nil keeps blue");
+    assert_eq!(row.shading_of(1), Some(wordcraft_doc::Rgb(0xFF, 0, 0)));
+    assert_eq!(row.shading_of(2), None, "automatic clears");
+    for (first, raw) in [(0xD616u16, 0xD671u16), (0xD60C, 0xD672)] {
+        let papx = [sprm_cb(first, &blue), sprm_cb(raw, &nil)].concat();
+        let cell = if first == 0xD616 { 22 } else { 44 };
+        assert_eq!(crate::table::decode(&papx).shading_of(cell), Some(wordcraft_doc::Rgb(0, 0, 0xFF)), "{raw:04X}");
+    }
+}
+
+#[test]
+fn second_table_gets_its_own_grid() {
+    // #1380: a 5-column table, a paragraph, then a 3-column table. The second table's grid
+    // comes from its own rows, not the first table's, and its borders, alignment and indent
+    // are its own too (the first table's centred, bordered and indented).
+    let text = "a\u{7}b\u{7}c\u{7}d\u{7}e\u{7}\u{7}between\rx\u{7}y\u{7}z\u{7}\u{7}tail\r";
+    let in_tbl = grpprl(&[(0x2416, &[0x01]), (0x6649, &[1, 0, 0, 0])]);
+    let ttp = |edges: &[i16]| [grpprl(&[(0x2416, &[0x01]), (0x2417, &[0x01]), (0x6649, &[1, 0, 0, 0])]), t_def_edges(edges)].concat();
+    let table1_props = {
+        let mut borders = (0xD605u16).to_le_bytes().to_vec();
+        borders.push(0x18);
+        for _ in 0..6 {
+            borders.extend_from_slice(&[4, 1, 1, 0]);
+        }
+        [borders, grpprl(&[(0x5400, &1u16.to_le_bytes()), (0x9601, &720i16.to_le_bytes())])].concat()
+    };
+    let spec = StructSpec {
+        text,
+        header_stories: vec![],
+        sections: vec![(text.chars().count() as u32, Vec::new())],
+        chpx_runs: vec![(0, Vec::new())],
+        papx_entries: vec![
+            (0, 0, in_tbl.clone()),
+            (10, 0, [ttp(&[0, 1440, 2880, 4320, 5760, 7200]), table1_props].concat()),
+            (11, 0, Vec::new()), // "between"
+            (19, 0, in_tbl),
+            (25, 0, ttp(&[0, 2000, 4000, 7200])),
+            (26, 0, Vec::new()), // tail
+        ],
+        plf_lst: Vec::new(),
+        plf_lfo: Vec::new(),
+        note_stories: vec![],
+        endnote_stories: vec![],
+        extra_pairs: Vec::new(),
+        data_stream: Vec::new(),
+    };
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    let tables: Vec<_> = doc.body.iter().filter_map(|b| b.as_table()).collect();
+    assert_eq!(tables.len(), 2);
+    assert_eq!(tables[0].grid.len(), 5);
+    assert_eq!(tables[1].grid, vec![100.0, 100.0, 160.0], "second table's own grid");
+    assert_eq!(tables[1].rows[0].cells.iter().map(|c| c.span()).collect::<Vec<_>>(), [1, 1, 1]);
+    assert!(tables[0].props.borders.is_some() && tables[0].props.align.is_some() && tables[0].props.indent.is_some());
+    assert_eq!(tables[1].props.borders, None, "borders reset");
+    assert_eq!(tables[1].props.align, None, "alignment reset");
+    assert_eq!(tables[1].props.indent, None, "indent reset");
 }

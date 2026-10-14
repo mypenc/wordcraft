@@ -38,6 +38,16 @@ fn substitutes(family: &str) -> &'static [&'static str] {
     // headings and screens. Open fonts with full Persian coverage first.
     const NASKH: &[&str] = &["Noto Naskh Arabic", "XB Zar", "XB Niloofar", "Amiri", "Vazirmatn", "Noto Sans Arabic", "DejaVu Sans", "Source Serif 4"];
     const ARABIC_SANS: &[&str] = &["Vazirmatn", "Sahel", "Shabnam", "Samim", "Noto Sans Arabic", "Noto Naskh Arabic", "DejaVu Sans", "Source Sans 3"];
+    // Hebrew document fonts: platform-specific fonts first, then common open source fallbacks.
+    // Windows: Microsoft Office fonts (David, Miriam) are common; Segoe UI is standard.
+    // macOS: Helvetica has good Hebrew support; Geeza Pro is included by default.
+    // Linux: Noto Sans Hebrew is the best option.
+    #[cfg(windows)]
+    const HEBREW: &[&str] = &["Noto Sans Hebrew", "David", "Miriam", "Segoe UI", "Arial", "Tahoma", "DejaVu Sans", "Source Sans 3"];
+    #[cfg(target_os = "macos")]
+    const HEBREW: &[&str] = &["Helvetica", "Noto Sans Hebrew", "Arial", "Tahoma", "Geeza Pro", "DejaVu Sans", "Source Sans 3"];
+    #[cfg(not(any(windows, target_os = "macos")))]
+    const HEBREW: &[&str] = &["Noto Sans Hebrew", "Segoe UI", "Arial", "Tahoma", "DejaVu Sans", "Source Sans 3"];
     // Palatino Linotype / Book Antiqua: macOS ships the same design as "Palatino"; open
     // look-alikes with matching metrics (TeX Gyre Pagella, URW P052 / Palladio) on Linux.
     const PALATINO: &[&str] = &[
@@ -57,6 +67,9 @@ fn substitutes(family: &str) -> &'static [&'static str] {
         "Source Serif 4",
     ];
     let f = family.to_ascii_lowercase();
+    if is_hebrew(&f) {
+        return HEBREW;
+    }
     if is_persian_naskh(&f) {
         return NASKH;
     }
@@ -179,6 +192,12 @@ fn is_persian_sans(f: &str) -> bool {
         "arabic transparent",
     ];
     NAMES.contains(&f) || f.starts_with("iransans") || f.starts_with("iranyekan")
+}
+
+/// Hebrew document fonts.
+fn is_hebrew(f: &str) -> bool {
+    const NAMES: &[&str] = &["david", "miriam", "noto sans hebrew", "arial hebrew", "calibri hebrew"];
+    NAMES.contains(&f) || f.contains("hebrew")
 }
 
 fn style_name(bold: bool, italic: bool) -> &'static str {
@@ -330,5 +349,18 @@ mod tests {
         // JetBrains Mono ships only Regular here.
         let r = resolve("JetBrains Mono", true, true);
         assert!(r.synth_bold && r.synth_italic);
+    }
+
+    #[test]
+    fn hebrew_fonts_substitute_hebrew_faces() {
+        for f in ["David", "Miriam", "Arial Hebrew", "Calibri Hebrew", "Noto Sans Hebrew"] {
+            assert!(substitutes(f).contains(&"Noto Sans Hebrew"), "{f}");
+            // David is a Windows font; only the Windows list offers it.
+            if cfg!(target_os = "windows") {
+                assert!(substitutes(f).contains(&"David") || f == "David", "{f}");
+            }
+        }
+        // Generic names with "Hebrew" in them also get Hebrew substitutions
+        assert!(substitutes("SomeFont Hebrew").contains(&"Noto Sans Hebrew"));
     }
 }

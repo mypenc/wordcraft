@@ -59,8 +59,8 @@ impl WrapPolygon {
 
 /// A shape's outline in unit coordinates (0..1 across a `w` × `h` frame), flattened to straight
 /// lines. `None` for shapes whose outline is their rectangle (rectangles, text boxes, lines,
-/// freeforms).
-pub fn shape_outline(kind: ShapeKind, w: f32, h: f32) -> Option<Vec<(f32, f32)>> {
+/// freeforms). `corner` is a rounded rectangle's (see [`crate::connector::ShapeExtra::corner`]).
+pub fn shape_outline(kind: ShapeKind, w: f32, h: f32, corner: Option<u32>) -> Option<Vec<(f32, f32)>> {
     use std::f32::consts::{FRAC_PI_2, PI, TAU};
     let pos = |v: f32| if v.is_finite() { v.clamp(0.0, 1.0e6) } else { 0.0 };
     let (w, h) = (pos(w), pos(h));
@@ -75,8 +75,8 @@ pub fn shape_outline(kind: ShapeKind, w: f32, h: f32) -> Option<Vec<(f32, f32)>>
         | ShapeKind::CurvedConnector => return None,
         ShapeKind::Ellipse => (0..48).map(|i| (i as f32) * TAU / 48.0).map(|a| (0.5 + 0.5 * a.cos(), 0.5 + 0.5 * a.sin())).collect(),
         ShapeKind::RoundedRectangle => {
-            // Corner radius as drawn: 16% of the shorter side.
-            let r = 0.16 * w.min(h);
+            // Corner radius as drawn.
+            let r = crate::connector::corner_radius(corner, w, h);
             let (rx, ry) = if w > 0.0 && h > 0.0 { (r / w, r / h) } else { (0.0, 0.0) };
             let mut pts = Vec::new();
             for (cx, cy, a0) in [(1.0 - rx, 1.0 - ry, 0.0), (rx, 1.0 - ry, FRAC_PI_2), (rx, ry, PI), (1.0 - rx, ry, PI + FRAC_PI_2)] {
@@ -223,12 +223,19 @@ mod tests {
             ShapeKind::Heart,
         ] {
             for (w, h) in [(100.0, 50.0), (0.0, 0.0), (f32::NAN, 10.0)] {
-                let pts = shape_outline(kind, w, h).unwrap();
-                assert!(pts.len() >= 3 && pts.len() <= MAX_DERIVED_POINTS, "{kind:?}");
-                assert!(pts.iter().all(|(x, y)| (-0.001..=1.001).contains(x) && (-0.001..=1.001).contains(y)), "{kind:?}");
+                for corner in [None, Some(0), Some(3_565), Some(u32::MAX)] {
+                    let pts = shape_outline(kind, w, h, corner).unwrap();
+                    assert!(pts.len() >= 3 && pts.len() <= MAX_DERIVED_POINTS, "{kind:?}");
+                    assert!(pts.iter().all(|(x, y)| (-0.001..=1.001).contains(x) && (-0.001..=1.001).contains(y)), "{kind:?}");
+                }
             }
         }
-        assert!(shape_outline(ShapeKind::Rectangle, 10.0, 10.0).is_none());
+        assert!(shape_outline(ShapeKind::Rectangle, 10.0, 10.0, None).is_none());
+        // The end of the bottom-right corner: in the frame's corner when the corner is square,
+        // 16% of the height (8 of 100 wide) in from it by default.
+        let corner_pt = |corner| shape_outline(ShapeKind::RoundedRectangle, 100.0, 50.0, corner).unwrap()[6];
+        assert!(corner_pt(Some(0)).0 > 0.999 && corner_pt(Some(0)).1 > 0.999, "{:?}", corner_pt(Some(0)));
+        assert!((corner_pt(None).0 - 0.92).abs() < 0.001, "{:?}", corner_pt(None));
     }
 
     #[test]

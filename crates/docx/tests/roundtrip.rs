@@ -230,6 +230,7 @@ fn styles_and_lists_round_trip() {
         hidden: false,
         builtin: false,
         locked: true,
+        default: false,
         table: None,
     });
     d.styles.upsert(Style {
@@ -470,11 +471,27 @@ fn comments_round_trip() {
     let c1 = d.add_part(PartKind::Comment, vec![para_block(Paragraph::with_text("Done.", CharProps::default()))]);
     d.comments.insert(
         0,
-        Comment { author: "Ann".into(), initials: "A".into(), date: "2026-01-02T03:04:05Z".into(), parent: None, resolved: true, part: c0 },
+        Comment {
+            author: "Ann".into(),
+            initials: "A".into(),
+            date: "2026-01-02T03:04:05Z".into(),
+            parent: None,
+            resolved: true,
+            part: c0,
+            ..Default::default()
+        },
     );
     d.comments.insert(
         1,
-        Comment { author: "Ben".into(), initials: "B".into(), date: "2026-01-03T00:00:00Z".into(), parent: Some(0), resolved: false, part: c1 },
+        Comment {
+            author: "Ben".into(),
+            initials: "B".into(),
+            date: "2026-01-03T00:00:00Z".into(),
+            parent: Some(0),
+            resolved: false,
+            part: c1,
+            ..Default::default()
+        },
     );
     let mut p = Paragraph::with_text("commented text", CharProps::default());
     p.insert_object(0, InlineObject::CommentStart { id: 0 }, &CharProps::default()).unwrap();
@@ -1152,6 +1169,28 @@ fn rotated_drawing_canvas_round_trips() {
 }
 
 #[test]
+fn table_contextual_spacing_compatibility_flag_round_trips() {
+    for mode in [11, 12, 14, 15] {
+        for allow in [false, true] {
+            let mut d = Document::new();
+            d.settings.compat_mode = mode;
+            d.settings.allow_space_of_same_style_in_table = allow;
+            let r = rt(&d);
+            assert_eq!(r.settings.allow_space_of_same_style_in_table, allow);
+            assert_eq!(r.settings.compat_mode, mode);
+            if allow {
+                let bytes = wordcraft_docx::write(&d).unwrap();
+                let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+                let mut xml = String::new();
+                std::io::Read::read_to_string(&mut zip.by_name("word/settings.xml").unwrap(), &mut xml).unwrap();
+                // CT_Compat requires the boolean option before compatSetting.
+                assert!(xml.find("<w:allowSpaceOfSameStyleInTable").unwrap() < xml.find("<w:compatSetting").unwrap());
+            }
+        }
+    }
+}
+
+#[test]
 fn compatibility_mode_round_trips() {
     // New documents are Word 2013+ documents; an older file keeps its mode, so saving it doesn't
     // change how Word lays it out.
@@ -1193,6 +1232,31 @@ fn attached_template_and_link_styles_round_trip() {
     let plain = rt(&Document::new());
     assert_eq!(plain.settings.attached_template, None);
     assert!(!plain.settings.link_styles);
+}
+
+/// #995: the zoom a document was saved at (`w:zoom`), One Page (`fullPage`) included, is read
+/// and written back.
+#[test]
+fn zoom_round_trips() {
+    let settings = |bytes: &[u8]| {
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut xml = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("word/settings.xml").unwrap(), &mut xml).unwrap();
+        xml
+    };
+    let plain = wordcraft_docx::write(&Document::new()).unwrap();
+    let xml = settings(&plain);
+    assert!(xml.contains(r#"<w:zoom w:percent="100"/>"#), "{xml}");
+    for (zoom, written) in [
+        (r#"<w:zoom w:val="fullPage" w:percent="62"/>"#, r#"<w:zoom w:val="fullPage" w:percent="62"/>"#),
+        (r#"<w:zoom w:percent="75%"/>"#, r#"<w:zoom w:percent="75"/>"#),
+        (r#"<w:zoom w:val="bestFit" w:percent="99999"/>"#, r#"<w:zoom w:val="bestFit" w:percent="500"/>"#),
+        (r#"<w:zoom w:val="sideways" w:percent="80"/>"#, r#"<w:zoom w:percent="80"/>"#),
+    ] {
+        let file = replace_part(&plain, "word/settings.xml", xml.replace(r#"<w:zoom w:percent="100"/>"#, zoom).as_bytes());
+        let back = settings(&wordcraft_docx::write(&wordcraft_docx::read(&file).unwrap()).unwrap());
+        assert!(back.contains(written), "{zoom}: {back}");
+    }
 }
 
 #[test]
@@ -1926,7 +1990,7 @@ fn wrap_polygons_round_trip() {
     let got = paras(&r)[0];
     let floats: Vec<Float> = got.objects.iter().filter_map(|o| o.frame().map(|(_, _, f)| f.clone())).collect();
     assert_eq!(floats[0], edited);
-    let ellipse = WrapPolygon::from_unit(false, &shape_outline(ShapeKind::Ellipse, 80.0, 40.0).unwrap());
+    let ellipse = WrapPolygon::from_unit(false, &shape_outline(ShapeKind::Ellipse, 80.0, 40.0, None).unwrap());
     assert_eq!(floats[1].wrap, Wrap::Through);
     assert_eq!(floats[1].wrap_polygon.as_deref(), ellipse.as_ref());
 }
@@ -2213,4 +2277,25 @@ fn replace_part(zip_bytes: &[u8], name: &str, data: &[u8]) -> Vec<u8> {
         }
     }
     out.finish().unwrap().into_inner()
+}
+
+/// A texture or picture page background (`v:background/v:fill`) survives a save (#999): the image
+/// part, its relationship and the fill attributes.
+#[test]
+fn page_background_picture_round_trips() {
+    let mut png = Vec::new();
+    image::RgbaImage::from_pixel(4, 4, image::Rgba([200, 150, 100, 255]))
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    let mut d = Document::new();
+    d.settings.page_color = Some(Rgb(0xFF, 0xFF, 0xCC));
+    d.media.insert("paper.png".into(), Arc::new(png.clone()));
+    d.settings.page_picture = Some(wordcraft_doc::PagePicture { media: "paper.png".into(), fill_type: "tile".into(), title: "Paper".into() });
+    let r = rt(&d);
+    let pic = r.settings.page_picture.as_ref().expect("picture kept");
+    assert_eq!((pic.fill_type.as_str(), pic.title.as_str()), ("tile", "Paper"));
+    assert_eq!(r.media.get(&pic.media).map(|b| b.as_slice()), Some(png.as_slice()));
+    assert_eq!(r.settings.page_color, d.settings.page_color);
+    // Saved again, it is still there.
+    assert!(rt(&r).settings.page_picture.is_some());
 }

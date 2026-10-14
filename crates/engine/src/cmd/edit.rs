@@ -634,6 +634,7 @@ fn replace_all(s: &mut Session, v: &Value) -> CmdResult {
     let story = s.sel.focus.story;
     let results = search_full(s, story, true)?;
     let n = results.len();
+    super::controls::check_deletions(s, story, results.iter().map(|f| (&f.a, &f.b)))?;
     for Found { a, b, rep } in results.into_iter().rev() {
         let with = rep.unwrap_or_default();
         if s.doc.settings.track_changes {

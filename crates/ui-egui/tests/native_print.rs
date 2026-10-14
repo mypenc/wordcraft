@@ -170,7 +170,11 @@ fn repeated_fast_jobs_each_surface_an_identical_receipt() {
 
 #[test]
 fn native_ranges_and_parity_do_not_duplicate_spooler_copies() {
-    let mut app = WordApp::new(Session::new(wordcraft_doc::Document::new()), Services::default());
+    // A fixed creation date: without one each PDF is stamped with the current time, and the two
+    // compared below differ when a clock second ticks over between them (#987).
+    let mut doc = wordcraft_doc::Document::new();
+    doc.core.created = "2026-01-01T00:00:00Z".into();
+    let mut app = WordApp::new(Session::new(doc), Services::default());
     for page in 1..=3 {
         app.run("text.insert", json!({"text":format!("Distinct page {page}")})).unwrap();
         if page < 3 {
@@ -197,6 +201,8 @@ fn native_ranges_and_parity_do_not_duplicate_spooler_copies() {
     assert_eq!(plan.pages, vec![0, 2]);
     app.run("ui.printSubmit", params).unwrap();
     let jobs = jobs.borrow();
+    let stamped = |pdf: &[u8]| pdf.windows(16).any(|w| w == b"D:20260101000000");
+    assert!(stamped(&expected) && stamped(&jobs[0].0), "both PDFs carry the document's own creation date");
     assert_eq!(jobs[0].0, expected, "the PDF contains only the two selected pages, once each");
     assert_eq!(jobs[0].1.copies, 3, "copies go to the spooler, not the PDF");
     assert!(!jobs[0].2, "uncollated copies reach the spooler");

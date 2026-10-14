@@ -337,6 +337,7 @@
 	Immersive	Süvenemine
 	Immersive Reader	Süvaluger
 	Immersive\nReader	Süva-\nluger
+	In the margin	Veerisel
 	Inches	Tollid
 	Increase Font Size	Suurenda fondi suurust
 	Increase Indent	Suurenda taanet
@@ -504,6 +505,7 @@
 	Office 2003 Default	Office 2003 vaikevalik
 	One	Üks
 	One Page	Üks leht
+	Only for the selected text	Ainult valitud teksti jaoks
 	Open	Ava
 	OpenDocument Text (*.odt)	OpenDocumenti tekst (*.odt)
 	Optional Hyphen	Valikuline poolitusmärk
@@ -516,6 +518,8 @@
 	Oval	Ovaal
 	Overtype	Ülekirjutus
 	Overtype (typing replaces the characters after the caret)	Ülekirjutus (kirjutatu asendab kursori järel olevad märgid)
+	Show alignment guides when moving pictures and shapes	Näita piltide ja kujundite teisaldamisel joondusjuhikuid
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Teisaldatavad objektid haakuvad lehe servade ja keskkoha, veeriste ja teiste objektide külge. Vabaks teisaldamiseks hoia all Alt-klahvi.
 	PDF document (*.pdf)	PDF-dokument (*.pdf)
 	Page	Leht
 	Page Background	Lehe taust
@@ -1418,6 +1422,7 @@
 	Demote	Langeta taset
 	Go Back	Mine tagasi
 	Toggle Unicode Character	Lülita Unicode-märk
+	Type Character Code	Sisesta märgikood
 	Toggle Field Codes	Lülita väljakoodid sisse/välja
 	Edit Field Code	Redigeeri väljakoodi
 	Unlink Fields	Eemalda väljade link
@@ -2063,6 +2068,7 @@
 	Hyphenation Options…	Poolitussätted…
 	Hyphenation zone:	Poolitusala:
 	Italian	Itaalia
+	Croatian	Horvaadi
 	Japanese	Jaapani
 	Korean	Korea
 	Limit consecutive hyphens to:	Järjestikuseid poolitusi kuni:
@@ -2109,9 +2115,49 @@
 	AutoFit Column by Double-Clicking	Veeru automaatne sobitus topeltklõpsuga
 	Region:	Piirkond:
 	Automatic ({region})	Automaatne ({region})
+	Text of the nearest paragraph with a given style (running headers)	Antud stiiliga lähima lõigu tekst (jooksvad päised)
+	Style name:	Stiili nimi:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtreeri adressaate
+	Sort Recipients	Sordi adressaate
+	Filter and Sort	Filtreerimine ja sortimine
+	And	Ja
+	Or	Või
+	Comparison	Võrdlus
+	Compare to	Võrdle väärtusega
+	Add Condition	Lisa tingimus
+	Remove condition	Eemalda tingimus
+	Sort by	Sordi välja järgi
+	Then by	Seejärel
+	Ascending	Kasvavalt
+	Descending	Kahanevalt
+	Equal to	Võrdne
+	Not equal to	Ei võrdu
+	Less than	Väiksem kui
+	Greater than	Suurem kui
+	Less than or equal	Väiksem või võrdne
+	Greater than or equal	Suurem või võrdne
+	Is blank	On tühi
+	Is not blank	Pole tühi
+	Contains	Sisaldab
+	Does not contain	Ei sisalda
+	{count} of {total} recipients will be merged.	Ühendatavaid adressaate: {count} / {total}.
+	Take the last match on the page	Võta lehe viimane vaste
+	Show its list number	Näita selle loendinumbrit
+	Show its number relative to this field	Näita selle numbrit selle välja suhtes
+	Show its number with all higher levels	Näita selle numbrit koos kõigi kõrgemate tasemetega
+	Number only, without the label's words	Ainult number, ilma sildi sõnadeta
+	Add whether it is above or below	Lisa, kas see on üleval või all
 	Start-up	Käivitamine
 	Show the Start screen when WordCraft starts	Näita WordCrafti käivitamisel avakuva
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Sees: WordCraft avaneb vaates Fail › Avaleht, kus on tühi dokument, mallid ja hiljutised dokumendid. Väljas: avaneb tühi dokument.
+	Copy to	Kopeeri asukohta
+
+# Document naming and account controls.
+	Rename Document	Nimeta dokument ümber
+	Document name	Dokumendi nimi
+	Rename	Nimeta ümber
+	Account	Konto
 	Privacy Options	Privaatsussuvandid
 	Trust Center	Usalduskeskus
 	Privacy for this document	Selle dokumendi privaatsus
@@ -2119,3 +2165,48 @@
 	Leave out the date and time of comments and tracked changes when saving	Jäta salvestamisel välja kommentaaride ja jälitatud muudatuste kuupäev ja kellaaeg
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Redigeeritav dokument säilitab nimed ja kuupäevad; need jäetakse välja ainult salvestatud failist.
 	Privacy Settings	Praegused privaatsussätted
+	Waiting for the save to finish…	Ootan salvestamise lõppu…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Faili {name} salvestamine tühistati, see on endiselt avatud ja midagi ei läinud kaotsi.
+	Paper	Paber
+	Paper size:	Paberi suurus:
+	Custom size	Kohandatud suurus
+	More Paper Sizes…	Rohkem paberisuurusi…
+	The margins don't fit on a page this size; make the margins smaller first.	Veerised ei mahu selle suurusega lehele; vähendage esmalt veeriseid.
+	Full Screen	Täisekraan
+	Full\nScreen	Täis-\nekraan
+	Use the browser's full screen (F11)	Kasutage brauseri täisekraani (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} tolli
+	{name}   {height} × {width} mm	{name}   {height} × {width} mm
+	{width} × {height} mm	{width} × {height} mm
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Uurija vajab võrguteenust; WordCraft hoiab teie dokumendid võrguühenduseta.
+	These settings will be used for new documents.	Neid sätteid kasutatakse uute dokumentide puhul.
+	can't split at the first row	tabelit ei saa esimese rea kohalt tükeldada
+	select two or more cells to merge	valige ühendamiseks kaks või rohkem lahtrit
+	there is no ink to replay	esitamiseks pole käsikirja
+	there's no citation after the caret	kursori järel pole viidet
+	this item is already at the top level	see üksus on juba ülemisel tasemel
+	Envelope #10	Ümbrik nr 10
+	Envelope DL	Ümbrik DL
+	Reading Mode	Lugemisrežiim
+	Column width	Veeru laius
+	Text size	Teksti suurus
+	Edit Document	Redigeeri dokumenti
+	Go to what:	Mine:
+	Type +2 or -1 to move from the page you are on.	Sisesta +2 või -1, et liikuda praegusest leheküljest edasi või tagasi.
+	Suggested	Soovitused
+	Set Proofing Language…	Määra õigekeelsuskontrolli keel…
+	Language Preferences…	Keele-eelistused…
+
+# Dictionaries folder (#1063)
+	Dictionaries	Sõnastikud
+	Dictionaries folder:	Sõnastike kaust:
+	Not set: the system's usual places	Määramata: süsteemi tavapärased asukohad
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Selle kausta Hunspelli .aff- ja .dic-failid (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) on eelistatud süsteemi omadele.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: sõnastikku ei leitud
+
+# Backstage › Recover (#586)
+	Recover	Taasta

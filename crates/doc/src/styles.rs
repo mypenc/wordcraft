@@ -41,6 +41,10 @@ pub struct Style {
     /// (`w:locked`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,
+    /// The default style of its kind (`w:default`), whatever its id: localized documents call
+    /// the default character, table and list styles something other than the English ids.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub default: bool,
     /// Table style: conditional formatting for header row, banding etc.
     pub table: Option<TableStyleParts>,
 }
@@ -142,6 +146,10 @@ pub struct StyleSheet {
     /// the application; nonempty `default_para` is always written after spacing edits.
     pub default_para_present: bool,
     pub styles: Vec<Style>,
+    /// The file's `w:latentStyles` (behaviour of built-in styles not defined in the document:
+    /// gallery, priority, visibility), as XML, written back as is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latent_styles: Option<String>,
 }
 
 impl Default for StyleSheet {
@@ -168,7 +176,13 @@ fn color(c: Rgb) -> Option<TextColor> {
 
 impl StyleSheet {
     pub fn empty() -> Self {
-        StyleSheet { default_chr: CharProps::default(), default_para: ParaProps::default(), default_para_present: true, styles: Vec::new() }
+        StyleSheet {
+            default_chr: CharProps::default(),
+            default_para: ParaProps::default(),
+            default_para_present: true,
+            styles: Vec::new(),
+            latent_styles: None,
+        }
     }
 
     /// The built-in style set used for new documents.
@@ -184,6 +198,7 @@ impl StyleSheet {
             },
             default_para_present: true,
             styles: Vec::new(),
+            latent_styles: None,
         };
         let mut add = |st: Style| s.styles.push(st);
         add(Style { id: "Normal".into(), name: "Normal".into(), priority: Some(0), quick: true, ..p_style() });

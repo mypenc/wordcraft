@@ -9,7 +9,7 @@
 //! an operator or space; a parenthesised operand loses its parentheses). `^`/`_` with nothing
 //! before them are pre-scripts. A top-level `#` numbers the equation (`E=mc^2#(1)`).
 
-use crate::math::{Arg, FracKind, MAX_DEPTH, MClass, MNode, MRun, ScriptKind, is_nary_char, math_class, merge_runs};
+use crate::math::{Arg, FracKind, MAX_DEPTH, MClass, MNode, MRun, ScriptKind, any_too_deep, is_nary_char, math_class, merge_runs, too_deep};
 
 /// Function names set upright and applied to the following operand.
 pub const FUNCTION_NAMES: &[&str] = &[
@@ -135,6 +135,11 @@ impl P {
                 '/' | '⁄' | '∕' | '¦' => {
                     self.i += 1;
                     let start = operand_start(&out);
+                    // A numerator that is already deep stays as it is: `/` is text then.
+                    if out.get(start..).is_some_and(any_too_deep) {
+                        out.push(text(c));
+                        continue;
+                    }
                     let num = strip_parens(out.drain(start..).collect());
                     let den = self.operand(stops);
                     let kind = match c {
@@ -156,20 +161,34 @@ impl P {
                     } else {
                         self.i += 1;
                         let s = self.script_operand(stops);
-                        let base = out.pop();
-                        out.push(attach_script(base, c == '^', s));
+                        if out.last().is_some_and(too_deep) {
+                            out.push(text(c));
+                            out.extend(s);
+                        } else {
+                            let base = out.pop();
+                            out.push(attach_script(base, c == '^', s));
+                        }
                     }
                 }
                 '┬' | '┴' => {
                     self.i += 1;
                     let lim = self.script_operand(stops);
-                    let e = out.pop().map(|n| vec![n]).unwrap_or_default();
-                    out.push(MNode::Lim { upper: c == '┴', e: strip_parens(e), lim });
+                    if out.last().is_some_and(too_deep) {
+                        out.push(text(c));
+                        out.extend(lim);
+                    } else {
+                        let e = out.pop().map(|n| vec![n]).unwrap_or_default();
+                        out.push(MNode::Lim { upper: c == '┴', e: strip_parens(e), lim });
+                    }
                 }
                 c if is_combining(c) => {
                     self.i += 1;
-                    let e = out.pop().map(|n| strip_parens(vec![n])).unwrap_or_default();
-                    out.push(MNode::Acc { chr: c, e });
+                    if out.last().is_some_and(too_deep) {
+                        out.push(text(c));
+                    } else {
+                        let e = out.pop().map(|n| strip_parens(vec![n])).unwrap_or_default();
+                        out.push(MNode::Acc { chr: c, e });
+                    }
                 }
                 '▒' | '\u{2061}' => self.i += 1,
                 ' ' => {
@@ -537,25 +556,33 @@ impl P {
                 }
                 out.pop()
             };
+            if !matches!(c, '^' | '_') && !(matches!(c, '┬' | '┴') && self.no_limits == 0) && !is_combining(c) {
+                break;
+            }
+            // The base is already deep: the operator is text (see `too_deep`).
+            let deep = if whole { any_too_deep(out) } else { out.last().is_some_and(too_deep) };
+            self.i += 1;
+            if deep {
+                let s = if matches!(c, '^' | '_' | '┬' | '┴') { self.script_operand(stops) } else { Vec::new() };
+                out.push(text(c));
+                out.extend(s);
+                continue;
+            }
             match c {
                 '^' | '_' => {
-                    self.i += 1;
                     let s = self.script_operand(stops);
                     let b = base(out);
                     out.push(attach_script(b, c == '^', s));
                 }
-                '┬' | '┴' if self.no_limits == 0 => {
-                    self.i += 1;
+                '┬' | '┴' => {
                     let lim = self.script_operand(stops);
                     let b = base(out);
                     out.push(MNode::Lim { upper: c == '┴', e: b.map(|n| vec![n]).unwrap_or_default(), lim });
                 }
-                c if is_combining(c) => {
-                    self.i += 1;
+                _ => {
                     let b = base(out);
                     out.push(MNode::Acc { chr: c, e: b.map(|n| strip_parens(vec![n])).unwrap_or_default() });
                 }
-                _ => break,
             }
         }
     }

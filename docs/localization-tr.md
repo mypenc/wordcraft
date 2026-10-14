@@ -54,12 +54,14 @@ and English, including dotted and dotless I and ASCII command ids. The shared ca
 (validation, every tab and command translated, and interface audit strings) include Turkish
 automatically.
 
-Spelling, grammar and hyphenation stay English-only: this is an interface translation, not Turkish
-proofing. A native-speaker skim of the catalog is welcome.
+Turkish proofing (`crates/proof/src/tr`) provides spelling against installed Hunspell `tr_TR`
+dictionaries, spelling suggestions tuned for Turkish diacritics and detached particles, rule-based grammar
+checks (reduplications, conjunction commas, capitalization), and syllable hyphenation by TDK rules.
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-13 | minor | Turkish proofing added: spelling, suggestions, grammar rules and TDK syllable hyphenation |
 | 2026-10-11 | minor | Turkish catalog completed (2,325 entries, #774), covering all math structures, built-in styles, presets and preview tiles |
 | 2026-10-11 | minor | Turkish catalog (1,307 entries), terminology, scope and regression checks |

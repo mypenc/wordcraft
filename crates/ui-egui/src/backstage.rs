@@ -6,11 +6,12 @@ use serde_json::json;
 use crate::theme::{APP_COLOR, Tokens, medium, regular, semibold};
 use crate::{WordApp, icons};
 
-const PAGES: [(&str, &str); 10] = [
+const PAGES: [(&str, &str); 11] = [
     ("home", "Home"),
     ("new", "New"),
     ("open", "Open"),
     ("info", "Info"),
+    ("recover", "Recover"),
     ("save", "Save"),
     ("saveAs", "Save As"),
     ("print", "Print"),
@@ -21,6 +22,7 @@ const PAGES: [(&str, &str); 10] = [
 
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    let recovery = app.ui.backstage_page == "recover";
     // No document open (#1129): only the pages that open or create one, and Options.
     let has_document = app.has_document();
     if !has_document && !works_without_document(&app.ui.backstage_page) {
@@ -31,18 +33,23 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         .exact_size(200.0)
         // Fixed width, as in Word: without this egui shows a resize handle that does nothing (#502).
         .resizable(false)
-        .frame(egui::Frame::NONE.fill(APP_COLOR).inner_margin(egui::Margin { left: 0, right: 0, top: if mac { 0 } else { 12 }, bottom: 12 }))
+        .frame(egui::Frame::NONE.fill(if recovery { egui::Color32::BLACK } else { APP_COLOR }).inner_margin(egui::Margin {
+            left: 0,
+            right: 0,
+            top: if mac { 0 } else { 12 },
+            bottom: 12,
+        }))
         .show(ui, |ui| {
             let back = if mac {
                 // macOS (#222): the Backstage covers the title bar, so its top band is the title
                 // bar: the back button sits beside the traffic lights, centred with them and as far
                 // from them as the title bar's own controls, and the rest of the band drags the window.
-                let (band, drag) = ui.allocate_exact_size(vec2(200.0, crate::chrome::MAC_TITLE_BAR), Sense::click_and_drag());
+                let (band, drag) = ui.allocate_exact_size(vec2(200.0, app.mac_titlebar.height), Sense::click_and_drag());
                 if drag.drag_started() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
                 // The chevron's stroke starts at the content edge.
-                let c = pos2(band.min.x + crate::chrome::MAC_CONTENT_LEFT + 3.0, band.center().y);
+                let c = pos2(band.min.x + app.mac_titlebar.content_left + 3.0, band.center().y);
                 let resp = ui.interact(Rect::from_center_size(c, vec2(22.0, band.height())), ui.id().with("backstage_back"), Sense::click());
                 icons::paint(ui.painter(), Rect::from_center_size(c, vec2(18.0, 18.0)), "chevronLeft", egui::Color32::WHITE, egui::Color32::WHITE);
                 resp
@@ -128,17 +135,79 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
             });
         });
-    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.ribbon).inner_margin(egui::Margin::symmetric(40, 30))).show(ui, |ui| {
-        egui::ScrollArea::vertical().show(ui, |ui| match app.ui.backstage_page.as_str() {
-            "home" => home_page(app, ui),
-            "new" => new_page(app, ui),
-            "open" => open_page(app, ui),
-            "saveAs" => save_as_page(app, ui),
-            "info" => info_page(app, ui),
-            "print" | "export" => export_page(app, ui),
-            "options" => crate::options::page(app, ui),
-            _ => home_page(app, ui),
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE.fill(if recovery { egui::Color32::BLACK } else { t.ribbon }).inner_margin(egui::Margin::symmetric(40, 30)))
+        .show(ui, |ui| {
+            // The Print page fills the pane and scrolls its settings and its preview itself (#1156).
+            if app.ui.backstage_page == "print" {
+                export_page(app, ui);
+                return;
+            }
+            egui::ScrollArea::vertical().show(ui, |ui| match app.ui.backstage_page.as_str() {
+                "home" => home_page(app, ui),
+                "new" => new_page(app, ui),
+                "open" => open_page(app, ui),
+                "saveAs" => save_as_page(app, ui),
+                "info" => info_page(app, ui),
+                "recover" => recovery_page(app, ui),
+                "print" | "export" => export_page(app, ui),
+                "options" => crate::options::page(app, ui),
+                _ => home_page(app, ui),
+            });
         });
+}
+
+/// Recovery is a separate copy. Leaving this page never discards it.
+fn recovery_page(app: &mut WordApp, ui: &mut Ui) {
+    ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE);
+    heading(ui, "Recover documents");
+    ui.label(tl!("Restore opens an unsaved copy. Your original file stays unchanged."));
+    ui.add_space(20.0);
+    if app.session.password.is_some() {
+        ui.label(tl!("Recovery is disabled while this document has a password."));
+    }
+    if let Some(error) = app.session.recovery_error() {
+        ui.label(error);
+    }
+    if !app.session.recovery_ready() {
+        ui.label(tl!("Local recovery is unavailable or still loading."));
+    }
+    let documents = app.session.recovery_documents();
+    if documents.is_empty() && app.session.recovery_ready() {
+        ui.label(tl!("No recovery copies."));
+    }
+    let busy = app.session.recovery_busy();
+    egui::Grid::new("recovery_documents").min_col_width(180.0).spacing(vec2(24.0, 16.0)).show(ui, |ui| {
+        if !documents.is_empty() {
+            ui.strong(tl!("Document"));
+            ui.strong(tl!("Recovery copy"));
+            ui.end_row();
+        }
+        for doc in documents {
+            ui.label(&doc.name);
+            ui.label(&doc.saved_at);
+            ui.add_enabled_ui(!busy, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button(tl!("Restore")).clicked() {
+                        let _ = app.run("file.recover", json!({"restore": doc.id}));
+                    }
+                    if ui.button(tl!("Discard…")).clicked() {
+                        let _ = app.run("ui.recoveryDiscard", json!({"id": doc.id}));
+                    }
+                });
+            });
+            ui.end_row();
+        }
+    });
+    ui.add_space(20.0);
+    ui.horizontal(|ui| {
+        if ui.button(tl!("Continue without restoring")).clicked() {
+            let _ = app.run("ui.backstage", json!({"value": false}));
+            app.canvas.want_focus = true;
+        }
+        if ui.add_enabled(!busy && app.session.recovery_ready(), egui::Button::new(tl!("Refresh"))).clicked() {
+            let _ = app.run("file.recover", json!({"refresh": true}));
+        }
     });
 }
 
@@ -415,6 +484,117 @@ mod tests {
 
     use super::matching_templates;
     use crate::{Services, WordApp};
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn recovery_app() -> (WordApp, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "wordcraft-recovery-ui-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let id = "0123456789abcdef0123456789abcdef";
+        let dir = root.join(id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("snapshot-00000000000000000001.json"),
+            serde_json::to_vec(&json!({
+                "version": 1, "generation": 1, "info": {"id": id, "name": "Synthetic draft", "savedAt": "2026-10-11T10:42:00Z"},
+                "document": wordcraft_doc::Document::from_text("Recovered synthetic work")
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        app.session.enable_recovery(root.clone(), std::sync::Arc::new(|| {})).unwrap();
+        (app, root)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn recovery_harness(app: WordApp) -> egui_kittest::Harness<'static, WordApp> {
+        egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            app,
+        )
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn settle_recovery(h: &mut egui_kittest::Harness<'_, WordApp>) {
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            h.run_steps(2);
+            if h.state().session.recovery_ready() && !h.state().session.recovery_busy() {
+                break;
+            }
+            assert!(std::time::Instant::now() < end);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        // Worker completion is a state boundary; egui needs subsequent frames to finish
+        // font installation/layout and expose the resulting buttons to AccessKit.
+        h.run_steps(4);
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn recovery_page_keeps_dismissed_copies_and_confirms_discard() {
+        let (app, root) = recovery_app();
+        let mut h = recovery_harness(app);
+        settle_recovery(&mut h);
+        assert!(h.state().ui.backstage && h.state().ui.backstage_page == "recover");
+        h.get_by_label("Continue without restoring").click();
+        h.run_steps(4);
+        assert!(!h.state().ui.backstage);
+        assert_eq!(h.state().session.recovery_documents().len(), 1);
+        h.state_mut().run("file.recover", json!({})).unwrap();
+        h.run_steps(4);
+        h.get_by_label("Discard…").click();
+        h.run_steps(4);
+        assert!(matches!(h.state().dialog, Some(crate::dialogs::Dialog::DiscardRecovery { .. })));
+        h.get_by_label("Cancel").click();
+        h.run_steps(4);
+        assert_eq!(h.state().session.recovery_documents().len(), 1);
+        h.get_by_label("Discard…").click();
+        h.run_steps(4);
+        h.get_by_label("Discard").click();
+        settle_recovery(&mut h);
+        assert!(h.state().session.recovery_documents().is_empty());
+        assert!(h.query_by_label("No recovery copies.").is_some());
+        drop(h);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn recovery_restore_uses_save_changes_and_resets_autosave_permission() {
+        let (app, root) = recovery_app();
+        let mut h = recovery_harness(app);
+        settle_recovery(&mut h);
+        h.state_mut().execute("text.insert", json!({"text": "Current unsaved work"})).unwrap();
+        h.state_mut().autosave_path = Some(root.join("must-not-write.docx"));
+        h.state_mut().run("file.recover", json!({})).unwrap();
+        h.run_steps(4);
+        assert_eq!(h.state().session.recovery_documents().len(), 1);
+        h.get_by_label("Restore").click();
+        h.run_steps(4);
+        assert!(matches!(h.state().dialog, Some(crate::dialogs::Dialog::SaveChanges { .. })));
+        h.get_by_label("Cancel").click();
+        h.run_steps(4);
+        assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "Current unsaved work");
+        h.get_by_label("Restore").click();
+        h.run_steps(4);
+        h.get_by_label("Don't Save").click();
+        settle_recovery(&mut h);
+        assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "Recovered synthetic work");
+        assert!(h.state().session.dirty && h.state().session.path.is_none());
+        assert!(h.state().autosave_path.is_none());
+        assert!(!h.state().ui.backstage);
+        assert!(!root.join("must-not-write.docx").exists());
+        drop(h);
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn template_search_matches_labels_case_insensitively() {

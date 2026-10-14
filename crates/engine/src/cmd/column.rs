@@ -145,13 +145,18 @@ pub(crate) fn dispatch(s: &mut Session, id: &str, mutates: bool, run: fn(&mut Se
     // runs, then takes whole cells or rows the way Word does around tables.
     if id.starts_with("caret.") && p::bool(v, "extend") == Some(true) {
         let shown = s.sel.clone();
+        let cells = s.cell_range().cloned();
         s.sel = s.sel_ends().clone();
+        let ends = s.sel.clone();
         if let Err(e) = run(s, v) {
             s.sel = shown;
             return Err(e);
         }
         let to = s.sel.focus.clone();
-        super::table::extend_selection(s, to);
+        // Shift+Right out of a cell takes the cell alone first.
+        if !(matches!(id, "caret.right" | "caret.left") && super::table::select_cell_first(s, &ends, &to, cells.as_ref())) {
+            super::table::extend_selection(s, to);
+        }
         return super::sel_result(s);
     }
     let Some(segs) = s.column_segments().map(<[(Pos, Pos)]>::to_vec) else { return run(s, v) };

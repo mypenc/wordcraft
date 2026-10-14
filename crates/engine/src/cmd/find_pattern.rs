@@ -154,7 +154,7 @@ pub fn compile(query: &str, o: &Opts) -> Result<Compiled, String> {
         }
     };
     // Word's wildcard search always matches case.
-    let case_insensitive = !o.match_case && !(o.wildcards && !o.regex);
+    let case_insensitive = !o.match_case && (!o.wildcards || o.regex);
     Ok(Compiled { pattern: pat, case_insensitive, spans_paras: spans })
 }
 

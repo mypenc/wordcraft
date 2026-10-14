@@ -23,7 +23,7 @@ pub fn specs() -> Vec<CommandSpec> {
             with_sect(s, |x| x.set_landscape(land))
         })
         .params(r#"{"value": "portrait|landscape"}"#),
-        CommandSpec::new("layout.size", "Size", "Layout › Page Setup", size).params(r#"{"name"?: "Letter|Legal|A4|…", "width"?: pt, "height"?: pt}"#),
+        CommandSpec::new("layout.size", "Size", "Layout › Page Setup", size).params(r#"{"name"?: "Letter|Legal|A4|…", "width"?: pt, "height"?: pt} (each side clamped to 7.2–1584 pt, 0.1–22 in; the section keeps its orientation)"#),
         CommandSpec::new("layout.columns", "Columns", "Layout › Page Setup", columns)
             .params(
                 r#"{"count": 1-12, "space"?: pt, "separator"?: bool, "preset"?: "left|right", "widths"?: [[width pt, space after pt], …] (unequal columns; sets the count), "apply"?: "section|document|forward"}"#,
@@ -225,15 +225,19 @@ pub fn sect(s: &Session) -> SectionProps {
     s.doc.sections().get(i).map(|(_, x)| (*x).clone()).unwrap_or_default()
 }
 
-/// Apply to the section(s) of the selection.
-pub(crate) fn with_sect(s: &mut Session, f: impl Fn(&mut SectionProps)) -> CmdResult {
+/// The last block of each section of the selection.
+fn selected_section_ends(s: &Session) -> Vec<usize> {
     let (a, b) = s.sel.ordered();
     let (i0, i1) = (a.path.0.first().copied().unwrap_or(0) as usize, b.path.0.first().copied().unwrap_or(0) as usize);
     let ends: Vec<usize> = s.doc.sections().iter().map(|(e, _)| *e).collect();
     let first = ends.iter().position(|e| i0 <= *e).unwrap_or(0);
     let last = ends.iter().position(|e| i1 <= *e).unwrap_or(first);
-    for k in first..=last {
-        let block = ends.get(k).copied().unwrap_or(0);
+    (first..=last).map(|k| ends.get(k).copied().unwrap_or(0)).collect()
+}
+
+/// Apply to the section(s) of the selection.
+pub(crate) fn with_sect(s: &mut Session, f: impl Fn(&mut SectionProps)) -> CmdResult {
+    for block in selected_section_ends(s) {
         f(s.doc.section_mut(block));
     }
     Ok(serde_json::to_value(sect(s)).unwrap_or(Value::Null))
@@ -355,7 +359,7 @@ fn margins(s: &mut Session, v: &Value) -> CmdResult {
     };
     let gutter = p::f32(v, "gutter");
     let cur = sect(s);
-    if l + r + gutter.unwrap_or(cur.gutter) > cur.page_w - 36.0 || t + b > cur.page_h - 36.0 {
+    if !margins_fit((cur.page_w, cur.page_h), (t, b, l, r), gutter.unwrap_or(cur.gutter)) {
         return Err(CmdError::Params("margins leave no room for text".into()));
     }
     // A preset picks mirrored or not; plain numbers (a ruler drag, an agent) keep the setting.
@@ -373,6 +377,23 @@ fn margins(s: &mut Session, v: &Value) -> CmdResult {
     })
 }
 
+/// Why `layout.size` refuses a page its margins don't fit.
+pub const MARGINS_DONT_FIT: &str = "The margins don't fit on a page this size; make the margins smaller first.";
+
+/// Text room the margins must leave on a page, each way, points.
+pub const MIN_TEXT_ROOM: f32 = 36.0;
+
+/// Whether margins (top, bottom, left, right) and a gutter leave text room on a page (width,
+/// height), all in points: the rule `layout.margins` and `layout.size` both apply, and Page
+/// Setup checks before it runs either.
+pub fn margins_fit(page: (f32, f32), (t, b, l, r): (f32, f32, f32, f32), gutter: f32) -> bool {
+    l + r + gutter <= page.0 - MIN_TEXT_ROOM && t + b <= page.1 - MIN_TEXT_ROOM
+}
+
+/// The smallest and largest page side, points (0.1" and 22", as Word allows).
+pub const MIN_PAGE_SIDE: f32 = 7.2;
+pub const MAX_PAGE_SIDE: f32 = 1584.0;
+
 fn size(s: &mut Session, v: &Value) -> CmdResult {
     let (w, h) = if let Some(n) = p::str(v, "name") {
         let (_, w, h) = wordcraft_geom::PAPER_SIZES
@@ -383,14 +404,21 @@ fn size(s: &mut Session, v: &Value) -> CmdResult {
     } else {
         (p::req_f32(v, "width")?, p::req_f32(v, "height")?)
     };
-    if !(72.0..=1584.0).contains(&w) || !(72.0..=1584.0).contains(&h) {
-        return Err(CmdError::Params("page size must be 1\"–22\"".into()));
+    // Word's range per side is 0.1"–22" (#1433); `p::f32` already refused NaN and infinities.
+    let (w, h) = (w.clamp(MIN_PAGE_SIDE, MAX_PAGE_SIDE), h.clamp(MIN_PAGE_SIDE, MAX_PAGE_SIDE));
+    // Each section keeps its orientation: the long side across in landscape, down in portrait.
+    let oriented = |x: &SectionProps| if x.landscape { (w.max(h), w.min(h)) } else { (w.min(h), w.max(h)) };
+    let sections = s.doc.sections();
+    let fits = |block: usize| {
+        sections
+            .iter()
+            .find(|(e, _)| *e == block)
+            .is_none_or(|(_, x)| margins_fit(oriented(x), (x.margin_top, x.margin_bottom, x.margin_left, x.margin_right), x.gutter))
+    };
+    if !selected_section_ends(s).into_iter().all(fits) {
+        return Err(CmdError::Params(MARGINS_DONT_FIT.into()));
     }
-    with_sect(s, |x| {
-        let (pw, ph) = if x.landscape { (w.max(h), w.min(h)) } else { (w.min(h), w.max(h)) };
-        x.page_w = pw;
-        x.page_h = ph;
-    })
+    with_sect(s, |x| (x.page_w, x.page_h) = oriented(x))
 }
 
 fn columns(s: &mut Session, v: &Value) -> CmdResult {

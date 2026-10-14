@@ -803,6 +803,49 @@ mod tests {
     }
 
     #[test]
+    fn colour_survives_save_and_reopen() {
+        // #1467: a coloured equation came back black after saving and reopening.
+        let mut s = session();
+        s.run("insert.equation", &json!({"linear": "(a+b)/c"})).unwrap();
+        s.run("equation.exit", &json!({})).unwrap();
+        s.run("select.all", &json!({})).unwrap();
+        s.run("format.color", &json!({"color": "C00000"})).unwrap();
+        assert!(document_xml(&s).contains(r#"<w:color w:val="C00000"/></w:rPr><m:t"#), "the math runs carry the colour");
+        let mut back = Session::new(wordcraft_docx::read(&wordcraft_docx::write(&s.doc).unwrap()).unwrap());
+        back.run("equation.edit", &json!({})).unwrap();
+        let at = back.math.as_ref().unwrap().at.clone();
+        let p = back.doc.para_at(&at).unwrap();
+        let (_, props) = p.run_ranges().find(|(r, _)| r.contains(&at.off)).unwrap();
+        assert_eq!(props.color, Some(wordcraft_doc::props::TextColor::Rgb(wordcraft_doc::props::Rgb(0xC0, 0, 0))), "the equation's colour is back");
+        let Some(InlineObject::Equation { math, .. }) = p.object_at(at.off) else { panic!() };
+        let mut nodes = math.nodes.clone();
+        let mut runs = 0;
+        wordcraft_doc::math_edit::each_run_mut(&mut nodes, &mut |r| {
+            runs += 1;
+            assert_eq!(r.color, None, "the colour is the equation's, not stuck on each run");
+        });
+        assert!(runs > 0);
+        // Automatic again: no colour written.
+        back.run("select.all", &json!({})).unwrap();
+        back.run("format.color", &json!({"color": "auto"})).unwrap();
+        assert!(!document_xml(&back).contains("C00000"));
+    }
+
+    #[test]
+    fn imported_colour_keeps_source_omml_until_recoloured() {
+        // #1467: lifting a Word equation's colour must not drop the OMML the model can't hold.
+        let r = r#"<w:rPr><w:color w:val="FF0000"/></w:rPr>"#;
+        let ctrl = r#"<m:ctrlPr><w:rPr><w:color w:val="00FF00"/></w:rPr></m:ctrlPr>"#;
+        let mut s =
+            imported(&format!("<m:f><m:fPr>{ctrl}</m:fPr><m:num><m:r>{r}<m:t>a</m:t></m:r></m:num><m:den><m:r>{r}<m:t>b</m:t></m:r></m:den></m:f>"));
+        assert!(document_xml(&s).contains("00FF00"), "untouched: source OMML written back");
+        s.run("select.all", &json!({})).unwrap();
+        s.run("format.color", &json!({"color": "0000FF"})).unwrap();
+        let xml = document_xml(&s);
+        assert!(xml.contains("0000FF") && !xml.contains("FF0000"), "recoloured: runs rewritten");
+    }
+
+    #[test]
     fn navigation_keeps_imported_omml() {
         // #446: a Left move without any change dropped the fraction's imported control colour.
         let red = r#"<m:f><m:fPr><m:ctrlPr><w:rPr><w:color w:val="FF0000"/></w:rPr></m:ctrlPr></m:fPr><m:num><m:r><m:t>a</m:t></m:r></m:num><m:den><m:r><m:t>b</m:t></m:r></m:den></m:f>"#;

@@ -342,7 +342,7 @@ pub fn specs() -> Vec<CommandSpec> {
             sel_result(s)
         }),
         CommandSpec::new("insert.crossReference", "Cross-reference", "Insert › Links", cross_ref)
-            .params(r#"{"to": "heading|bookmark|figure|table", "target": string (text / name / number), "show"?: "text|page|number|aboveBelow"} or {} to list targets"#),
+            .params(r#"{"to": "heading|bookmark|figure|table|equation", "target": string (text / name / number), "show"?: "text|page|number|aboveBelow"} or {} to list targets"#),
         CommandSpec::new("references.noteOptions", "Footnote and Endnote", "References › Footnotes", super::references::note_options).params(
             r#"{"kind"?: "footnote|endnote", "pos"?: "pageBottom|beneathText" (footnotes) | "sectEnd|docEnd" (endnotes), "numFmt"?: "decimal|lowerRoman|upperRoman|lowerLetter|upperLetter|…", "numStart"?: 1-32767, "numRestart"?: "continuous|eachSect|eachPage" (each page: footnotes only), "scope"?: "document|section", "footnoteFormat"?: …, "endnoteFormat"?: …} — no settings: the options in effect at the caret"#,
         ),
@@ -711,17 +711,6 @@ const ENTRY_STYLE: &str = "ListEntry";
 
 /// Rebuild every generated list.
 pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
-    if s.doc.styles.get(ENTRY_STYLE).is_none() {
-        s.doc.styles.upsert(wordcraft_doc::Style {
-            id: ENTRY_STYLE.into(),
-            name: "List Entry".into(),
-            kind: wordcraft_doc::StyleKind::Paragraph,
-            based_on: Some("Normal".into()),
-            para: wordcraft_doc::ParaProps { space_after: Some(4.0), ..Default::default() },
-            hidden: true,
-            ..Default::default()
-        });
-    }
     let mut i = 0;
     while i < s.doc.body.len() {
         let kind = s.doc.body.get(i).and_then(|b| b.as_para()).and_then(list_kind);
@@ -729,6 +718,7 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
             i += 1;
             continue;
         };
+        add_entry_style(s);
         if kind.starts_with("INDEX") {
             super::index::rebuild(s, i, None)?;
             i += 1;
@@ -755,6 +745,23 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
     }
     s.touch();
     Ok(())
+}
+
+/// Add the style generated list entries take, if the document doesn't have it yet. Only when a
+/// list is there: a new style changes the formatting every paragraph is laid out with, so the
+/// layout cache starts over (and the saved file would gain a style it doesn't use).
+fn add_entry_style(s: &mut Session) {
+    if s.doc.styles.get(ENTRY_STYLE).is_none() {
+        s.doc.styles.upsert(wordcraft_doc::Style {
+            id: ENTRY_STYLE.into(),
+            name: "List Entry".into(),
+            kind: wordcraft_doc::StyleKind::Paragraph,
+            based_on: Some("Normal".into()),
+            para: wordcraft_doc::ParaProps { space_after: Some(4.0), ..Default::default() },
+            hidden: true,
+            ..Default::default()
+        });
+    }
 }
 
 fn page_of(s: &mut Session, pos: &Pos) -> u32 {
@@ -892,7 +899,7 @@ fn cross_ref(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// Cross-reference targets of a kind: (shown text or bookmark name, position).
-fn ref_targets(s: &Session, to: &str) -> Vec<(String, Pos)> {
+pub fn ref_targets(s: &Session, to: &str) -> Vec<(String, Pos)> {
     let mut targets: Vec<(String, Pos)> = Vec::new();
     match to {
         "bookmark" => targets = s.doc.bookmarks(),
@@ -980,6 +987,22 @@ mod tests {
         assert!(t.contains("(Rivera and Chen)"), "{t}");
         s.run("references.citationStyle", &json!({"style": "IEEE"})).unwrap();
         assert!(s.doc.plain_text(StoryRef::Body).contains("[1]"));
+    }
+
+    /// Updating fields in a document without generated lists leaves its styles alone: a new
+    /// style would make the next layout start over from nothing.
+    #[test]
+    fn update_fields_adds_the_entry_style_only_with_a_list() {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("plain text"));
+        s.run("select.all", &json!({})).unwrap();
+        s.run("references.updateFields", &json!({})).unwrap();
+        assert!(s.doc.styles.get(ENTRY_STYLE).is_none());
+        s.run("caret.docEnd", &json!({})).unwrap();
+        s.run("text.newParagraph", &json!({})).unwrap();
+        s.run("references.citation", &json!({"source": {"author": "Rivera, Alex", "title": "Shared Spaces", "year": "2021"}})).unwrap();
+        s.run("text.newParagraph", &json!({})).unwrap();
+        s.run("references.bibliography", &json!({})).unwrap();
+        assert!(s.doc.styles.get(ENTRY_STYLE).is_some());
     }
 
     #[test]

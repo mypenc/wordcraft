@@ -45,8 +45,8 @@ config works across the suite) keep the agent to the folders you give it:
   `styles.organizer` and `styles.copyFrom` read. The pictures an opened HTML file names are read
   from beside that file, so they are inside the read root too (a link that leads out is not followed).
 - Every file a command writes must lie inside the **write root**: `save_document`, `file.save`,
-  `file.saveAs`, `file.exportPdf`, `file.exportPng`, `file.printPdf`, `file.saveTemplate`, and `mailings.finish` with
-  a `path`.
+  `file.saveAs`, `file.rename` (the file and its new name), `file.exportPdf`, `file.exportPng`, `file.printPdf`,
+  `file.saveTemplate`, and `mailings.finish` with a `path`.
 - Read and write access are separate. Give the same folder twice for both; a root left out grants
   none of its access (with only `--automation-read-root`, nothing can be written to disk). Without
   either flag nothing changes.

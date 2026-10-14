@@ -103,13 +103,13 @@ fn record(cv: &mut Canvas, typ: u32, r: Bytes) {
         40 => r.u32(8).map(|i| cv.delete_object(i)),
         27 => xy32(r, 8).map(|p| cv.move_to(p)),
         54 => xy32(r, 8).map(|p| cv.line_to(p)),
-        42 => rect32(r, 8).map(|[l, t, rr, b]| cv.shape(&geom::ellipse(l, t, rr, b), true, true)),
-        43 => rect32(r, 8).map(|[l, t, rr, b]| cv.shape(&geom::rect(l, t, rr, b), true, true)),
+        42 => rect32(r, 8).map(|[l, t, rr, b]| cv.shape(geom::ellipse(l, t, rr, b), true, true)),
+        43 => rect32(r, 8).map(|[l, t, rr, b]| cv.shape(geom::rect(l, t, rr, b), true, true)),
         44 => {
             let (cw, ch) = (r.i32(24), r.i32(28));
             let (Some(cw), Some(ch)) = (cw, ch) else { return };
             rect32(r, 8).map(|[l, t, rr, b]| {
-                cv.shape(&geom::round_rect(l, t, rr, b, f64::from(cw), f64::from(ch)), true, true);
+                cv.shape(geom::round_rect(l, t, rr, b, f64::from(cw), f64::from(ch)), true, true);
             })
         }
         45..=47 => arc32(r).map(|(bounds, s, e)| {
@@ -119,7 +119,7 @@ fn record(cv: &mut Canvas, typ: u32, r: Bytes) {
                 _ => ArcKind::Pie,
             };
             let [l, t, rr, b] = bounds;
-            cv.shape(&geom::arc_shape(l, t, rr, b, s, e, kind), kind != ArcKind::Arc, true);
+            cv.shape(geom::arc_shape(l, t, rr, b, s, e, kind), kind != ArcKind::Arc, true);
         }),
         4 | 87 => counted(r, typ == 4).map(|pts| cv.poly(&pts, false, false, true)),
         3 | 86 => counted(r, typ == 3).map(|pts| cv.poly(&pts, true, true, true)),
@@ -132,8 +132,8 @@ fn record(cv: &mut Canvas, typ: u32, r: Bytes) {
             Some(())
         }),
         5 | 88 => counted(r, typ == 5).map(|pts| cv.bezier_to(&pts)),
-        7 | 90 => poly_groups(r, typ == 7).map(|(counts, pts)| cv.shape(&geom::subpaths(&pts, &counts, false), false, true)),
-        8 | 91 => poly_groups(r, typ == 8).map(|(counts, pts)| cv.shape(&geom::subpaths(&pts, &counts, true), true, true)),
+        7 | 90 => poly_groups(r, typ == 7).map(|(counts, pts)| cv.shape(geom::subpaths(&pts, &counts, false), false, true)),
+        8 | 91 => poly_groups(r, typ == 8).map(|(counts, pts)| cv.shape(geom::subpaths(&pts, &counts, true), true, true)),
         59 => {
             cv.begin_path();
             Some(())
@@ -307,9 +307,8 @@ fn blit(cv: &mut Canvas, r: Bytes, dst: [f64; 4], src: [f64; 4], at: (usize, usi
     }
     let info = Bytes(r.slice(bo, bl)?);
     let pixels = Bytes(r.slice(po, pl)?);
-    let mut img = dib::decode(info, pixels, blend.per_pixel())?;
+    let (mut img, dst) = dib::decode_clip(info, pixels, blend.per_pixel(), src.map(|v| v as i64), dst)?;
     dib::prepare(&mut img, blend);
-    let (img, dst) = dib::clip_blit(&img, src.map(|v| v as i64), dst)?;
     cv.bitmap(dst, img);
     Some(())
 }

@@ -519,3 +519,45 @@ fn rtl_section_puts_its_first_column_on_the_right() {
         page.items.iter().filter_map(|i| if let Placed::Rule { x0, x1, .. } = i { ((x0 - x1).abs() < 0.01).then_some(*x0) } else { None }).collect();
     assert_eq!(sep, vec![72.0 + 234.0], "line between the columns");
 }
+
+#[test]
+fn list_label_moves_with_its_text_when_the_paragraph_is_aligned() {
+    // Issue #1159: centring or end-aligning a list item moved the text and left the bullet at the
+    // margin. In Word the label stays attached to the start of the text, in both directions.
+    for (rtl, text) in [(false, "alpha beta"), (true, "مورد اول")] {
+        let mut d = doc_of(&[(text, rtl), (text, rtl), (text, rtl), (text, rtl)]);
+        let id = d.numbering.add_list(wordcraft_doc::ListKind::Bullet);
+        d.format_paragraphs(&Pos::body(0, 0), &Pos::body(3, 1), &|p: &mut ParaProps| {
+            p.numbering = Some(wordcraft_doc::props::NumRef { num: id, level: 0 })
+        })
+        .unwrap();
+        // Start edge (the default), centre, end edge, and a justified one.
+        for (i, a) in [(1, Align::Center), (2, Align::Right), (3, Align::Justify)] {
+            let at = Pos::body(i, 0);
+            d.format_paragraphs(&at, &at, &|p: &mut ParaProps| p.align = Some(a)).unwrap();
+        }
+        let l = lay(&d);
+        // How far the label's near edge is from where the text starts.
+        let gap = |i: u32| {
+            let (pl, x) = first_line(&l, i);
+            let lab = pl.label.as_ref().unwrap_or_else(|| panic!("no label: rtl={rtl} i={i} lines={}", pl.lines.len()));
+            let text_start = caret_x(&l, i as usize, 0);
+            if rtl { x + lab.x - text_start } else { text_start - (x + lab.x + lab.width) }
+        };
+        let g0 = gap(0);
+        assert!(g0 > 0.0 && g0 < 40.0, "rtl={rtl}: label then a tab, then text: {g0}");
+        for i in 1..4 {
+            assert!((gap(i) - g0).abs() < 0.5, "rtl={rtl}: paragraph {i}: label stays {g0} from the text, not {}", gap(i));
+        }
+        // The text really moved: further from the start edge when centred, furthest at the end.
+        let from_start = |i: u32| if rtl { 540.0 - caret_x(&l, i as usize, 0) } else { caret_x(&l, i as usize, 0) - 72.0 };
+        assert!(from_start(1) > from_start(0) + 5.0 && from_start(2) > from_start(1) + 5.0, "rtl={rtl}");
+        assert!((from_start(3) - from_start(0)).abs() < 0.5, "rtl={rtl}: justified text starts where the left-aligned one does");
+        // The label is inside the text area.
+        for i in 0..4 {
+            let (pl, x) = first_line(&l, i);
+            let lab = pl.label.as_ref().unwrap();
+            assert!(x + lab.x >= 71.5 && x + lab.x + lab.width <= 540.5, "rtl={rtl}: paragraph {i}");
+        }
+    }
+}

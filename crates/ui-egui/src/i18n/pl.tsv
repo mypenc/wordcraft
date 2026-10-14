@@ -322,6 +322,7 @@
 	Immersive	Czytanie immersyjne
 	Immersive Reader	Czytnik immersyjny
 	Immersive\nReader	Czytnik\nimmersyjny
+	In the margin	Na marginesie
 	Increase Font Size	Zwiększ rozmiar czcionki
 	Increase Indent	Zwiększ wcięcie
 	Indent	Wcięcie
@@ -472,6 +473,7 @@
 	Office 2003 Default	Domyślny pakietu Office 2003
 	One	Jedna
 	One Page	Jedna strona
+	Only for the selected text	Tylko dla zaznaczonego tekstu
 	Open	Otwórz
 	OpenDocument Text (*.odt)	Tekst OpenDocument (*.odt)
 	Optional Hyphen	Łącznik opcjonalny
@@ -1385,6 +1387,7 @@
 	Remove every custom shortcut and restore the built-in keys?	Usunąć wszystkie niestandardowe skróty i przywrócić wbudowane klawisze?
 	Reset All…	Resetuj wszystko…
 	Toggle Unicode Character	Przełącz znak Unicode
+	Type Character Code	Wpisz kod znaku
 	(Custom)	(Niestandardowe)
 	<< Remove	<< Usuń
 	Add >>	Dodaj >>
@@ -1569,6 +1572,7 @@
 	Ionosphere	Jonosfera
 	Issue	Numer
 	Italian	Włoski
+	Croatian	Chorwacki
 	Japanese	Japoński
 	Journal	Czasopismo naukowe
 	Korean	Koreański
@@ -1908,6 +1912,8 @@
 	Outside:	Na zewnątrz:
 	Overtype	Zastępowanie
 	Overtype (typing replaces the characters after the caret)	Zastępowanie (wpisywany tekst zastępuje znaki za kursorem)
+	Show alignment guides when moving pictures and shapes	Pokazuj linie wyrównania podczas przesuwania obrazów i kształtów
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Przesuwane obiekty przyciągają się do krawędzi i środka strony, marginesów i innych obiektów. Przytrzymaj Alt, aby przesuwać swobodnie.
 	Page display	Wyświetlanie strony
 	Pages like 1-3, 5	Strony, np. 1-3, 5
 	Paragraph Character	Znak akapitu
@@ -2084,6 +2090,31 @@
 	Hindi	Hindi
 	Context	Kontekstowe
 	System	Systemowe
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtruj adresatów
+	Sort Recipients	Sortuj adresatów
+	Filter and Sort	Filtrowanie i sortowanie
+	And	I
+	Or	Lub
+	Comparison	Porównanie
+	Compare to	Porównaj z
+	Add Condition	Dodaj warunek
+	Remove condition	Usuń warunek
+	Sort by	Sortuj według
+	Then by	Następnie według
+	Ascending	Rosnąco
+	Descending	Malejąco
+	Equal to	Równe
+	Not equal to	Różne od
+	Less than	Mniejsze niż
+	Greater than	Większe niż
+	Less than or equal	Mniejsze lub równe
+	Greater than or equal	Większe lub równe
+	Is blank	Jest puste
+	Is not blank	Nie jest puste
+	Contains	Zawiera
+	Does not contain	Nie zawiera
+	{count} of {total} recipients will be merged.	Adresaci do scalenia: {count} z {total}.
 	Book Title	Tytuł książki
 	Category	Kategoria
 	Contributors	Współtwórcy
@@ -2117,6 +2148,14 @@
 	Correct accidental usage of cAPS LOCK key	Poprawiaj przypadkowe użycie klawisza cAPS LOCK
 	Region:	Region:
 	Automatic ({region})	Automatycznie ({region})
+	Text of the nearest paragraph with a given style (running headers)	Tekst najbliższego akapitu o danym stylu (żywa pagina)
+	Style name:	Nazwa stylu:
+	Take the last match on the page	Weź ostatnie dopasowanie na stronie
+	Show its list number	Pokaż jego numer na liście
+	Show its number relative to this field	Pokaż jego numer względem tego pola
+	Show its number with all higher levels	Pokaż jego numer ze wszystkimi wyższymi poziomami
+	Number only, without the label's words	Tylko numer, bez słów etykiety
+	Add whether it is above or below	Dodaj, czy jest wyżej, czy niżej
 
 # Style, table style, watermark, paper size and equation gallery names, from #750 by @olekkut
 	AaBbCcDd	AaBbCcDd
@@ -2155,15 +2194,6 @@ preview	Title	Tytuł
 	DRAFT	WERSJA ROBOCZA
 	SAMPLE	WZÓR
 	URGENT	PILNE
-	Letter   8.50" × 11.00"	Letter   8,50" × 11,00"
-	Legal   8.50" × 14.00"	Legal   8,50" × 14,00"
-	Executive   7.25" × 10.50"	Executive   7,25" × 10,50"
-	Statement   5.50" × 8.50"	Statement   5,50" × 8,50"
-	Tabloid   11.00" × 17.00"	Tabloid   11,00" × 17,00"
-	B4 (JIS)   10.12" × 14.33"	B4 (JIS)   10,12" × 14,33"
-	B5 (JIS)   7.17" × 10.12"	B5 (JIS)   7,17" × 10,12"
-	Envelope #10   4.12" × 9.50"	Koperta nr 10   4,12" × 9,50"
-	Envelope DL   4.33" × 8.66"	Koperta DL   4,33" × 8,66"
 	Plain Table 1	Prosta tabela 1
 	Grid Table 1 Light	Tabela z siatką 1 — jasna
 	Grid Table 4 – Blue	Tabela z siatką 4 — niebieska
@@ -2471,6 +2501,13 @@ preview	Title	Tytuł
 	Typing	Pisanie
 	Search	Wyszukaj
 	Title Bar	Pasek tytułu
+	Copy to	Kopiuj do
+
+# Document naming and account controls.
+	Rename Document	Zmień nazwę dokumentu
+	Document name	Nazwa dokumentu
+	Rename	Zmień nazwę
+	Account	Konto
 	Privacy Options	Opcje prywatności
 	Trust Center	Centrum zaufania
 	Privacy for this document	Prywatność tego dokumentu
@@ -2478,3 +2515,53 @@ preview	Title	Tytuł
 	Leave out the date and time of comments and tracked changes when saving	Pomiń datę i godzinę komentarzy i śledzonych zmian przy zapisywaniu
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Edytowany dokument zachowuje nazwiska i daty; pomija je tylko zapisany plik.
 	Privacy Settings	Bieżące ustawienia prywatności
+	Waiting for the save to finish…	Oczekiwanie na zakończenie zapisywania…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	Zapisywanie pliku {name} zostało anulowane. Dokument jest nadal otwarty i nic nie zostało utracone.
+	Paper	Papier
+	Paper size:	Rozmiar papieru:
+	Custom size	Rozmiar niestandardowy
+	More Paper Sizes…	Więcej rozmiarów papieru…
+	The margins don't fit on a page this size; make the margins smaller first.	Marginesy nie mieszczą się na stronie tego rozmiaru; najpierw zmniejsz marginesy.
+	Full Screen	Pełny ekran
+	Full\nScreen	Pełny\nekran
+	Use the browser's full screen (F11)	Użyj trybu pełnoekranowego przeglądarki (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} cala
+	{name}   {height} × {width} mm	{name}   {height} × {width} mm
+	{width} × {height} mm	{width} × {height} mm
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Badacz wymaga usługi online, a WordCraft przechowuje Twoje dokumenty offline.
+	These settings will be used for new documents.	Te ustawienia będą używane w nowych dokumentach.
+	can't split at the first row	nie można podzielić tabeli na pierwszym wierszu
+	select two or more cells to merge	zaznacz co najmniej dwie komórki do scalenia
+	there is no ink to replay	brak pisma odręcznego do odtworzenia
+	there's no citation after the caret	za kursorem nie ma cytatu
+	this item is already at the top level	ten element jest już na najwyższym poziomie
+	Envelope #10	Koperta nr 10
+	Envelope DL	Koperta DL
+	Reading Mode	Tryb czytania
+	Column width	Szerokość kolumny
+	Text size	Rozmiar tekstu
+	Edit Document	Edytuj dokument
+	Go to what:	Przejdź do:
+	Type +2 or -1 to move from the page you are on.	Wpisz +2 lub -1, aby przejść o tyle stron od bieżącej.
+	Suggested	Sugerowane
+	Set Proofing Language…	Ustaw język sprawdzania…
+	Language Preferences…	Preferencje językowe…
+
+# Cross-reference dialog (#1003)
+	For which item:	Dla którego elementu:
+	Heading	Nagłówek
+	Heading text	Tekst nagłówka
+	Insert reference to:	Wstaw odwołanie do:
+	Reference type:	Typ odwołania:
+	Dictionaries	Słowniki
+	Dictionaries folder:	Folder słowników:
+	Not set: the system's usual places	Nie ustawiono: standardowe miejsca w systemie
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Pliki Hunspell .aff i .dic z tego folderu (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) mają pierwszeństwo przed systemowymi.
+	{language}: {file}	{language}: {file}
+	{language}: no dictionary found	{language}: nie znaleziono słownika
+
+# Backstage › Recover (#586)
+	Recover	Odzyskaj

@@ -317,28 +317,48 @@ pub fn refuses_paragraph(s: &Session) -> bool {
 /// Before a deletion of `a..b`: refuse deleting a control that can't be deleted, or editing
 /// content that can't be edited.
 pub fn check_delete(s: &mut Session, a: &Pos, b: &Pos) -> Result<(), CmdError> {
-    if a.story != b.story {
+    check_deletions(s, a.story, std::iter::once((a, b)))
+}
+
+/// Check a batch before editing, reading the story's control ranges only once. An empty
+/// control list needs no per-match work, including for large Replace All operations.
+pub fn check_deletions<'a>(s: &mut Session, story: StoryRef, deletions: impl IntoIterator<Item = (&'a Pos, &'a Pos)>) -> Result<(), CmdError> {
+    let controls = s.doc.control_ranges(story);
+    if controls.is_empty() {
         return Ok(());
     }
     let w = OBJ.len_utf8();
-    let mut refusal = None;
-    for r in s.doc.control_ranges(a.story) {
-        let whole = (&a.path, a.off) <= (&r.start.path, r.start.off) && (&r.end.path, r.end.off + w) <= (&b.path, b.off);
+    for (a, b) in deletions {
+        if a.story != story || b.story != story {
+            continue;
+        }
+        for r in &controls {
+            let whole = (&a.path, a.off) <= (&r.start.path, r.start.off) && (&r.end.path, r.end.off + w) <= (&b.path, b.off);
+            let cs = r.content_start();
+            let touches = (&a.path, a.off) < (&r.end.path, r.end.off) && (&b.path, b.off) > (&cs.path, cs.off);
+            if whole && !r.control.lock.can_delete() {
+                return Err(locked(s, CANT_DELETE));
+            }
+            if !whole && touches && !r.control.lock.can_edit() {
+                return Err(locked(s, CANT_EDIT));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Before an edit that rewrites the text of `a..b` in place (Change Case, unlinking a field):
+/// refuse when it touches the content of a control that can't be edited. Unlike a deletion,
+/// the control itself stays, so a control locked only against deletion takes the edit.
+pub fn check_edit(s: &mut Session, a: &Pos, b: &Pos) -> Result<(), CmdError> {
+    if a.story != b.story {
+        return Ok(());
+    }
+    let refused = s.doc.control_ranges(a.story).into_iter().any(|r| {
         let cs = r.content_start();
-        let touches = (&a.path, a.off) < (&r.end.path, r.end.off) && (&b.path, b.off) > (&cs.path, cs.off);
-        if whole && !r.control.lock.can_delete() {
-            refusal = Some(CANT_DELETE);
-            break;
-        }
-        if !whole && touches && !r.control.lock.can_edit() {
-            refusal = Some(CANT_EDIT);
-            break;
-        }
-    }
-    match refusal {
-        Some(m) => Err(locked(s, m)),
-        None => Ok(()),
-    }
+        !r.control.lock.can_edit() && (&a.path, a.off) < (&r.end.path, r.end.off) && (&b.path, b.off) > (&cs.path, cs.off)
+    });
+    if refused { Err(locked(s, CANT_EDIT)) } else { Ok(()) }
 }
 
 /// After the user deleted something: a control left empty shows its placeholder again.
@@ -799,6 +819,49 @@ mod editing_tests {
         run(&mut s, "select.all", json!({}));
         run(&mut s, "text.delete", json!({}));
         assert!(s.doc.control_ranges(StoryRef::Body).is_empty());
+    }
+
+    fn replacement_control() -> Session {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("cat cat"));
+        run(&mut s, "edit.find", json!({"text": "cat"}));
+        run(&mut s, "developer.richText", json!({"tag": "protected"}));
+        assert_eq!(text(&s), "cat cat");
+        s
+    }
+
+    #[test]
+    fn replace_all_refuses_locked_content_without_partial_edits() {
+        for track_changes in [false, true] {
+            let mut s = replacement_control();
+            run(&mut s, "developer.properties", json!({"control": "protected", "lockEdit": true}));
+            s.doc.settings.track_changes = track_changes;
+            let before = s.doc.clone();
+            let selection = s.sel.clone();
+            let undo_depth = s.undo_depth();
+            // The later, unlocked match would be replaced before the locked one.
+            assert!(s.run("edit.replaceAll", &json!({"text": "cat", "with": "fox"})).is_err());
+            assert!(s.status.contains("can't be edited"));
+            assert_eq!(s.doc, before);
+            assert_eq!(s.sel, selection);
+            assert_eq!(s.undo_depth(), undo_depth);
+        }
+    }
+
+    #[test]
+    fn replace_all_respects_control_delete_locks_but_allows_content_edits() {
+        let mut s = replacement_control();
+        run(&mut s, "developer.properties", json!({"control": "protected", "lockDelete": true}));
+        let before = s.doc.clone();
+        // Matching both control markers would delete the control itself.
+        assert!(s.run("edit.replaceAll", &json!({"text": "^gcat^g", "with": "fox"})).is_err());
+        assert!(s.status.contains("can't be deleted"));
+        assert_eq!(s.doc, before);
+        // A deletion lock still permits editing the text inside the control.
+        assert_eq!(run(&mut s, "edit.replaceAll", json!({"text": "cat", "with": "fox"}))["replaced"], 2);
+        assert_eq!(text(&s), "fox fox");
+        assert_eq!(s.doc.control_ranges(StoryRef::Body).len(), 1);
+        run(&mut s, "edit.undo", json!({}));
+        assert_eq!(s.doc, before);
     }
 
     #[test]

@@ -13,6 +13,17 @@ use crate::WordApp;
 thread_local! {
     // Input time, advanced every frame so tooltips and animations move on.
     static TIME: Cell<f64> = const { Cell::new(0.0) };
+    // Process-wide names (font families, the custom dictionary) seen at any point of the run:
+    // tests running alongside add and remove them, so one may be drawn and gone by the check.
+    static GLOBAL_NAMES: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(Default::default());
+}
+
+/// Remember the process-wide names drawn this frame could have come from.
+fn note_global_names() {
+    GLOBAL_NAMES.with_borrow_mut(|seen| {
+        seen.extend(wordcraft_fonts::FontDb::global().families());
+        seen.extend(wordcraft_engine::proof::user_dictionary());
+    });
 }
 
 fn texts(shape: &egui::Shape, out: &mut Vec<String>) {
@@ -35,10 +46,12 @@ fn frames(ctx: &egui::Context, app: &mut WordApp, steps: Vec<Vec<egui::Event>>) 
         TIME.set(TIME.get() + 0.1);
         let input =
             egui::RawInput { screen_rect: Some(screen), time: Some(TIME.get()), events: steps.next().unwrap_or_default(), ..Default::default() };
+        note_global_names();
         let mut out = ctx.run_ui(input, |ui| {
             app.logic(ui.ctx());
             app.ui(ui);
         });
+        note_global_names();
         drawn.clear();
         for s in &out.shapes {
             texts(&s.shape, &mut drawn);
@@ -84,6 +97,9 @@ fn ribbon_controls(ctx: &egui::Context) -> Vec<egui::Pos2> {
 fn fresh_app(ctx: &egui::Context) -> WordApp {
     ctx.all_styles_mut(|s| s.interaction.tooltip_delay = 0.0);
     let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_engine::sample::sample_document()), Default::default());
+    // Read Aloud holds each sentence instead of starting the system's speech engine: no sound on
+    // machines that have one, and no worker thread failing at its own pace on machines that don't.
+    app.session.read_aloud.backend = wordcraft_engine::speech::Backend::Hold;
     // Fonts install over the first frames.
     for _ in 0..2 {
         frame(ctx, &mut app);
@@ -108,7 +124,9 @@ struct Exempt {
 
 impl Exempt {
     fn new(app: &WordApp) -> Self {
-        let mut names: std::collections::HashSet<String> = wordcraft_fonts::FontDb::global().families().into_iter().collect();
+        // Installed fonts, and the custom dictionary's words (File › Options › Proofing): the user's own.
+        note_global_names();
+        let mut names: std::collections::HashSet<String> = GLOBAL_NAMES.with_borrow(Clone::clone);
         names.extend(app.session.doc.styles.styles.iter().map(|s| s.name.clone()));
         // Fonts a document asks for, installed or not (Aptos is drawn with a substitute).
         names.extend([wordcraft_doc::styles::BODY_FONT, wordcraft_doc::styles::HEADING_FONT].map(str::to_string));
@@ -161,9 +179,10 @@ impl Exempt {
 }
 
 /// Lists untranslated interface text per UI state. `cargo test -p wordcraft-ui-egui
-/// untranslated_interface_text -- --nocapture` prints the report.
+/// untranslated_interface_text -- --nocapture` prints the report. It runs with the other tests:
+/// input is synthetic and timed by `TIME`, Read Aloud never starts a speech thread, and
+/// process-wide names other tests change are gathered every frame.
 #[test]
-#[ignore = "failed once in ~46 runs under heavy machine load (cause not yet found); run on demand with `cargo test -p wordcraft-ui-egui untranslated_interface_text -- --ignored --nocapture`"]
 fn untranslated_interface_text() {
     pseudo::set(true);
     let mut found: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -352,10 +371,18 @@ fn complete_catalogs_have_every_string_the_interface_looked_up(mut keys: std::co
                 | "Turabian"
         )
     };
+    // A command called with parameters it can't use (`bad parameters: \`path\` (string) is
+    // required`): the message names JSON parameters for scripts and MCP, so it stays English like
+    // the rest of the engine's errors; the status bar translates only the ones a catalog knows.
+    let script_error = |s: &str| s.starts_with("bad parameters: ");
+    // A pattern of placeholders and figures only (`{paper}   {width} × {height}`) has nothing to
+    // translate: its placeholder names aren't words the interface shows.
+    let words = |s: &str| english_words(&s.split('{').map(|p| p.split_once('}').map_or(p, |(_, rest)| rest)).collect::<String>());
     let mut report = String::new();
     for code in ["ru", "hu", "tr", "bg"] {
         let lang = super::Lang::from_code(code).unwrap_or(super::Lang::EN);
-        let missing: Vec<&String> = keys.iter().filter(|s| english_words(s) && !super::has(lang, s) && !numbered(s) && !same(s)).collect();
+        let missing: Vec<&String> =
+            keys.iter().filter(|s| words(s) && !super::has(lang, s) && !numbered(s) && !same(s) && !script_error(s)).collect();
         if !missing.is_empty() {
             report.push_str(&format!("{} strings have no {code} entry:\n{missing:#?}\n", missing.len()));
         }

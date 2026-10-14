@@ -86,6 +86,7 @@
 	Follow number with:	Faire suivre le numéro de :
 	Formatting	Mise en forme
 	Formatting exceptions	Exceptions de mise en forme
+	In the margin	Dans la marge
 	Include level number from:	Inclure le numéro de niveau de :
 	Ink	Encre
 	Insertions and Deletions	Insertions et suppressions
@@ -101,6 +102,7 @@
 	Number alignment:	Alignement des numéros :
 	Number format	Format des numéros
 	Number style for this level:	Style de numéros pour ce niveau :
+	Only for the selected text	Uniquement pour le texte sélectionné
 	Outside border	Bordure extérieure
 	Overtype	Refrappe
 	Outside:	Extérieur :
@@ -1344,6 +1346,7 @@
 	Demote	Abaisser le niveau
 	Go Back	Revenir en arrière
 	Toggle Unicode Character	Basculer le caractère Unicode
+	Type Character Code	Saisir un code de caractère
 	Toggle Field Codes	Basculer les codes de champ
 	Edit Field Code	Modifier le code de champ
 	Unlink Fields	Dissocier les champs
@@ -1828,6 +1831,7 @@
 	Hyphenation Options…	Options de césure…
 	Hyphenation zone:	Zone de césure :
 	Italian	Italien
+	Croatian	Croate
 	Japanese	Japonais
 	Korean	Coréen
 	Limit consecutive hyphens to:	Limiter les césures consécutives à :
@@ -1886,6 +1890,8 @@
 	New word	Nouveau mot
 	No words yet. Add to Dictionary on a misspelled word puts it here.	Aucun mot pour l’instant. Utilisez Ajouter au dictionnaire sur un mot mal orthographié pour l’ajouter ici.
 	Overtype (typing replaces the characters after the caret)	Refrappe (la frappe remplace les caractères situés après le curseur)
+	Show alignment guides when moving pictures and shapes	Afficher les repères d'alignement lors du déplacement des images et des formes
+	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Les objets déplacés s'alignent sur les bords et le centre de la page, les marges et les autres objets. Maintenez Alt enfoncée pour les déplacer librement.
 	Page display	Affichage de la page
 	Paragraph marks	Marques de paragraphe
 	Personalize	Personnaliser
@@ -2064,6 +2070,30 @@
 	Reading Column Width	Largeur de colonne de lecture
 	Reading Line Spacing	Interligne de lecture
 	Reading Text Size	Taille du texte de lecture
+	Filter Recipients	Filtrer les destinataires
+	Sort Recipients	Trier les destinataires
+	Filter and Sort	Filtrer et trier
+	And	Et
+	Or	Ou
+	Comparison	Comparaison
+	Compare to	Comparer à
+	Add Condition	Ajouter une condition
+	Remove condition	Supprimer la condition
+	Sort by	Trier par
+	Then by	Puis par
+	Ascending	Croissant
+	Descending	Décroissant
+	Equal to	Égal à
+	Not equal to	Différent de
+	Less than	Inférieur à
+	Greater than	Supérieur à
+	Less than or equal	Inférieur ou égal à
+	Greater than or equal	Supérieur ou égal à
+	Is blank	Est vide
+	Is not blank	N'est pas vide
+	Contains	Contient
+	Does not contain	Ne contient pas
+	{count} of {total} recipients will be merged.	{count} destinataires sur {total} seront fusionnés.
 	Undo Actions	Annuler plusieurs actions
 	Undo History	Historique des annulations
 	Undo 1 Action	Annuler 1 action
@@ -2077,6 +2107,14 @@
 	Automatic ({region})	Automatique ({region})
 	Picture	Image
 	Pastes the clipboard's picture.	Colle l'image du Presse-papiers.
+	Text of the nearest paragraph with a given style (running headers)	Texte du paragraphe le plus proche ayant un style donné (titres courants)
+	Style name:	Nom du style :
+	Take the last match on the page	Prendre la dernière correspondance de la page
+	Show its list number	Afficher son numéro de liste
+	Show its number relative to this field	Afficher son numéro par rapport à ce champ
+	Show its number with all higher levels	Afficher son numéro avec tous les niveaux supérieurs
+	Number only, without the label's words	Le numéro seul, sans les mots de l'étiquette
+	Add whether it is above or below	Indiquer s'il se trouve plus haut ou plus bas
 	Select Column	Sélectionner la colonne
 	Select Table Cells by Clicking	Sélectionner des cellules du tableau en cliquant
 	Insert Row or Column by Clicking	Insérer une ligne ou une colonne en cliquant
@@ -2086,6 +2124,13 @@
 	Table Properties…	Propriétés du tableau…
 	Search	Rechercher
 	Title Bar	Barre de titre
+	Copy to	Copier vers
+
+# Document naming and account controls.
+	Rename Document	Renommer le document
+	Document name	Nom du document
+	Rename	Renommer
+	Account	Compte
 	Privacy Options	Options de confidentialité
 	Trust Center	Centre de gestion de la confidentialité
 	Privacy for this document	Confidentialité de ce document
@@ -2093,3 +2138,48 @@
 	Leave out the date and time of comments and tracked changes when saving	Omettre la date et l’heure des commentaires et des modifications suivies à l’enregistrement
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Le document en cours de modification garde les noms et les dates ; seul le fichier enregistré les omet.
 	Privacy Settings	Paramètres de confidentialité actuels
+	Waiting for the save to finish…	En attente de la fin de l'enregistrement…
+	Saving {name} was cancelled, so it is still open and nothing was lost.	L'enregistrement de {name} a été annulé : le document reste ouvert et rien n'a été perdu.
+	Paper	Papier
+	Paper size:	Taille du papier :
+	Custom size	Taille personnalisée
+	More Paper Sizes…	Autres tailles de papier…
+	The margins don't fit on a page this size; make the margins smaller first.	Les marges ne tiennent pas sur une page de cette taille ; réduisez d’abord les marges.
+	Full Screen	Plein écran
+	Full\nScreen	Plein\nécran
+	Use the browser's full screen (F11)	Utilisez le plein écran du navigateur (F11)
+
+# #1128: size labels (Mailings, Layout › Size), status-bar messages, Reading Mode and Go To
+	{name}   {height} × {width} in	{name}   {height} × {width} po
+	{name}   {height} × {width} mm	{name}   {height} × {width} mm
+	{width} × {height} mm	{width} × {height} mm
+	{kind}, {columns} × {rows}, {size} ({paper})	{kind}, {columns} × {rows}, {size} ({paper})
+	Researcher needs an online service; WordCraft keeps your documents offline.	Chercheur nécessite un service en ligne ; WordCraft garde vos documents hors ligne.
+	These settings will be used for new documents.	Ces paramètres seront utilisés pour les nouveaux documents.
+	can't split at the first row	impossible de fractionner le tableau à la première ligne
+	select two or more cells to merge	sélectionnez au moins deux cellules à fusionner
+	there is no ink to replay	il n’y a pas d’encre à rejouer
+	there's no citation after the caret	il n’y a pas de citation après le curseur
+	this item is already at the top level	cet élément est déjà au niveau supérieur
+	Envelope #10	Enveloppe n° 10
+	Envelope DL	Enveloppe DL
+	Reading Mode	Mode Lecture
+	Column width	Largeur de colonne
+	Text size	Taille du texte
+	Edit Document	Modifier le document
+	Go to what:	Atteindre :
+	Type +2 or -1 to move from the page you are on.	Tapez +2 ou -1 pour vous déplacer à partir de la page actuelle.
+	Suggested	Suggestions
+	Set Proofing Language…	Définir la langue de vérification…
+	Language Preferences…	Préférences linguistiques…
+
+# Dictionaries folder (#1063)
+	Dictionaries	Dictionnaires
+	Dictionaries folder:	Dossier des dictionnaires :
+	Not set: the system's usual places	Non défini : emplacements habituels du système
+	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Les fichiers Hunspell .aff et .dic de ce dossier (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) sont utilisés avant ceux du système.
+	{language}: {file}	{language} : {file}
+	{language}: no dictionary found	{language} : aucun dictionnaire trouvé
+
+# Backstage › Recover (#586)
+	Recover	Récupérer

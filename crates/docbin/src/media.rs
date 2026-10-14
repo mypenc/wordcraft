@@ -19,12 +19,13 @@ const MAX_PICTURES: usize = 5_000;
 pub(crate) const MAX_MEDIA_BYTES: usize = 256 << 20;
 
 /// The document's pictures, keyed by their location in the Data stream: anchors that share a
-/// `fc_pic` share one media entry, and the total bytes copied are capped, so a file with
-/// thousands of anchors on one huge picture costs one copy, not thousands. Pictures of the
-/// drawing layer's BLIP store are shared the same way, by store index.
+/// `fc_pic` share one media entry (or one failure), and the total bytes copied are capped, so a
+/// file with thousands of anchors on one huge picture costs one copy, not thousands. Pictures of
+/// the drawing layer's BLIP store are shared the same way, by store index.
 pub(crate) struct Pictures {
-    /// fc_pic → the inline picture already materialised.
-    by_fc: HashMap<u32, Inline>,
+    /// fc_pic → the inline picture already materialised (`None`: unreadable or over the cap,
+    /// not retried).
+    by_fc: HashMap<u32, Option<Inline>>,
     /// BLIP store index → media key (`None`: unreadable, not retried).
     by_bse: HashMap<u32, Option<String>>,
     /// The media entries, merged into the document at the end.
@@ -68,24 +69,34 @@ impl Pictures {
     /// count/byte cap is reached.
     pub(crate) fn get(&mut self, data: &[u8], fc_pic: u32) -> Option<Inline> {
         if let Some(hit) = self.by_fc.get(&fc_pic) {
-            return Some(hit.clone());
+            return hit.clone();
         }
         if self.by_fc.len().saturating_add(self.by_bse.len()) >= MAX_PICTURES {
             return None;
         }
-        let pic = match locate(data, fc_pic)? {
+        let pic = self.read(data, fc_pic);
+        self.by_fc.insert(fc_pic, pic.clone());
+        pic
+    }
+
+    /// Read the inline picture at `fc_pic`: nothing is decoded or copied beyond what is left of
+    /// the byte cap, and nothing at all once it is used up.
+    fn read(&mut self, data: &[u8], fc_pic: u32) -> Option<Inline> {
+        let room = self.limit.saturating_sub(self.total);
+        if room == 0 {
+            return None;
+        }
+        match locate(data, fc_pic, room)? {
             Found::Range(pic) => {
-                let bytes = data.get(pic.range.clone())?.to_vec();
+                let bytes = data.get(pic.range.clone()).filter(|b| b.len() <= room)?.to_vec();
                 let key = self.insert(bytes, pic.ext, false)?;
-                Inline { key, w: pic.w, h: pic.h, crop: [0.0; 4], alt: String::new() }
+                Some(Inline { key, w: pic.w, h: pic.h, crop: [0.0; 4], alt: String::new() })
             }
             Found::Shape { w, h, blip, props } => {
                 let key = self.insert(blip.bytes, blip.ext, blip.placeholder)?;
-                Inline { key, w, h, crop: props.crop, alt: props.alt }
+                Some(Inline { key, w, h, crop: props.crop, alt: props.alt })
             }
-        };
-        self.by_fc.insert(fc_pic, pic.clone());
-        Some(pic)
+        }
     }
 
     /// The media key of BLIP store entry `pib` (1-based), decoding it the first time; `delay`
@@ -148,8 +159,9 @@ enum Found {
 const MM_SHAPE: u16 = 0x0064;
 const MM_SHAPEFILE: u16 = 0x0066;
 
-/// Locate the picture at `fc_pic` in the Data stream ([MS-DOC] §2.9.192 PICFAndOfficeArtData).
-fn locate(data: &[u8], fc_pic: u32) -> Option<Found> {
+/// Locate the picture at `fc_pic` in the Data stream ([MS-DOC] §2.9.192 PICFAndOfficeArtData);
+/// a shape's picture is decoded only up to `room` bytes.
+fn locate(data: &[u8], fc_pic: u32, room: usize) -> Option<Found> {
     let base = fc_pic as usize;
     let pic = data.get(base..)?;
     let lcb = u32::from_le_bytes(pic.get(0..4)?.try_into().ok()?) as usize;
@@ -168,7 +180,7 @@ fn locate(data: &[u8], fc_pic: u32) -> Option<Found> {
         if mm == MM_SHAPEFILE {
             at = at.checked_add(1 + *pic.get(at)? as usize)?;
         }
-        let (blip, props) = inline_shape(pic.get(at..end)?, data)?;
+        let (blip, props) = inline_shape(pic.get(at..end)?, data, room)?;
         // The goal size is before cropping; the crop fractions take their share off it.
         let [cl, ct, cr, cb] = props.crop;
         let w = (dxa_goal / 20.0 * (1.0 - cl - cr).max(0.01) * scale(mx)).clamp(1.0, 1584.0);
@@ -185,14 +197,15 @@ fn locate(data: &[u8], fc_pic: u32) -> Option<Found> {
 }
 
 /// An `OfficeArtInlineSpContainer`: the picture shape, then the `OfficeArtFBSE` records its
-/// `pib` indexes (BLIPs embedded, or at `foDelay` in the Data stream).
-fn inline_shape(buf: &[u8], data: &[u8]) -> Option<(officeart::Blip, officeart::Props)> {
+/// `pib` indexes (BLIPs embedded, or at `foDelay` in the Data stream). `room` caps the bytes
+/// the BLIP decodes to.
+fn inline_shape(buf: &[u8], data: &[u8], room: usize) -> Option<(officeart::Blip, officeart::Props)> {
     let mut budget = 10_000usize;
     let recs = officeart::children(buf, &mut budget);
     let sp = recs.iter().find(|r| r.typ == officeart::rt::SP_CONTAINER).map(|r| officeart::shape(r.body, &mut budget))?;
     let fbses: Vec<&[u8]> = recs.iter().filter(|r| r.typ == officeart::rt::FBSE).map(|r| r.body).collect();
     let fbse = sp.props.pib.and_then(|p| fbses.get((p as usize).checked_sub(1)?)).or(fbses.first())?;
-    let blip = officeart::fbse_blip(fbse, data, MAX_MEDIA_BYTES)?;
+    let blip = officeart::fbse_blip(fbse, data, room)?;
     Some((blip, sp.props))
 }
 

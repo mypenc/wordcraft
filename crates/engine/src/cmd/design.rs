@@ -71,6 +71,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(r#"{"text"?: string, "remove"?: bool, "diagonal"?: bool, "color"?: "RRGGBB"}"#),
         CommandSpec::new("design.pageColor", "Page Color", "Design › Page Background", |s, v| {
             s.doc.settings.page_color = p::str(v, "color").and_then(Rgb::parse);
+            s.doc.settings.page_picture = None;
             sel_result(s)
         })
         .params(r#"{"color": "RRGGBB" | null}"#),
