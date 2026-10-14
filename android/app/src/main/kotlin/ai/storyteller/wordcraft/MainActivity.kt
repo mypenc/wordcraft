@@ -191,12 +191,17 @@ class MainActivity : GameActivity() {
     /** The bar's KB button: open the keyboard even where the normal request is ignored (some Xiaomi pads). */
     @Suppress("unused")
     fun forceShowSoftKeyboard() = runOnUiThread {
-        val view = window.decorView
+        // The keyboard attaches to the focused view (the game surface), not always the decor view.
+        val view = currentFocus ?: window.decorView
         view.requestFocus()
         val inputMethod = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         inputMethod.restartInput(view)
         @Suppress("DEPRECATION")
-        val shown = inputMethod.showSoftInput(view, InputMethodManager.SHOW_FORCED)
+        var shown = inputMethod.showSoftInput(view, InputMethodManager.SHOW_FORCED)
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.show(android.view.WindowInsets.Type.ime())
+            shown = true
+        }
         if (shown) softKeyboardVisible = true else Log.w("WordCraft", "Android did not accept the request to show the soft keyboard")
     }
 
