@@ -13,6 +13,7 @@ pub mod comments;
 pub mod html;
 pub mod latex;
 pub mod markdown;
+pub mod mathml;
 pub mod model;
 pub mod odt;
 pub mod rtf;

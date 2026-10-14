@@ -215,7 +215,13 @@ impl WordApp {
             }
             AfterPick::Export { ext } => {
                 let Some(path) = picked else { return Ok(json!({"cancelled": true})) };
-                let r = if ext == "png" { self.run("file.exportPng", json!({"path": path})) } else { self.run("file.saveAs", json!({"path": path})) };
+                let r = if ext == "png" {
+                    self.run("file.exportPng", json!({"path": path}))
+                } else if ext == crate::print_page::EXPORT_WORD_2003 {
+                    self.run("file.saveAs", json!({"path": path, "format": ext}))
+                } else {
+                    self.run("file.saveAs", json!({"path": path}))
+                };
                 if r.is_ok() {
                     self.status(crate::i18n::fmt(tl!("Exported {path}"), &[("path", &path)]));
                 }
@@ -272,7 +278,8 @@ impl WordApp {
 
     /// File › Export: ask where to save a copy in this format, then write it.
     pub(crate) fn export_dialog(&mut self, ext: &str) {
-        let name = format!("{}.{ext}", self.title_stem());
+        let file_ext = if ext == crate::print_page::EXPORT_WORD_2003 { "xml" } else { ext };
+        let name = format!("{}.{file_ext}", self.title_stem());
         let _ = self.ask_file(FileDialogRequest::Save { name }, AfterPick::Export { ext: ext.to_string() });
     }
 

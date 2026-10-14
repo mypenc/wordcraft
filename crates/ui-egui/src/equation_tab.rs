@@ -14,7 +14,7 @@ use crate::theme::{Tokens, regular, semibold};
 use crate::widgets::{BIG_ICON_Y, BIG_LABEL_Y, CONTENT_H, LABEL_PITCH, group, small};
 
 /// What each structure button shows.
-fn button_picture(id: &str) -> &'static str {
+pub(crate) fn button_picture(id: &str) -> &'static str {
     match id {
         "fraction" => "x/y",
         "script" => "e^x",
@@ -35,8 +35,8 @@ fn button_picture(id: &str) -> &'static str {
 fn paint_math(app: &mut WordApp, ui: &Ui, r: Rect, key: &str, linear: &str, nodes: Option<wordcraft_doc::math::Arg>, display: bool, pt: f32) {
     let nodes = nodes.unwrap_or_else(|| parse_linear(linear));
     match crate::previews::math_texture(app, ui.ctx(), key, &nodes, display, pt, r.size()) {
-        Some(tex) => {
-            ui.painter().image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Tokens::get(ui.ctx()).text);
+        Some((tex, uv)) => {
+            ui.painter().image(tex, r, uv, Tokens::get(ui.ctx()).text);
         }
         None => {
             let t = Tokens::get(ui.ctx());

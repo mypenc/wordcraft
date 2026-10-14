@@ -451,6 +451,7 @@
 	No Markup	Bez znaczników
 	No Paragraph Space	Bez odstępów między akapitami
 	No contributor data was built into this copy.	Ta kopia programu nie zawiera danych o współtwórcach.
+	No document is open. Create a document or open one first.	Żaden dokument nie jest otwarty. Najpierw utwórz lub otwórz dokument.
 	No model credits were built into this copy.	Ta kopia programu nie zawiera informacji o modelach.
 	No templates match your search.	Żaden szablon nie pasuje do wyszukiwania.
 	Nonbreaking Hyphen	Łącznik nierozdzielający
@@ -1252,7 +1253,8 @@
 	Links and References	Łącza i odwołania
 	List Definition	Definicja listy
 	Mail Merge	Korespondencja seryjna
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Powiększa lub zmniejsza wstążkę, menu i okna dialogowe, niezależnie od skalowania ekranu w systemie. Powiększenie dokumentu ustawia się osobno.
+	Auto ({percent}%)	Automatycznie ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Powiększa lub zmniejsza wstążkę, menu i okna dialogowe. Automatycznie oznacza skalowanie ekranu ustawione w systemie; 100% to jeden piksel ekranu na punkt. Powiększenie dokumentu ustawia się osobno.
 	Model	Model
 	Mon	Pon
 	More Columns…	Więcej kolumn…
@@ -2052,6 +2054,7 @@
 	White space	Odstępy
 	With:	Na:
 	Word XML Document (*.xml)	Dokument XML programu Word (*.xml)
+	Word 2003 XML Document (*.xml)	Dokument XML programu Word 2003 (*.xml)
 	Word document	Dokument programu Word
 	Word level	Poziom wyrazów
 	WordArt Styles	Style WordArt
@@ -2468,3 +2471,10 @@ preview	Title	Tytuł
 	Typing	Pisanie
 	Search	Wyszukaj
 	Title Bar	Pasek tytułu
+	Privacy Options	Opcje prywatności
+	Trust Center	Centrum zaufania
+	Privacy for this document	Prywatność tego dokumentu
+	Remove my name from comments, changes and file properties when saving	Usuń moje imię i nazwisko z komentarzy, zmian i właściwości pliku przy zapisywaniu
+	Leave out the date and time of comments and tracked changes when saving	Pomiń datę i godzinę komentarzy i śledzonych zmian przy zapisywaniu
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Edytowany dokument zachowuje nazwiska i daty; pomija je tylko zapisany plik.
+	Privacy Settings	Bieżące ustawienia prywatności

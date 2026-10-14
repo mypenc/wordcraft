@@ -211,7 +211,7 @@ fn copy(s: &mut Session, segs: &[(Pos, Pos)]) -> CmdResult {
     }
     s.clipboard_text = rows.join("\n");
     s.clipboard = Some(Fragment { blocks, parts });
-    Ok(json!({"text": s.clipboard_text}))
+    Ok(super::edit::copy_result(s))
 }
 
 /// Delete each row's piece (bottom up, so earlier positions stay valid) and leave the caret at

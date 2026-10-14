@@ -51,6 +51,9 @@ pub struct ExportOptions {
     pub markup: bool,
     /// With `markup`, show the comments (Track Changes Options › Comments).
     pub comments: bool,
+    /// An `.xml` copy is a Word 2003 XML Document (WordprocessingML 2003) instead of a Word XML
+    /// Document (Flat OPC): `format: "wordml2003"` on the save commands.
+    pub word2003: bool,
 }
 
 /// A document password: wiped from memory when dropped, never printed (`Debug` shows `***`).

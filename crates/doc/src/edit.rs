@@ -23,16 +23,27 @@ pub struct Fragment {
 
 impl Fragment {
     pub fn plain_text(&self) -> String {
+        self.to_document().plain_text(crate::StoryRef::Body)
+    }
+    /// The fragment as the body of a new document (default styles).
+    pub fn to_document(&self) -> Document {
         let mut d = Document::new();
         d.body = self.blocks.iter().cloned().map(Arc::new).collect();
-        d.plain_text(crate::StoryRef::Body)
+        d
+    }
+    /// Whether the fragment holds an equation (in tables too), which a copy also puts on the
+    /// system clipboard as MathML (#816).
+    pub fn has_equation(&self) -> bool {
+        let mut found = false;
+        for b in &self.blocks {
+            each_para(b, 0, &mut |p| found |= p.objects.iter().any(|o| matches!(o, InlineObject::Equation { .. })));
+        }
+        found
     }
     /// The text a copy puts on the clipboard: [`Self::plain_text`] with symbol-font characters
     /// (Wingdings…) as their Unicode equivalents.
     pub fn clipboard_text(&self) -> String {
-        let mut d = Document::new();
-        d.body = self.blocks.iter().cloned().map(Arc::new).collect();
-        d.shown_text(crate::StoryRef::Body)
+        self.to_document().shown_text(crate::StoryRef::Body)
     }
     pub fn from_text(s: &str) -> Fragment {
         let lines: Vec<&str> = s.split('\n').collect();

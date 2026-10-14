@@ -212,6 +212,10 @@ pub struct Float {
     /// decorative mark). See [`InlineObject::alt_text`].
     #[serde(skip_serializing_if = "AltText::is_empty")]
     pub alt: AltText,
+    /// Hidden (`wp:docPr/@hidden`, VML `visibility:hidden`): kept and saved, but neither drawn nor
+    /// laid out, as Word for Windows does (Word for Mac draws hidden VML shapes).
+    #[serde(skip_serializing_if = "is_false")]
+    pub hidden: bool,
 }
 
 /// Longest alternative text kept (characters): hostile files and commands are capped.

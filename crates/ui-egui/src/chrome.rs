@@ -32,7 +32,7 @@ pub(crate) fn qat_enabled(app: &WordApp, id: &str) -> bool {
     match id {
         "edit.undo" => app.session.can_undo(),
         "edit.redo" => app.session.can_redo(),
-        "file.save" => true,
+        "file.save" => app.has_document(),
         _ => crate::widgets::enabled(app, id),
     }
 }
@@ -315,17 +315,22 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
                 });
             });
             // Centred title.
-            let title = format!(
-                "{} — {}",
-                app.title_stem(),
-                if app.session.dirty {
-                    tl!("Edited")
-                } else if app.session.path.is_some() {
-                    tl!("Saved")
-                } else {
-                    tl!("Not saved")
-                }
-            );
+            let title = if !app.has_document() {
+                // No document open (#1129): the app's name alone.
+                "WordCraft".to_string()
+            } else {
+                format!(
+                    "{} — {}",
+                    app.title_stem(),
+                    if app.session.dirty {
+                        tl!("Edited")
+                    } else if app.session.path.is_some() {
+                        tl!("Saved")
+                    } else {
+                        tl!("Not saved")
+                    }
+                )
+            };
             let font = TypeRung::Chrome.semibold();
             let track = TypeRung::Chrome.tracking();
             let w = text_width(ui.painter(), &title, &font, track, t.text);
@@ -355,6 +360,10 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                 .stroke(Stroke::new(1.0, t.border)),
         )
         .show(ui, |ui| {
+            // No document open (#1129): an empty status bar.
+            if !app.has_document() {
+                return;
+            }
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing = vec2(14.0, 0.0);
                 let l = app.session.layout();
@@ -365,6 +374,7 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                     let w = text_width(ui.painter(), s, &font, track, t.text_dim);
                     let (r, resp) = ui.allocate_exact_size(vec2(w + 1.0, TypeRung::Caption.line_height()), Sense::click());
                     paint_text(ui.painter(), pos2(r.min.x, r.min.y), Align2::LEFT_TOP, s, &font, track, t.text_dim);
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, s));
                     resp
                 };
                 if st(ui, &crate::i18n::fmt(tl!("Page {page} of {pages}"), &[("page", &page.to_string()), ("pages", &l.pages.len().to_string())]))
@@ -446,10 +456,10 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                     ui.add_space(10.0);
                     let mode = app.session.view.mode;
                     let read = app.session.view.read_mode;
-                    for (icon, id, on) in [
-                        ("webLayout", "view.webLayout", mode == wordcraft_layout::ViewMode::Web),
-                        ("printLayout", "view.printLayout", mode == wordcraft_layout::ViewMode::Print && !read),
-                        ("readMode", "view.readMode", read),
+                    for (icon, id, name, on) in [
+                        ("webLayout", "view.webLayout", tl!("Web Layout"), mode == wordcraft_layout::ViewMode::Web),
+                        ("printLayout", "view.printLayout", tl!("Print Layout"), mode == wordcraft_layout::ViewMode::Print && !read),
+                        ("readMode", "view.readMode", tl!("Read Mode"), read),
                     ] {
                         let (r, resp) = ui.allocate_exact_size(vec2(22.0, 20.0), Sense::click());
                         if on {
@@ -458,7 +468,8 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                             ui.painter().rect_filled(r, 3.0, t.hover);
                         }
                         icons::paint(ui.painter(), r.shrink(3.0), icon, t.icon, t.accent);
-                        if resp.on_hover_text(id.trim_start_matches("view.")).clicked() {
+                        resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, on, name));
+                        if resp.on_hover_text(name).clicked() {
                             let _ = app.run(id, json!({}));
                         }
                     }

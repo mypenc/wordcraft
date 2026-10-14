@@ -136,6 +136,7 @@ pub fn cursor(app: &WordApp, ui: &Ui, resp: &egui::Response, layout: &DocLayout,
 /// dragged, a dashed outline of where the table goes.
 pub fn paint(app: &WordApp, painter: &egui::Painter, t: &Tokens, layout: &DocLayout, rects: &[Rect], scale: f32) {
     let hover = painter.ctx().input(|i| i.pointer.hover_pos());
+    let dark = app.session.view.dark_mode;
     if let Some(d) = &app.canvas.table_drag {
         match d.target.spot {
             Spot::Handle => {
@@ -150,7 +151,7 @@ pub fn paint(app: &WordApp, painter: &egui::Painter, t: &Tokens, layout: &DocLay
             }
             spot => {
                 if let Some(p) = hover {
-                    arrow(painter, p, spot);
+                    arrow(painter, p, spot, dark);
                 }
             }
         }
@@ -177,7 +178,7 @@ pub fn paint(app: &WordApp, painter: &egui::Painter, t: &Tokens, layout: &DocLay
                 insert_button(painter, c, a, b, sc, t);
             }
         }
-        None if target.spot != Spot::Handle => arrow(painter, p, target.spot),
+        None if target.spot != Spot::Handle => arrow(painter, p, target.spot, dark),
         None => {}
     }
 }
@@ -212,13 +213,10 @@ fn insert_button(painter: &egui::Painter, c: Pos2, from: Pos2, to: Pos2, sc: f32
 
 /// The selection arrow at the pointer, its tip on it (the system pointer is hidden there): down
 /// over a column; up and right, filled, in a cell; up and right, hollow, beside a row.
-fn arrow(painter: &egui::Painter, tip: Pos2, spot: Spot) {
+fn arrow(painter: &egui::Painter, tip: Pos2, spot: Spot, dark: bool) {
     use std::f32::consts::{FRAC_PI_4, PI};
-    let (turn, fill, edge) = match spot {
-        Spot::Column(_) => (PI, Color32::BLACK, Color32::WHITE),
-        Spot::Cell(..) => (FRAC_PI_4, Color32::BLACK, Color32::WHITE),
-        _ => (FRAC_PI_4, Color32::WHITE, Color32::BLACK),
-    };
+    let turn = if matches!(spot, Spot::Column(_)) { PI } else { FRAC_PI_4 };
+    let (fill, edge) = arrow_colors(spot, dark);
     // An arrow pointing up from its tip at (0, 0), turned clockwise by `turn` (screen points).
     let (sin, cos) = turn.sin_cos();
     let at = |(x, y): (f32, f32)| tip + vec2(x * cos - y * sin, x * sin + y * cos);
@@ -230,10 +228,33 @@ fn arrow(painter: &egui::Painter, tip: Pos2, spot: Spot) {
     painter.add(Shape::closed_line(outline.to_vec(), Stroke::new(1.0, edge)));
 }
 
+/// The arrow's fill and edge: black on white over a column or cell (white on the dark paper's
+/// grey in dark mode, where black would vanish), white on black beside a row.
+fn arrow_colors(spot: Spot, dark: bool) -> (Color32, Color32) {
+    match spot {
+        Spot::Column(_) | Spot::Cell(..) if dark => (Color32::WHITE, Color32::from_gray(wordcraft_render::DARK_PAPER)),
+        Spot::Column(_) | Spot::Cell(..) => (Color32::BLACK, Color32::WHITE),
+        _ => (Color32::WHITE, Color32::BLACK),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::table_resize::tests::{H, button, cell, screen, steps, table_window, table_window_stepping};
+
+    /// On the dark paper the column and cell arrows are drawn light, so they stay visible; on
+    /// white paper they stay black, and the hollow row arrow is the same on both.
+    #[test]
+    fn the_selection_arrow_is_light_on_dark_paper() {
+        let dark_paper = Color32::from_gray(wordcraft_render::DARK_PAPER);
+        assert_eq!(arrow_colors(Spot::Column(0), false), (Color32::BLACK, Color32::WHITE));
+        assert_eq!(arrow_colors(Spot::Cell(0, 0), false), (Color32::BLACK, Color32::WHITE));
+        assert_eq!(arrow_colors(Spot::Column(0), true), (Color32::WHITE, dark_paper));
+        assert_eq!(arrow_colors(Spot::Cell(0, 0), true), (Color32::WHITE, dark_paper));
+        assert_eq!(arrow_colors(Spot::Row(0), false), (Color32::WHITE, Color32::BLACK));
+        assert_eq!(arrow_colors(Spot::Row(0), true), (Color32::WHITE, Color32::BLACK));
+    }
 
     fn click(h: &mut H, at: Pos2) {
         h.event(egui::Event::PointerMoved(at));

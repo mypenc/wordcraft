@@ -233,12 +233,16 @@ fn preview(app: &mut WordApp, ui: &mut Ui, lay: &DocLayout, total: usize) {
     });
 }
 
+/// The export "format" of a Word 2003 XML Document: an `.xml` file saved with `format: "wordml2003"`.
+pub(crate) const EXPORT_WORD_2003: &str = "wordml2003";
+
 /// The "save a copy" formats (File › Export, and below the settings on the Print page).
 pub fn export_formats(app: &mut WordApp, ui: &mut Ui) {
     for (label, ext) in [
         ("PDF document (*.pdf)", "pdf"),
         ("Word document (*.docx)", "docx"),
         ("Word XML Document (*.xml)", "xml"),
+        ("Word 2003 XML Document (*.xml)", EXPORT_WORD_2003),
         ("OpenDocument Text (*.odt)", "odt"),
         ("Rich Text Format (*.rtf)", "rtf"),
         ("Web page (*.html)", "html"),

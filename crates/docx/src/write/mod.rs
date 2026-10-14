@@ -293,12 +293,14 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         w.open("w:comments", &ns_refs);
         for (cid, c) in &doc.comments {
             let id = cid.to_string();
-            let author = if c.author.is_empty() { "Unknown" } else { c.author.as_str() };
+            let author = annotation_author(doc, &c.author);
             let mut a = vec![("w:id", id.as_str()), ("w:author", author)];
-            if !c.date.is_empty() {
+            if !c.date.is_empty() && !doc.settings.remove_date_time {
                 a.push(("w:date", c.date.as_str()));
             }
-            if !c.initials.is_empty() {
+            if doc.settings.remove_personal_info {
+                a.push(("w:initials", ANONYMOUS_INITIALS));
+            } else if !c.initials.is_empty() {
                 a.push(("w:initials", c.initials.as_str()));
             }
             w.open("w:comment", &a);
@@ -891,6 +893,13 @@ fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, template_rel: O
     let ns_refs: Vec<(&str, &str)> = ns.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     w.open("w:settings", &ns_refs);
     w.empty("w:zoom", &[("w:percent", "100")]);
+    // §17.15.1.70 / §17.15.1.69, right after `w:zoom` in CT_Settings.
+    if s.remove_personal_info {
+        w.empty("w:removePersonalInformation", &[]);
+    }
+    if s.remove_date_time {
+        w.empty("w:removeDateAndTime", &[]);
+    }
     if s.page_color.is_some() {
         w.empty("w:displayBackgroundShape", &[]);
     }
@@ -1029,8 +1038,28 @@ fn theme_xml(doc: &Document) -> Vec<u8> {
     w.into_bytes()
 }
 
+/// The author the saved file gives a comment or tracked change when the document removes personal
+/// information on save (`w:removePersonalInformation`), as Word does.
+pub(crate) const ANONYMOUS_AUTHOR: &str = "Author";
+const ANONYMOUS_INITIALS: &str = "A";
+
+/// The `w:author` written for an annotation by `author`: "Author" when the document removes
+/// personal information on save, "Unknown" when it has none.
+pub(crate) fn annotation_author<'a>(doc: &Document, author: &'a str) -> &'a str {
+    if doc.settings.remove_personal_info {
+        ANONYMOUS_AUTHOR
+    } else if author.is_empty() {
+        "Unknown"
+    } else {
+        author
+    }
+}
+
 fn core_xml(doc: &Document) -> Vec<u8> {
     let c = &doc.core;
+    // Remove personal information (§17.15.1.70): no creator or last-modified-by in the file.
+    let personal = |v: &String| if doc.settings.remove_personal_info { String::new() } else { v.clone() };
+    let (creator, last_modified_by) = (personal(&c.creator), personal(&c.last_modified_by));
     let mut w = W::new();
     w.open(
         "cp:coreProperties",
@@ -1045,10 +1074,10 @@ fn core_xml(doc: &Document) -> Vec<u8> {
     for (tag, v) in [
         ("dc:title", &c.title),
         ("dc:subject", &c.subject),
-        ("dc:creator", &c.creator),
+        ("dc:creator", &creator),
         ("cp:keywords", &c.keywords),
         ("dc:description", &c.description),
-        ("cp:lastModifiedBy", &c.last_modified_by),
+        ("cp:lastModifiedBy", &last_modified_by),
         ("cp:category", &c.category),
     ] {
         if !v.is_empty() {

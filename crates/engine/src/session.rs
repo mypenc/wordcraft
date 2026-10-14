@@ -338,6 +338,9 @@ pub struct Session {
     pub pending_move: Option<crate::cmd::moves::PendingMove>,
     /// Plain text mirror of the clipboard (for the system clipboard).
     pub clipboard_text: String,
+    /// HTML for the system clipboard beside [`Self::clipboard_text`] when the copy holds an
+    /// equation (as MathML, #816), for programs that read MathML; empty otherwise.
+    pub clipboard_html: String,
     /// Items collected by Copy and Cut this session, for the Clipboard pane.
     pub clip_history: crate::cmd::edit::ClipHistory,
     pub find: FindState,
@@ -574,6 +577,7 @@ impl Session {
             clipboard: None,
             pending_move: None,
             clipboard_text: String::new(),
+            clipboard_html: String::new(),
             clip_history: Default::default(),
             find: FindState::default(),
             goal_x: None,
@@ -1005,6 +1009,7 @@ impl Session {
             // Like the clipboard: what the next paste can make a move of.
             pending_move: _,
             clipboard_text: _,
+            clipboard_html: _,
             clip_history: _,
             find: _,
             goal_x: _,

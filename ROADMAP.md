@@ -2,7 +2,7 @@
 
 **Stage: alpha** · next: beta, ~15 points (60% → 75% ready for real work) and ~150–230 h away
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** trivial (progress log: symbol fonts, #776; previously trivial: the save prompt answers from the keyboard, #861; previously trivial: table column and row markers on the rulers, #700; previously trivial: table borders and the resize handle drag on the page, #217; previously trivial: formatting revisions landed, #41; previously trivial: Draw tab ink, #307, and Draw Table and Eraser, #303, landed: catalog 402/434; previously minor: readiness table with hours per audience; full number back to the additive weighted sum, 60%; mainstream and essentials numbers added; alpha gate checked; previously major: full re-measure against Word for Mac 16.113.4; restructured to the craftrules progress-docs standard) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** trivial (progress log: privacy options on save, #1062; previously trivial: progress log: equation pictures in theme colours on Windows, #1002; previously trivial: symbol fonts, #776; previously trivial: the save prompt answers from the keyboard, #861; previously trivial: table column and row markers on the rulers, #700; previously trivial: table borders and the resize handle drag on the page, #217; previously trivial: formatting revisions landed, #41; previously trivial: Draw tab ink, #307, and Draw Table and Eraser, #303, landed: catalog 402/434; previously minor: readiness table with hours per audience; full number back to the additive weighted sum, 60%; mainstream and essentials numbers added; alpha gate checked; previously major: full re-measure against Word for Mac 16.113.4; restructured to the craftrules progress-docs standard) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
 
 > **Printing update:** 2026-10-12 · direct desktop printing through craft-print; details below.
 > **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (Android input review; physical-device verification pending; previously trivial: Turkish interface catalog completed, #774; previously trivial: drag-select by whole units, #549; previously trivial: Insert › SmartArt landed, #497: catalog 429/451 → 437/458 (95.4%); previously trivial: Turkish interface landed; previously trivial: formatting revisions landed, #41; previously trivial: Draw tab ink, #307, and Draw Table and Eraser, #303, landed: catalog 402/434; previously minor: readiness table with hours per audience; full number back to the additive weighted sum, 60%; mainstream and essentials numbers added; alpha gate checked; previously major: full re-measure against Word for Mac 16.113.4; restructured to the craftrules progress-docs standard) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
@@ -136,6 +136,19 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 | Date | What landed |
 |---|---|
+| 2026-10-12 | Text boxes from older Word files (VML) keep their internal margins, Resize shape to fit text and vertical alignment, so letterhead address blocks and form headers sit where Word puts them instead of 7 pt in and 4 pt down. Hidden drawings stay hidden (they were drawn as empty boxes) and are kept on save |
+| 2026-10-13 | Word's privacy options are kept and honoured when saving .docx (#1062): with Remove personal information, comments and tracked changes are saved by "Author" and the file has no creator or last-modified-by; with Remove date and time, they are saved without dates. The open document keeps the real names and dates; `file.privacyOptions` sets both |
+| 2026-10-13 | A selected comment balloon's Delete, Reply and Resolve buttons work again (#1085): pressing them no longer counts as a click on the page that closes the balloon first, so a new empty comment, or any other, can be deleted from its balloon |
+| 2026-10-12 | Sample-text formulas on Enter (#1067): `=rand()` and `=lorem()`, optional paragraph/sentence counts, 5/3 defaults, original English and one-step undo |
+| 2026-10-12 | File › Export › Word 2003 XML Document (#1081): documents save as WordprocessingML 2003 (`format: "wordml2003"` on the save commands, `wordcraft-cli convert --format wordml2003`); shapes, text boxes, charts and SmartArt don't survive, and it hasn't been opened in Word yet |
+| 2026-10-12 | Direct run-level native InkML (`w:contentPart`) now survives DOCX edits and repeated saves with its relationship, content type and bytes intact. Native InkML rendering/editing and ink nested in groups or canvases remain missing |
+| 2026-10-13 | The caret is black or white, whichever shows against what lies under it — the paper, a page colour, a dark page, shading or a highlight — whatever the UI theme, as Word's inverted caret does; before, it stayed black on dark page colours and highlights and could vanish (#299) |
+| 2026-10-13 | Clicking the ribbon's tab names, empty space, gallery tiles or View check boxes, or the status bar's view buttons and language menu, no longer makes the caret vanish: typing goes on in the document as in Word, without another click on the page (#1093) |
+| 2026-10-13 | Dragging a Square-wrapped shape or picture on a multi-column page wraps the text of the column it lands in around it, and its old place closes up (#884) |
+| 2026-10-13 | Pagination with footnotes follows Word (#1116): a paragraph ending on a page with footnotes keeps its space after above the separator, otherwise its last lines move to the next page with the note; pages without notes are unchanged |
+| 2026-10-13 | Interface size means what it says (#822): a chosen size is absolute, as in PhotoCraft and PdfCraft, so "100%" is one screen pixel per point even where the system reports 200 % (a bare window manager on X11, where winit guesses the scale from the monitor's DPI). The new default, Auto, keeps the system's display scale and its menu entry shows the size it draws at; sizes run 75–300 %. A saved size from before stays the same if it was the default (now Auto) and becomes absolute otherwise |
+| 2026-10-13 | Copying an equation also puts MathML in HTML on the clipboard beside the linear text like `y=2x_s` (#816; Word/LibreOffice paste not yet verified; OMML is #1297). HTML export writes equations as MathML too, and opening or pasting HTML with MathML gives equations back |
+| 2026-10-13 | The Equation tab's galleries, structure buttons and symbols keep the theme's colours on Windows: their pictures share a few textures written in place (no wipe of pictures already on screen, room for the built-ins at high display scales), instead of hundreds of small textures freed in bulk, which on DirectX 12 showed inverted, red or teal tiles (#1002) |
 | 2026-10-12 | RTF import now uses the RTF spec's defaults where a file names none (#902): no space before or after paragraphs, single line spacing, and the `\deff` default font, instead of WordCraft's Normal style; RTF files that relied on the old defaults open tighter, like in Word |
 | 2026-10-11 | Right-clicking a table cell offers the table's commands, and as in Word they follow the selection: with the caret in a cell Insert, Delete Cells, Split Cells, Text Direction and Table Properties…; with several cells Merge Cells instead of Split; with whole columns or rows Delete Columns or Rows, Merge Cells and Distribute Rows and Columns; with the whole table Delete Table, Distribute, AutoFit and Insert Caption…. A right-click beside selected cells moves the caret there instead of keeping them |
 | 2026-10-11 | Drags, Shift+arrows and Shift+click over table cells select whole cells, as in Word: from one cell into another the rectangle between them (bold, alignment and Delete leave the other cells alone), into or out of a table whole rows; extending again goes on from where the selection started |
@@ -148,6 +161,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | Paste from other programs keeps their formatting (#687): Ctrl+V and Home › Paste read the system clipboard's HTML (and RTF on Windows and Wayland); Merge Formatting takes the destination's font and paragraph and keeps bold, italic, underline and strikethrough; Paste Special lists what the system clipboard holds (HTML, RTF, picture, text). Linux: pictures copied in a browser or Spectacle paste on KDE and other Wayland desktops (data-control clipboard), and a paste that finds nothing usable names what the clipboard holds instead of "empty" (#833) |
 | 2026-10-12 | Undo history list (#701): a ▾ beside the Quick Access Toolbar's Undo lists recent steps newest first; hovering highlights what a click undoes ("Undo 3 Actions"), and a click undoes them in one go. `edit.undoTo {count}` and `edit.undoHistory` (newest first, up to 100) for CLI and MCP |
 | 2026-10-12 | Start screen (#766): launched with nothing to open, WordCraft starts on File › Home (Blank document, templates, Recent) like Word, desktop and web; Esc leaves a blank document; File › Options › General › Start-up turns it off |
+| 2026-10-13 | No document behind the Start screen (#1129): Esc or Back from it shows an empty window (no page, ribbon greyed out but for Help) until Blank document, a template or a file is opened, as in Word; closing it asks nothing |
 | 2026-10-12 | Word 365 cover pages (#743): a freeform inside a group keeps its shape (it was drawn as a rectangle); text boxes keep their own internal margins and Resize shape to fit text, so a tight title box no longer loses its second line; both survive saving. The missing fills in the report were theme-coloured shapes, fixed by #611 |
 | 2026-10-12 | Alt+Q moves to "Tell me" command search, as in Word for Windows (#819); not on macOS, where Option+Q types a character |
 | 2026-10-12 | PDF export of long documents with many internal links (a linked table of contents) is linear: NIH's 67-page protocol template 10.6 s → 0.9 s |
@@ -275,7 +289,15 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | trivial | Progress log: VML text box margins, fit and alignment; hidden drawings |
+| 2026-10-13 | trivial | Progress log: comment balloon buttons work, empty comments can be deleted (#1085) |
+| 2026-10-12 | trivial | Progress log: sample-text formulas on Enter (#1067) |
+| 2026-10-12 | trivial | Progress log: direct run-level native InkML content parts survive DOCX edits and repeated saves |
+| 2026-10-13 | trivial | Progress log: the caret contrasts with its background (#299) |
+| 2026-10-13 | trivial | Progress log: clicks on ribbon chrome keep typing in the document (#1093) |
+| 2026-10-13 | trivial | Progress log: dragged shapes wrap in their new column (#884) |
 | 2026-10-12 | trivial | Progress log: Accept All and Reject All keep the right paragraph marks (#864) |
+| 2026-10-13 | trivial | Progress log: equation pictures keep the theme colours on Windows (#1002) |
 | 2026-10-11 | trivial | Progress log: Ctrl, Alt, left-edge and selected-cells table border drags (#711) |
 | 2026-10-11 | trivial | Progress log: table markers on the rulers (#700) |
 | 2026-10-11 | trivial | Progress log: the table context menu |
@@ -283,6 +305,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-11 | trivial | Progress log: table selection areas, insert buttons, move handle and double-click AutoFit; catalog 484/499 |
 | 2026-10-12 | trivial | Progress log: Undo history list (#701) |
 | 2026-10-12 | trivial | Progress log: Start screen at launch (#766) |
+| 2026-10-13 | trivial | Progress log: no document behind the Start screen (#1129) |
 | 2026-10-12 | trivial | Progress log: Alt+Q command search (#819); log table header fixed |
 | 2026-10-12 | trivial | Progress log: ribbon groups fit above their labels |
 | 2026-10-12 | trivial | Font list previews no longer grow memory (#848) |

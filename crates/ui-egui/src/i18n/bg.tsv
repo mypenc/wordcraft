@@ -95,6 +95,7 @@
 	Legal style numbering	Номериране в юридически стил
 	Link level to style:	Свързване на нивото със стил:
 	List Definition	Дефиниция на списък
+	No document is open. Create a document or open one first.	Няма отворен документ. Първо създайте или отворете документ.
 	Nothing	Нищо
 	Number alignment:	Подравняване на номера:
 	Number format	Формат на номера
@@ -1359,7 +1360,8 @@
 	Edit Field…	Редактиране на поле…
 	Formatted	Форматиран
 	Interface size:	Размер на интерфейса:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Уголемява или смалява лентата, менютата и диалоговите прозорци в допълнение към мащабирането на дисплея в системата. Мащабът на документа е отделна настройка.
+	Auto ({percent}%)	Автоматично ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Уголемява или смалява лентата, менютата и диалоговите прозорци. „Автоматично“ следва мащабирането на дисплея в системата; 100% е един пиксел от екрана на точка. Мащабът на документа е отделна настройка.
 	In Line with Text	На един ред с текста
 	Square	Квадрат
 	Through	През
@@ -2158,6 +2160,7 @@
 	Use the Insert key to switch overtype on and off	Използване на клавиша Insert за включване и изключване на заместването
 	Extend Selection by Units	Разширяване на селекцията по единици
 	Word XML Document (*.xml)	XML документ на Word (*.xml)
+	Word 2003 XML Document (*.xml)	XML документ на Word 2003 (*.xml)
 	Deleted	Изтрито
 	Print Markup	Печат на маркировките
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Коментари до всяка страница и проследени промени в PDF файлове, разпечатки и изображения; списък с коментари в края при уеб страници, Markdown и текст.
@@ -2464,3 +2467,10 @@
 	Table Properties…	Свойства на таблица…
 	Search	Търсене
 	Title Bar	Заглавна лента
+	Privacy Options	Настройки за поверителност
+	Trust Center	Център за сигурност
+	Privacy for this document	Поверителност на този документ
+	Remove my name from comments, changes and file properties when saving	Премахване на името ми от коментарите, промените и свойствата на файла при запазване
+	Leave out the date and time of comments and tracked changes when saving	Без дата и час на коментарите и проследените промени при запазване
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Документът, който редактирате, запазва имената и датите; само записаният файл ги пропуска.
+	Privacy Settings	Текущи настройки за поверителност

@@ -104,12 +104,12 @@ The acceptance test `crates/mcp/src/tests.rs` writes a formatted document using 
 `styles.modify {"style": …, "chr"?: CharProps, "para"?: ParaProps}` and the `para` of
 `table.newStyle` / `table.modifyStyle` take these two objects. Every field is optional: a field
 left out keeps what the style chain gives. A field name the object doesn't know is ignored, not
-refused, so check the spelling. Lengths are points; `[r, g, b]` is a colour as three numbers
-0–255.
+refused, so check the spelling. Lengths are points. A colour is a hex string `"RRGGBB"` or
+`"#RRGGBB"`, or `[r, g, b]` (three numbers 0–255); it reads back as `[r, g, b]` (#865).
 
 ```json
 {"command": "styles.modify", "params": {"style": "Heading1",
-  "chr": {"font": "Georgia", "size": 18, "bold": true, "color": {"Rgb": [27, 22, 17]}},
+  "chr": {"font": "Georgia", "size": 18, "bold": true, "color": "1B1611"},
   "para": {"spaceBefore": 12, "lineSpacing": {"rule": "multiple", "value": 1.15}, "keepNext": true}}}
 ```
 
@@ -122,10 +122,10 @@ refused, so check the spelling. Lengths are points; `[r, g, b]` is a colour as t
 | `size` | number | points |
 | `bold`, `italic`, `strike`, `doubleStrike`, `caps`, `smallCaps`, `hidden`, `outline`, `shadow`, `emboss`, `engrave`, `noProof` | bool | |
 | `underline` | string | `none`, `single`, `words`, `double`, `thick`, `dotted`, `dash`, `dotDash`, `dotDotDash`, `wave`, `doubleWave` |
-| `underlineColor` | `[r, g, b]` | |
-| `color` | `"Auto"`, a hex string `"RRGGBB"` or `"#RRGGBB"`, or `{"Rgb": [r, g, b]}` | `Auto` (also `"auto"`) is black on light backgrounds, white on dark; read back as `"Auto"` or `{"Rgb": …}` (#865) |
+| `underlineColor` | colour | |
+| `color` | `"Auto"`, a colour, or `{"Rgb": colour}` | `Auto` (also `"auto"`) is black on light backgrounds, white on dark; read back as `"Auto"` or `{"Rgb": …}` (#865) |
 | `highlight` | string | `none`, `yellow`, `brightGreen`, `turquoise`, `pink`, `blue`, `red`, `darkBlue`, `teal`, `green`, `violet`, `darkRed`, `darkYellow`, `gray50`, `gray25`, `black`, `white` |
-| `shading` | `[r, g, b]` | background fill |
+| `shading` | colour | background fill |
 | `border` | Border | character border; `"style": "none"` is explicitly no border |
 | `vertAlign` | string | `baseline`, `superscript`, `subscript` |
 | `spacing` | number | character spacing, points: positive expands, negative condenses |
@@ -146,7 +146,7 @@ refused, so check the spelling. Lengths are points; `[r, g, b]` is a colour as t
 `format.set` also applies `size`, `bold` and `italic` to `sizeCs`, `boldCs` and `italicCs` when
 those aren't given; `styles.modify` sets only what it is given.
 
-A **Border** is `{"style": …, "width": pt, "color": [r, g, b] | null, "space": pt}` (`space` is
+A **Border** is `{"style": …, "width": pt, "color": colour | null, "space": pt}` (`space` is
 the distance from the text). Missing fields are `none`, 0, no colour and 0, so a border needs a
 `width` above 0 to show. `style` is one of `none`, `single`, `double`, `dotted`, `dashed`,
 `thick`, `triple`, `dotDash`, `wave`.
@@ -168,7 +168,7 @@ the distance from the text). Missing fields are `none`, 0, no colour and 0, so a
 | `outlineLevel` | integer | 0–8 = Level 1–9, 9 = body text |
 | `numbering` | object | `{"num": n, "level": n}`, both required; `level` counts from 0; `num` 0 removes numbering a style gives |
 | `tabs` | array | `[{"pos": pt, "align"?: "left\|center\|right\|decimal\|bar\|clear", "leader"?: "none\|dot\|hyphen\|underscore\|middleDot"}]`; replaces the inherited stops, `clear` removes an inherited one at `pos` |
-| `shading` | `[r, g, b]` | background fill |
+| `shading` | colour | background fill |
 | `borders` | object | `{"top", "left", "bottom", "right", "between"}`, each a Border (`between`: between paragraphs; `inside_v` is used by tables) |
 | `suppressHyphens`, `suppressLineNumbers` | bool | |
 | `bidi` | bool | right-to-left paragraph |

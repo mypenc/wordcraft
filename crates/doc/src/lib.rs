@@ -283,10 +283,11 @@ pub struct TextBody {
     /// story; its own blocks are unused. See [`Document::text_box_chains`].
     pub next: Option<u32>,
     /// Internal margins (left, top, right, bottom), EMU, when the file gives its own
-    /// (`wps:bodyPr` `lIns`… ECMA-376 Part 1 §21.1.2.1.1); `None` is Word's defaults.
+    /// (`wps:bodyPr` `lIns`… ECMA-376 Part 1 §21.1.2.1.1, or VML `v:textbox` `inset`);
+    /// `None` is Word's defaults.
     pub inset: Option<[u32; 4]>,
-    /// Resize shape to fit text (`a:spAutoFit`): Word grows the box to its text, so none of
-    /// the text is cut.
+    /// Resize shape to fit text (`a:spAutoFit`, VML `mso-fit-shape-to-text`): Word grows the
+    /// box to its text, so none of the text is cut.
     pub auto_fit: bool,
 }
 
@@ -479,6 +480,15 @@ pub struct Settings {
     pub attached_template: Option<String>,
     /// Update the document's styles from the attached template when it is opened (`w:linkStyles`).
     pub link_styles: bool,
+    /// Remove personal information when saving (`w:removePersonalInformation`, ECMA-376
+    /// §17.15.1.70): the saved file names comment and revision authors "Author" and leaves out
+    /// the document's creator and last-modified-by. The open document keeps its real values.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub remove_personal_info: bool,
+    /// Remove date and time from annotations when saving (`w:removeDateAndTime`, §17.15.1.69):
+    /// comments and tracked changes are saved without `w:date`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub remove_date_time: bool,
 }
 
 /// Word's compatibility mode for documents that don't state one.
@@ -556,6 +566,8 @@ impl Default for Settings {
             bib_style: None,
             attached_template: None,
             link_styles: false,
+            remove_personal_info: false,
+            remove_date_time: false,
         }
     }
 }

@@ -21,6 +21,11 @@ pub enum ProofLang {
     /// friends, when there is one), the Portuguese grammar rules and the Portuguese hyphenation
     /// patterns.
     Pt,
+    /// Italian (`it`, `it-IT`, `it-CH`): the installed Hunspell dictionary (`it_IT`, when there
+    /// is one), the Italian grammar rules and the Italian hyphenation patterns.
+    It,
+    /// Croatian (`hr`, `hr-HR`)
+    Hr,
     /// A language without proofing tools here (`fr-FR`, `ja-JP`, `x-none`…). Like Word without
     /// the language's proofing tools: no spelling or grammar marks, so its words are never
     /// flagged as English misspellings. Hyphenation keeps using the English patterns, as before
@@ -30,7 +35,7 @@ pub enum ProofLang {
 
 impl ProofLang {
     /// Every language with a spelling dictionary, in display order.
-    pub const PROOFED: [ProofLang; 3] = [ProofLang::En, ProofLang::Pl, ProofLang::Pt];
+    pub const PROOFED: [ProofLang; 5] = [ProofLang::En, ProofLang::Pl, ProofLang::Pt, ProofLang::It, ProofLang::Hr];
 
     /// The proofing language of a BCP 47 tag (`pl-PL`, `en_GB`, `PL`…). Only the primary subtag
     /// counts. No tag (or an empty one) is English, WordCraft's default editing language.
@@ -45,6 +50,10 @@ impl ProofLang {
             ProofLang::Bg
         } else if primary.eq_ignore_ascii_case("pt") || primary.eq_ignore_ascii_case("por") {
             ProofLang::Pt
+        } else if primary.eq_ignore_ascii_case("it") || primary.eq_ignore_ascii_case("ita") {
+            ProofLang::It
+        } else if primary.eq_ignore_ascii_case("hr") || primary.eq_ignore_ascii_case("hrv") {
+            ProofLang::Hr
         } else {
             ProofLang::Other
         }
@@ -57,6 +66,8 @@ impl ProofLang {
             ProofLang::Pl => "pl",
             ProofLang::Bg => "bg",
             ProofLang::Pt => "pt",
+            ProofLang::It => "it",
+            ProofLang::Hr => "hr",
             ProofLang::Other => "",
         }
     }
@@ -133,6 +144,9 @@ mod tests {
         for t in ["pt", "pt-BR", "PT_br", "pt-BR.UTF-8", " pt-PT ", "por"] {
             assert_eq!(ProofLang::from_tag(Some(t)), ProofLang::Pt, "{t}");
         }
+        for t in ["it", "it-IT", "IT_it", "it-CH", "it-CH.UTF-8", " it-IT ", "ita"] {
+            assert_eq!(ProofLang::from_tag(Some(t)), ProofLang::It, "{t}");
+        }
         for t in ["en", "en-US", "en-GB", "EN_au", "en-Latn-US"] {
             assert_eq!(ProofLang::from_tag(Some(t)), ProofLang::En, "{t}");
         }
@@ -152,6 +166,8 @@ mod tests {
         assert!(ProofLang::Pt.is_proofed() && !ProofLang::Other.is_proofed());
         assert_eq!(ProofLang::Pl.code(), "pl");
         assert_eq!(ProofLang::Pt.code(), "pt");
+        assert!(ProofLang::It.is_proofed());
+        assert_eq!(ProofLang::It.code(), "it");
         assert!(ProofLang::PROOFED.contains(&ProofLang::Pt), "every proofed language is listed");
     }
 }

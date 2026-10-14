@@ -778,7 +778,8 @@ pub fn flow_paras(doc: &Document, p: &Paragraph) -> Vec<Para> {
             }
             let obj = p.objects.get(k);
             k += 1;
-            if hidden {
+            // Hidden text, or a hidden drawing: not in the copy.
+            if hidden || obj.and_then(InlineObject::frame).is_some_and(|(_, _, f)| f.hidden) {
                 continue;
             }
             match obj {

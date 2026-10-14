@@ -117,6 +117,7 @@
 	Millimeters	Milímetros
 	New comments and tracked changes are recorded under this name and these initials.	Novos comentários e alterações controladas são registrados com este nome e estas iniciais.
 	New word	Nova palavra
+	No document is open. Create a document or open one first.	Nenhum documento está aberto. Crie ou abra um documento primeiro.
 	No words yet. Add to Dictionary on a misspelled word puts it here.	Ainda não há palavras. Adicionar ao dicionário em uma palavra com erro a coloca aqui.
 	Mirror indents	Recuos espelhados
 	Nothing	Nada
@@ -950,6 +951,7 @@
 	Word Count	Contagem de palavras
 	Word document (*.docx)	Documento Word (*.docx)
 	Word XML Document (*.xml)	Documento XML do Word (*.xml)
+	Word 2003 XML Document (*.xml)	Documento XML do Word 2003 (*.xml)
 	Word Left	Palavra à esquerda
 	Word Right	Palavra à direita
 	WordArt	Texto artístico
@@ -1431,7 +1433,8 @@
 	Formatted	Formatado
 	Deleted	Excluído
 	Interface size:	Tamanho da interface:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Aumenta ou diminui a faixa de opções, os menus e as caixas de diálogo, além da escala de exibição do sistema. O zoom do documento é separado.
+	Auto ({percent}%)	Auto ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Aumenta ou diminui a faixa de opções, os menus e as caixas de diálogo. Auto segue a escala de exibição do sistema; 100% é um pixel da tela por ponto. O zoom do documento é separado.
 	Resize Table by Dragging	Redimensionar tabela arrastando
 	Print Markup	Imprimir marcação
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Comentários ao lado de cada página e alterações controladas em PDFs, impressões e imagens; uma lista de comentários no final de páginas da web, Markdown e texto.
@@ -2087,3 +2090,10 @@
 	Start-up	Inicialização
 	Show the Start screen when WordCraft starts	Mostrar a tela inicial ao abrir o WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Ativado: o WordCraft abre em Arquivo › Início, com um documento em branco, os modelos e seus documentos recentes. Desativado: abre um documento em branco.
+	Privacy Options	Opções de privacidade
+	Trust Center	Central de confiabilidade
+	Privacy for this document	Privacidade deste documento
+	Remove my name from comments, changes and file properties when saving	Remover meu nome dos comentários, alterações e propriedades do arquivo ao salvar
+	Leave out the date and time of comments and tracked changes when saving	Omitir a data e a hora dos comentários e das alterações controladas ao salvar
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	O documento que você está editando mantém os nomes e as datas; só o arquivo salvo os omite.
+	Privacy Settings	Configurações de privacidade atuais

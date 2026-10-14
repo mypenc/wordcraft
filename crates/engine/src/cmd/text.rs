@@ -385,12 +385,70 @@ fn ins_char(s: &mut Session, c: char) -> CmdResult {
     sel_result(s)
 }
 
+/// Exact sample-text formulas; bounded counts keep typed input from allocating without limit.
+fn sample_text(s: &Session) -> Option<String> {
+    let at = &s.sel.focus;
+    let para = s.doc.para_at(at)?;
+    if !s.sel.is_collapsed() || at.off != para.len() {
+        return None;
+    }
+    let (args, sentences) = if let Some(args) = para.text.strip_prefix("=rand(") {
+        (
+            args,
+            [
+                "A blank page leaves room for a new idea.",
+                "The morning light falls across a notebook on the desk.",
+                "Small changes in spacing can give a story a different rhythm.",
+            ],
+        )
+    } else {
+        (
+            para.text.strip_prefix("=lorem(")?,
+            [
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+                "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+                "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+            ],
+        )
+    };
+    let args = args.strip_suffix(')')?;
+    if args.contains(['(', ')']) {
+        return None;
+    }
+    let count = |arg: &str| arg.parse::<usize>().ok().filter(|n| (1..=200).contains(n));
+    let counts = if args.is_empty() {
+        Some((5, 3))
+    } else if let Some((p, s)) = args.split_once(',') {
+        count(p).zip(count(s))
+    } else {
+        count(args).map(|p| (p, 3))
+    };
+    let (paragraphs, lines) = counts.unwrap_or((5, 3));
+    let mut text = String::new();
+    for _ in 0..paragraphs {
+        for sentence in sentences.iter().cycle().take(lines) {
+            if !text.is_empty() && !text.ends_with('\r') {
+                text.push(' ');
+            }
+            text.push_str(sentence);
+        }
+        text.push('\r');
+    }
+    Some(text)
+}
+
 fn new_paragraph(s: &mut Session, _: &Value) -> CmdResult {
     // Enter in a one-line plain text control (or a check box or list) does nothing, as in Word.
     if super::controls::refuses_paragraph(s) {
         return sel_result(s);
     }
     super::controls::prepare_edit(s)?;
+    if let Some(text) = sample_text(s) {
+        let end = s.sel.focus.clone();
+        s.sel = Selection { anchor: Pos { off: 0, ..end.clone() }, focus: end };
+        type_text(s, &text)?;
+        return sel_result(s);
+    }
     let mut at = delete_selection(s)?;
     let auto = border_line(s, &at).map(EnterAutoFormat::Border).or_else(|| table_line(s, &at).map(EnterAutoFormat::Table));
     if let Some(auto) = auto {

@@ -7,6 +7,11 @@ use super::{pos_json, sel_result};
 use crate::{CmdError, CmdResult, CommandSpec, Session, p};
 
 /// Longest user name kept, in characters; longer names are cut, not refused.
+/// `format` of the save commands for an `.xml` file: Word 2003 XML Document (WordprocessingML 2003).
+pub const FORMAT_WORD_2003: &str = "wordml2003";
+/// `format` for an `.xml` file as a Word XML Document (Flat OPC), the default.
+pub const FORMAT_FLAT_OPC: &str = "flatopc";
+
 pub const MAX_AUTHOR_CHARS: usize = 255;
 
 /// Sets the user name that new tracked changes and comments are recorded under. The name is
@@ -35,9 +40,9 @@ pub fn specs() -> Vec<CommandSpec> {
             .pure(),
         CommandSpec::new("file.save", "Save", "File", save)
             .key("Mod+S / Shift+F12")
-            .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup)}"#)
+            .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup), "format"?: "wordml2003" (an .xml file as a Word 2003 XML Document) | "flatopc" (as a Word XML Document, the default; saving over a Word 2003 XML file keeps that format)}"#)
             .pure(),
-        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key("F12").params(r#"{"path": string, "password"?: string, "markup"?: bool (as file.save)}"#).pure(),
+        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key("F12").params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save)}"#).pure(),
         // Pure: the password must not land in Repeat or a recorded macro, and it isn't an edit
         // to undo; it marks the document as changed itself.
         CommandSpec::new("file.encrypt", "Encrypt with Password", "File › Info › Protect Document", encrypt)
@@ -85,6 +90,28 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("file.setAuthor", "User Name", "File › Options › General", set_author)
             .params(r#"{"name": string (author of new tracked changes and comments)}"#)
             .pure(),
+        // Trust Center › Privacy Options: the document's `w:removePersonalInformation` and
+        // `w:removeDateAndTime` settings, honoured when it is saved as .docx (#1062).
+        // Changing them is a document change (undoable, refused on a protected document); reading
+        // them is `file.privacy`, which changes nothing.
+        CommandSpec::new("file.privacyOptions", "Privacy Options", "File › Options › Save", |s, v| {
+            let personal = p::bool(v, "removePersonalInfo");
+            let date_time = p::bool(v, "removeDateTime");
+            if personal.is_none() && date_time.is_none() {
+                return Err(CmdError::Params("give removePersonalInfo or removeDateTime (file.privacy reads them)".into()));
+            }
+            if let Some(on) = personal {
+                s.doc.settings.remove_personal_info = on;
+            }
+            if let Some(on) = date_time {
+                s.doc.settings.remove_date_time = on;
+            }
+            Ok(privacy(s))
+        })
+        .params(r#"{"removePersonalInfo"?: bool (save comment and revision authors as "Author", no creator or last-modified-by), "removeDateTime"?: bool (save comments and tracked changes without dates)} — at least one; the open document keeps its real names and dates"#),
+        CommandSpec::new("file.privacy", "Privacy Settings", "File › Options › Save", |s, _| Ok(privacy(s)))
+            .params(r#"{} → {"removePersonalInfo": bool, "removeDateTime": bool} (file.privacyOptions changes them)"#)
+            .pure(),
         CommandSpec::new("document.inspect", "Inspect Document", "Agents", inspect).params(r#"{"text"?: bool}"#).pure(),
         CommandSpec::new("document.text", "Document Text", "Agents", |s, v| {
             let story = super::story_param(s, v);
@@ -111,6 +138,11 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"text": string}"#),
     ]
+}
+
+/// The document's privacy settings, as `file.privacy` and `file.privacyOptions` return them.
+fn privacy(s: &Session) -> Value {
+    json!({"removePersonalInfo": s.doc.settings.remove_personal_info, "removeDateTime": s.doc.settings.remove_date_time})
 }
 
 fn new(s: &mut Session, v: &Value) -> CmdResult {
@@ -199,16 +231,48 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
         wordcraft_docx::check_password(pw).map_err(|e| CmdError::Params(e.to_string()))?;
         s.password = Some(crate::io::Password::new(pw));
     }
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let mut opts = export_options(s, v);
+    match v.get("format").filter(|f| !f.is_null()) {
+        None => {
+            // Saving over a Word 2003 XML file (one opened as such, say) keeps its format.
+            opts.word2003 = ext == "xml" && is_word_2003_file(&path);
+        }
+        Some(f) if matches!(f.as_str(), Some(FORMAT_WORD_2003 | FORMAT_FLAT_OPC)) && ext == "xml" => {}
+        Some(_) => {
+            return Err(CmdError::Params(format!("`format` is \"{FORMAT_WORD_2003}\" or \"{FORMAT_FLAT_OPC}\", and only for an .xml file")));
+        }
+    }
     s.stamp_save();
     let password = s.password.as_ref().map(crate::io::Password::as_str);
-    crate::io::save_path_with(&path, &s.doc, password, &export_options(s, v)).map_err(CmdError::Failed)?;
+    crate::io::save_path_with(&path, &s.doc, password, &opts).map_err(CmdError::Failed)?;
     let encrypted = password.is_some() && crate::io::can_encrypt(&path.to_string_lossy());
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     if ["docx", "docm", "dotx", "dotm", "odt", "rtf", "json", "xml"].contains(&ext.as_str()) {
         s.path = Some(path.clone());
         s.dirty = false;
     }
     Ok(json!({"saved": true, "path": path.to_string_lossy(), "encrypted": encrypted}))
+}
+
+/// Does `path` hold a Word 2003 XML Document already (so a plain save keeps that format)?
+#[cfg(not(target_arch = "wasm32"))]
+fn is_word_2003_file(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    if crate::file_access::check_read(&path.to_string_lossy()).is_err() {
+        return false;
+    }
+    let Ok(f) = std::fs::File::open(path) else { return false };
+    let mut head = Vec::new();
+    // The root element and its namespaces come first.
+    if f.take(64 * 1024).read_to_end(&mut head).is_err() {
+        return false;
+    }
+    wordcraft_docx::sniff_xml(&head) == wordcraft_docx::XmlKind::WordMl2003
+}
+
+#[cfg(target_arch = "wasm32")]
+fn is_word_2003_file(_path: &std::path::Path) -> bool {
+    false
 }
 
 fn save_as(s: &mut Session, v: &Value) -> CmdResult {
@@ -223,7 +287,7 @@ fn save_as(s: &mut Session, v: &Value) -> CmdResult {
 /// setting (`file.printMarkup`); comments as Track Changes Options show them.
 pub fn export_options(s: &Session, v: &Value) -> crate::io::ExportOptions {
     let markup = p::bool(v, "markup").unwrap_or(s.prefs.print_markup);
-    crate::io::ExportOptions { markup, comments: markup && s.prefs.markup.comments }
+    crate::io::ExportOptions { markup, comments: markup && s.prefs.markup.comments, word2003: p::str(v, "format") == Some(FORMAT_WORD_2003) }
 }
 
 fn export_png(s: &mut Session, v: &Value) -> CmdResult {
@@ -232,7 +296,11 @@ fn export_png(s: &mut Session, v: &Value) -> CmdResult {
     let scale = p::f32(v, "scale").unwrap_or(2.0).clamp(0.1, 8.0);
     let l = s.export_layout_with(export_options(s, v).markup);
     let pg = l.pages.get(page).ok_or_else(|| CmdError::Params(format!("no page {}", page + 1)))?;
-    let img = wordcraft_render::render_page(&s.doc, pg, scale, &Default::default());
+    // A page image is the printed page: headers and footers at full strength. Dimming them is
+    // the on-screen cue while editing the body, not part of the page.
+    let mut opts = wordcraft_render::RenderOptions::default();
+    opts.display.dim_header = false;
+    let img = wordcraft_render::render_page(&s.doc, pg, scale, &opts);
     let png = img.to_png();
     crate::io::write_file(path, &png).map_err(CmdError::Failed)?;
     Ok(json!({"path": path, "width": img.width, "height": img.height, "bytes": png.len()}))

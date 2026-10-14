@@ -189,6 +189,7 @@
 	Delete Style	Удалить стиль
 	Delete Table	Удалить таблицу
 	Design	Дизайн
+	No document is open. Create a document or open one first.	Нет открытого документа. Сначала создайте или откройте документ.
 	Search	Поиск
 	Title Bar	Строка заголовка
 	development build	сборка для разработки
@@ -1721,7 +1722,8 @@ preview	Title	Пример
 	Formatted	Отформатировано
 	Deleted	Удалено
 	Interface size:	Размер интерфейса:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Увеличивает или уменьшает ленту, меню и диалоговые окна поверх системного масштабирования экрана. Масштаб документа настраивается отдельно.
+	Auto ({percent}%)	Авто ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Увеличивает или уменьшает ленту, меню и диалоговые окна. «Авто» следует системному масштабированию экрана; 100% — один пиксель экрана на точку. Масштаб документа настраивается отдельно.
 	Copyright Sign	Знак авторского права
 	Demote	Понизить уровень
 	Edit Field Code	Изменить код поля
@@ -2202,6 +2204,7 @@ preview	Title	Пример
 	Print to PDF	Печать в PDF
 # Word XML Document (#548).
 	Word XML Document (*.xml)	Документ Word XML (*.xml)
+	Word 2003 XML Document (*.xml)	Документ Word 2003 XML (*.xml)
 # Find and Replace special characters and wildcards (#543).
 	Use wildcards	Подстановочные знаки
 	Special	Специальный
@@ -2474,3 +2477,10 @@ preview	Title	Пример
 	Level 7	Уровень 7
 	Level 8	Уровень 8
 	Level 9	Уровень 9
+	Privacy Options	Параметры конфиденциальности
+	Trust Center	Центр управления безопасностью
+	Privacy for this document	Конфиденциальность этого документа
+	Remove my name from comments, changes and file properties when saving	Удалять моё имя из примечаний, изменений и свойств файла при сохранении
+	Leave out the date and time of comments and tracked changes when saving	Не сохранять дату и время примечаний и отслеживаемых изменений
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Редактируемый документ сохраняет имена и даты; их не будет только в сохранённом файле.
+	Privacy Settings	Текущие параметры конфиденциальности

@@ -191,6 +191,7 @@
 	Delete Style	Stílus törlése
 	Delete Table	Táblázat törlése
 	Design	Tervezés
+	No document is open. Create a document or open one first.	Nincs megnyitott dokumentum. Előbb hozz létre vagy nyiss meg egyet.
 	development build	fejlesztői kiadás
 	Diagonal	Átlós
 	Diamond	Rombusz
@@ -1739,7 +1740,8 @@
 	Formatted	Formázott
 	Deleted	Törölve
 	Interface size:	Felület mérete:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	A menüszalag, a menük és a párbeszédablakok nagyítása vagy kicsinyítése a rendszer kijelzőméretezésén felül. A dokumentum nagyítása ettől független.
+	Auto ({percent}%)	Automatikus ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	A menüszalag, a menük és a párbeszédablakok nagyítása vagy kicsinyítése. Az Automatikus a rendszer kijelzőméretezését követi; 100% pontonként egy képernyőpixel. A dokumentum nagyítása ettől független.
 	Copyright Sign	Copyright jel
 	Demote	Lefokozás
 	Edit Field Code	Mezőkód szerkesztése
@@ -2317,6 +2319,7 @@
 	Previous Page	Előző oldal
 	Print to PDF	Nyomtatás PDF-be
 	Word XML Document (*.xml)	Word XML-dokumentum (*.xml)
+	Word 2003 XML Document (*.xml)	Word 2003 XML-dokumentum (*.xml)
 	Use wildcards	Helyettesítő karakterek használata
 	Special	Különleges
 	Match prefix	Egyezés a szó elején
@@ -2473,3 +2476,10 @@
 	Table Properties…	Táblázat tulajdonságai…
 	Search	Keresés
 	Title Bar	Címsor
+	Privacy Options	Adatvédelmi beállítások
+	Trust Center	Adatvédelmi központ
+	Privacy for this document	A dokumentum adatvédelme
+	Remove my name from comments, changes and file properties when saving	Mentéskor a nevem eltávolítása a megjegyzésekből, a módosításokból és a fájl tulajdonságaiból
+	Leave out the date and time of comments and tracked changes when saving	Mentéskor a megjegyzések és a követett módosítások dátumának és idejének elhagyása
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	A szerkesztett dokumentum megtartja a neveket és a dátumokat; csak a mentett fájlból maradnak ki.
+	Privacy Settings	Jelenlegi adatvédelmi beállítások

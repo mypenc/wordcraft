@@ -16,6 +16,7 @@ mod read;
 mod smart_art;
 mod units;
 mod wordml2003;
+mod wordml2003_write;
 mod write;
 mod xml;
 
@@ -27,6 +28,7 @@ pub use crypt::{
 pub use flat::{XmlKind, sniff_xml, write as write_flat};
 pub use read::read;
 pub use smart_art::smart_art_items;
+pub use wordml2003_write::write as write_wordml2003;
 pub use write::{write, write_as};
 
 /// Largest `.xml` file read as a Word XML document.

@@ -116,6 +116,7 @@
 	Millimeters	Milímetros
 	New comments and tracked changes are recorded under this name and these initials.	Los comentarios y cambios con seguimiento nuevos se registran con este nombre y estas iniciales.
 	New word	Palabra nueva
+	No document is open. Create a document or open one first.	No hay ningún documento abierto. Crea uno o abre uno primero.
 	No words yet. Add to Dictionary on a misspelled word puts it here.	Aún no hay palabras. Añadir al diccionario sobre una palabra mal escrita la pone aquí.
 	Mirror indents	Sangrías simétricas
 	Nothing	Nada
@@ -999,6 +1000,7 @@
 	Word Right	Palabra a la derecha
 	Word document (*.docx)	Documento de Word (*.docx)
 	Word XML Document (*.xml)	Documento XML de Word (*.xml)
+	Word 2003 XML Document (*.xml)	Documento XML de Word 2003 (*.xml)
 	WordArt	WordArt
 	WordCraft	WordCraft
 	WordCraft is now the default app for Word documents.	WordCraft es ahora la aplicación predeterminada para los documentos de Word.
@@ -1459,7 +1461,8 @@
 	Formatted	Con formato
 	Deleted	Eliminado
 	Interface size:	Tamaño de la interfaz:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Agranda o reduce la cinta, los menús y los cuadros de diálogo, además del escalado de pantalla del sistema. El zoom del documento es aparte.
+	Auto ({percent}%)	Auto ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Agranda o reduce la cinta, los menús y los cuadros de diálogo. Auto sigue el escalado de pantalla del sistema; 100% es un píxel de pantalla por punto. El zoom del documento es aparte.
 	Resize Table by Dragging	Cambiar tamaño de tabla arrastrando
 	Print Markup	Imprimir marcas
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Comentarios junto a cada página y cambios marcados en PDF, impresiones e imágenes; una lista de comentarios al final de páginas web, Markdown y texto.
@@ -2441,3 +2444,10 @@ preview	Title	Título
 	Start-up	Inicio de la aplicación
 	Show the Start screen when WordCraft starts	Mostrar la pantalla de inicio al abrir WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Activado: WordCraft se abre en Archivo › Inicio, con un documento en blanco, las plantillas y tus documentos recientes. Desactivado: abre un documento en blanco.
+	Privacy Options	Opciones de privacidad
+	Trust Center	Centro de confianza
+	Privacy for this document	Privacidad de este documento
+	Remove my name from comments, changes and file properties when saving	Quitar mi nombre de los comentarios, los cambios y las propiedades del archivo al guardar
+	Leave out the date and time of comments and tracked changes when saving	Omitir la fecha y la hora de los comentarios y los cambios controlados al guardar
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	El documento que editas conserva los nombres y las fechas; solo el archivo guardado los omite.
+	Privacy Settings	Configuración de privacidad actual

@@ -2,7 +2,8 @@
 //!
 //! Bar and column (clustered, stacked or 100% stacked), line, area, pie, doughnut and scatter
 //! charts are drawn from the first supported chart type of the plot area, with their values as
-//! data labels where `c:dLbls` shows them (`c:showVal`). Other chart types draw nothing. Text widths are estimated ([`CHAR_W`] em a character), so label places are approximate.
+//! data labels where `c:dLbls` shows them (`c:showVal`). A chart of only other types (radar, stock…)
+//! draws a placeholder: its frame, its title and the type it is. Text widths are estimated ([`CHAR_W`] em a character), so label places are approximate.
 
 use std::f64::consts::{FRAC_PI_2, TAU};
 
@@ -45,20 +46,21 @@ const TEXT: Rgb = Rgb(0x59, 0x59, 0x59);
 const GRID: Rgb = Rgb(0xD9, 0xD9, 0xD9);
 const AXIS: Rgb = Rgb(0xBF, 0xBF, 0xBF);
 
-/// Items for a chart part, sized `w` x `h` points. Empty when nothing supported is in it.
+/// Items for a chart part, sized `w` x `h` points: a placeholder when only unsupported chart
+/// types are in it, empty when there's nothing to draw.
 pub(crate) fn chart_items(space: &El, theme: &[Rgb], w: f32, h: f32) -> Vec<GraphicItem> {
     let mut out = Vec::new();
     if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
         return out;
     }
-    let Some(chart) = Chart::parse(space, theme) else { return out };
+    let Some(chart) = Chart::parse(space, theme) else {
+        placeholder(&mut out, space, theme, w, h);
+        return out;
+    };
     backdrop(&mut out, space, theme, w, h);
     let mut area = Rect { x: PAD, y: PAD, w: (w - 2.0 * PAD).max(1.0), h: (h - 2.0 * PAD).max(1.0) };
     if let Some(t) = &chart.title {
-        let lh = TITLE_SIZE * LINE;
-        text(&mut out, Rect { x: area.x, y: area.y, w: area.w, h: lh }, t, TITLE_SIZE, TextAlign::Center, true);
-        area.y += lh + PAD;
-        area.h = (area.h - lh - PAD).max(1.0);
+        area = title_block(&mut out, t, area);
     }
     if let Some(pos) = chart.legend {
         // Word lists bar series in the order they are drawn: reversed for clustered horizontal bars
@@ -76,6 +78,53 @@ pub(crate) fn chart_items(space: &El, theme: &[Rgb], w: f32, h: f32) -> Vec<Grap
         _ => cartesian(&mut out, &chart, area),
     }
     out
+}
+
+/// The title at the top of `area`; returns the room left under it.
+fn title_block(out: &mut Vec<GraphicItem>, t: &str, area: Rect) -> Rect {
+    let lh = TITLE_SIZE * LINE;
+    text(out, Rect { x: area.x, y: area.y, w: area.w, h: lh }, t, TITLE_SIZE, TextAlign::Center, true);
+    Rect { y: area.y + lh + PAD, h: (area.h - lh - PAD).max(1.0), ..area }
+}
+
+/// A chart whose plot area holds only chart types WordCraft doesn't draw (radar, stock…): its
+/// frame with a light border, its title and a line saying which type it is, so it isn't blank
+/// space. Nothing when the plot area has no chart type at all, or a supported one with nothing
+/// to draw.
+fn placeholder(out: &mut Vec<GraphicItem>, space: &El, theme: &[Rgb], w: f32, h: f32) {
+    let Some(chart) = space.child("c:chart") else { return };
+    let Some(plot) = chart.child("c:plotArea") else { return };
+    if plot.els().any(|e| Kind::of(&e.name).is_some()) {
+        return;
+    }
+    let Some(ty) = plot.els().find(|e| e.name.ends_with("Chart")) else { return };
+    backdrop(out, space, theme, w, h);
+    out.push(GraphicItem::Shape { rect: [0.0, 0.0, w, h], kind: ShapeKind::Rectangle, fill: None, stroke: Some(AXIS), stroke_width: 0.75 });
+    let mut area = Rect { x: PAD, y: PAD, w: (w - 2.0 * PAD).max(1.0), h: (h - 2.0 * PAD).max(1.0) };
+    if let Some(t) = title_of(chart, &read_series(ty, false, theme)) {
+        area = title_block(out, &t, area);
+    }
+    let size = text_size(space);
+    let lh = size * LINE;
+    let msg = format!("{} (not supported yet)", unsupported_name(&ty.name));
+    let line = Rect { x: area.x, y: area.y + ((area.h - lh) / 2.0).max(0.0), w: area.w, h: lh };
+    text(out, line, &clip_text(&msg, area.w, size), size, TextAlign::Center, false);
+}
+
+/// What a placeholder calls a chart type element WordCraft doesn't draw.
+fn unsupported_name(name: &str) -> &'static str {
+    match name {
+        "c:radarChart" => "Radar chart",
+        "c:stockChart" => "Stock chart",
+        "c:bubbleChart" => "Bubble chart",
+        "c:surfaceChart" | "c:surface3DChart" => "Surface chart",
+        "c:ofPieChart" => "Pie of pie chart",
+        "c:bar3DChart" => "3-D bar chart",
+        "c:line3DChart" => "3-D line chart",
+        "c:area3DChart" => "3-D area chart",
+        "c:pie3DChart" => "3-D pie chart",
+        _ => "Chart",
+    }
 }
 
 /// A data label to draw once the chart is: the value at (`x`, `y`), centred there (`inside`, in
@@ -1792,10 +1841,27 @@ mod tests {
         assert!(chart_items(&El::default(), &theme(), 100.0, 100.0).is_empty());
     }
 
+    fn texts(items: &[GraphicItem]) -> Vec<&str> {
+        items.iter().filter_map(|it| if let GraphicItem::Text { text, .. } = it { Some(text.as_str()) } else { None }).collect()
+    }
+
     #[test]
-    fn unsupported_chart_types_draw_nothing() {
-        let plot = r#"<c:radarChart><c:ser><c:val><c:numLit><c:ptCount val="1"/><c:pt idx="0"><c:v>1</c:v></c:pt></c:numLit></c:val></c:ser></c:radarChart>"#;
-        assert!(chart_items(&space(plot), &theme(), 100.0, 100.0).is_empty());
+    fn unsupported_chart_types_draw_a_placeholder() {
+        let ser = r#"<c:ser><c:val><c:numLit><c:ptCount val="1"/><c:pt idx="0"><c:v>1</c:v></c:pt></c:numLit></c:val></c:ser>"#;
+        let title = r#"<c:title><c:tx><c:rich><a:p><a:r><a:t>Skills</a:t></a:r></a:p></c:rich></c:tx></c:title>"#;
+        let x = format!(r#"<c:chartSpace {NS}><c:chart>{title}<c:plotArea><c:radarChart>{ser}</c:radarChart></c:plotArea></c:chart></c:chartSpace>"#);
+        let radar = chart_items(&crate::xml::parse(x.as_bytes()).unwrap(), &theme(), 300.0, 200.0);
+        assert_eq!(texts(&radar), ["Skills", "Radar chart (not supported yet)"]);
+        let framed = radar.iter().any(|it| matches!(it, GraphicItem::Shape { rect, stroke: Some(_), .. } if *rect == [0.0, 0.0, 300.0, 200.0]));
+        assert!(framed, "a light border marks the chart's frame: {radar:?}");
+
+        let stock = chart_items(&space(&format!("<c:stockChart>{ser}{ser}{ser}</c:stockChart>")), &theme(), 300.0, 200.0);
+        assert_eq!(texts(&stock), ["Stock chart (not supported yet)"]);
+        let other = chart_items(&space(&format!("<c:fancyChart>{ser}</c:fancyChart>")), &theme(), 300.0, 200.0);
+        assert_eq!(texts(&other), ["Chart (not supported yet)"]);
+        // A supported type in the plot area is drawn, an unsupported one beside it is skipped.
+        let combo = chart_items(&space(&format!("<c:radarChart>{ser}</c:radarChart><c:lineChart>{ser}</c:lineChart>")), &theme(), 300.0, 200.0);
+        assert!(!texts(&combo).iter().any(|t| t.contains("not supported")), "{combo:?}");
     }
 
     /// Chart items for a chart with a legend at `pos` (`r`, `b`…).

@@ -1286,8 +1286,10 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
                     obj_index += 1;
                     match p.objects.get(k) {
                         Some(o) if o.is_drawing() => {
+                            // A hidden one takes no room, and with no height its line doesn't draw it.
                             if let Some((w, h, float)) = o.frame()
                                 && float.wrap == wordcraft_doc::para::Wrap::Inline
+                                && !float.hidden
                             {
                                 // A picture wider than the line keeps its size, as in Word: it runs past
                                 // the margin and the page edge clips it (see `ParaEnv::fit_objects`).
@@ -1728,7 +1730,9 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
             });
             let shrink = if shrink_spaces && !has_tab { space_w * MAX_SPACE_SHRINK } else { 0.0 };
             let fits = absorbs || x + c.adv <= right_edge + shrink + 0.01 || c.kind == ClKind::Space || c.kind == ClKind::Marker;
-            if !fits && j > c0 {
+            // A line's first item stays on it even when it doesn't fit; markers before it
+            // (a content control's start, a bookmark) take no room and don't count (Word).
+            if !fits && (c0..j).any(|k| pl.clusters.get(k).is_some_and(|c| c.kind != ClKind::Marker)) {
                 // Wrap: back up to the last break opportunity on this line.
                 end = LineEnd::Wrap;
                 // Hyphenate only when the plain break leaves more than the hyphenation zone empty.

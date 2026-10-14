@@ -146,6 +146,7 @@
 	Millimeters	Милиметри
 	New comments and tracked changes are recorded under this name and these initials.	Нови коментари и праћене измене бележе се под овим именом и иницијалима.
 	New word	Нова реч
+	No document is open. Create a document or open one first.	Ниједан документ није отворен. Прво направите или отворите документ.
 	No words yet. Add to Dictionary on a misspelled word puts it here.	Још нема речи. Додај у речник на погрешно написаној речи ставља је овде.
 	Mirror indents	Пресликај увлачења
 	Nothing	Ништа
@@ -1014,6 +1015,7 @@
 	Word Count	Број речи
 	Word document (*.docx)	Word документ (*.docx)
 	Word XML Document (*.xml)	Word XML документ (*.xml)
+	Word 2003 XML Document (*.xml)	Word 2003 XML документ (*.xml)
 	Word Left	Реч лево
 	Word Right	Реч десно
 	WordArt	WordArt
@@ -1433,7 +1435,8 @@
 	Formatted	Форматирано
 	Deleted	Избрисано
 	Interface size:	Величина интерфејса:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Повећава или смањује траку, меније и дијалоге, поврх скалирања екрана у систему. Зумирање документа је засебно.
+	Auto ({percent}%)	Аутоматски ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Повећава или смањује траку, меније и дијалоге. Аутоматски прати скалирање екрана у систему; 100% је један пиксел екрана по тачки. Зумирање документа је засебно.
 	Resize Table by Dragging	Промена величине табеле превлачењем
 	Print Markup	Штампај ознаке
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Коментари поред сваке странице и праћене измене у PDF-овима, отисцима и сликама; листа коментара на крају веб-страница, Markdown-а и текста.
@@ -2089,3 +2092,10 @@
 	Start-up	Покретање
 	Show the Start screen when WordCraft starts	Прикажи почетни екран при покретању програма WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Укључено: WordCraft се отвара на Фајл › Почетак, са празним документом, шаблонима и недавним документима. Искључено: отвара празан документ.
+	Privacy Options	Опције приватности
+	Trust Center	Центар за безбедност
+	Privacy for this document	Приватност овог документа
+	Remove my name from comments, changes and file properties when saving	Уклони моје име из коментара, измена и својстава датотеке при чувању
+	Leave out the date and time of comments and tracked changes when saving	Изостави датум и време коментара и праћених измена при чувању
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Документ који уређујете задржава имена и датуме; изоставља их само сачувана датотека.
+	Privacy Settings	Тренутна подешавања приватности

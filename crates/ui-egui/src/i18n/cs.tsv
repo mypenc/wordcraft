@@ -301,6 +301,7 @@
 	Deletions:	Odstranění:
 	Description:	Popis:
 	Design	Návrh
+	No document is open. Create a document or open one first.	Není otevřen žádný dokument. Nejprve dokument vytvořte nebo otevřete.
 	development build	vývojové sestavení
 	Diagonal	Diagonální
 	Diamond	Kosočtverec
@@ -1353,7 +1354,8 @@
 	Edit Field…	Upravit pole…
 	Formatted	Formátováno
 	Interface size:	Velikost rozhraní:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Zvětší nebo zmenší pás karet, nabídky a dialogová okna nad rámec škálování displeje v systému. Lupa dokumentu se nastavuje zvlášť.
+	Auto ({percent}%)	Automaticky ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Zvětší nebo zmenší pás karet, nabídky a dialogová okna. Automaticky sleduje škálování displeje v systému; 100% je jeden pixel obrazovky na bod. Lupa dokumentu se nastavuje zvlášť.
 	In Line with Text	V řádku s textem
 	Square	Čtverec
 	Through	Průchozí
@@ -1876,6 +1878,7 @@
 	Animate the caret (it glides and fades)	Animovat kurzor (plynule se přesouvá a prolíná)
 	On: the caret glides to its new place when you type or use the arrow keys, and its blink fades. Off: it jumps and blinks on and off.	Zapnuto: kurzor se při psaní nebo použití kláves se šipkami plynule přesune na nové místo a jeho blikání se prolíná. Vypnuto: kurzor přeskakuje a blikání se ostře zapíná a vypíná.
 	Word XML Document (*.xml)	Dokument Word XML (*.xml)
+	Word 2003 XML Document (*.xml)	Dokument Word 2003 XML (*.xml)
 	Deleted	Odstraněno
 	Resize Table by Dragging	Změnit velikost tabulky přetažením
 	Select Column	Vybrat sloupec
@@ -2080,3 +2083,10 @@
 	Automatic ({region})	Automaticky ({region})
 	Search	Hledat
 	Title Bar	Záhlaví okna
+	Privacy Options	Možnosti ochrany osobních údajů
+	Trust Center	Centrum zabezpečení
+	Privacy for this document	Soukromí tohoto dokumentu
+	Remove my name from comments, changes and file properties when saving	Při ukládání odebrat mé jméno z komentářů, změn a vlastností souboru
+	Leave out the date and time of comments and tracked changes when saving	Při ukládání vynechat datum a čas komentářů a sledovaných změn
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Upravovaný dokument si jména a data ponechá; vynechá je jen uložený soubor.
+	Privacy Settings	Aktuální nastavení soukromí

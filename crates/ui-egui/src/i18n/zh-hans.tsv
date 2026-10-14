@@ -132,6 +132,7 @@
 	More templates →	更多模板 →
 	New comments and tracked changes are recorded under this name and these initials.	新批注和修订将以此名称和缩写记录。
 	New word	新单词
+	No document is open. Create a document or open one first.	没有打开的文档。请先新建或打开一个文档。
 	No templates match your search.	没有与搜索匹配的模板。
 	No words yet. Add to Dictionary on a misspelled word puts it here.	还没有单词。对拼写错误的单词选择“添加到词典”会将其放在这里。
 	Nothing	无
@@ -962,6 +963,7 @@
 	Word Count	字数统计
 	Word document (*.docx)	Word 文档 (*.docx)
 	Word XML Document (*.xml)	Word XML 文档 (*.xml)
+	Word 2003 XML Document (*.xml)	Word 2003 XML 文档 (*.xml)
 	Word Left	左移一个单词
 	Word Right	右移一个单词
 	WordArt	艺术字
@@ -1431,7 +1433,8 @@
 	Formatted	已设置格式
 	Deleted	已删除
 	Interface size:	界面大小：
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	在系统显示缩放的基础上放大或缩小功能区、菜单和对话框。文档缩放单独设置。
+	Auto ({percent}%)	自动 ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	放大或缩小功能区、菜单和对话框。“自动”跟随系统的显示缩放；100% 为每点一个屏幕像素。文档缩放单独设置。
 	Resize Table by Dragging	拖动调整表格大小
 	Print Markup	打印标记
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	在 PDF、打印和图像中于每页旁显示批注和修订；在网页、Markdown 和文本末尾附上批注列表。
@@ -2087,3 +2090,10 @@
 	Start-up	启动
 	Show the Start screen when WordCraft starts	启动 WordCraft 时显示开始屏幕
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	开：WordCraft 打开时显示“文件 › 开始”，其中有空白文档、模板和最近使用的文档。关：直接打开空白文档。
+	Privacy Options	隐私选项
+	Trust Center	信任中心
+	Privacy for this document	此文档的隐私
+	Remove my name from comments, changes and file properties when saving	保存时从批注、修订和文件属性中删除我的姓名
+	Leave out the date and time of comments and tracked changes when saving	保存时不包含批注和修订的日期与时间
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	正在编辑的文档保留姓名和日期；只有保存的文件中不包含它们。
+	Privacy Settings	当前隐私设置

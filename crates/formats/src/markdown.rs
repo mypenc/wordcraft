@@ -1298,7 +1298,13 @@ fn write_blocks(blocks: &[FBlock], out: &mut Vec<String>) {
                         let pad = " ".repeat(4 * lv);
                         let cont = " ".repeat(4 * lv + marker.len() + 1);
                         let body = body.replace("\\\n", &format!("\\\n{cont}"));
-                        let body = if p.kind == Kind::Code { code_span(&p.text()) } else { body };
+                        let body = if p.kind == Kind::Code {
+                            code_span(&p.text())
+                        } else {
+                            let body = escape_line_start(body);
+                            // The bullet marker can turn a short run of hyphens into a rule.
+                            if thematic_break(&format!("{marker} {body}")) { format!("\\{body}") } else { body }
+                        };
                         out.push(format!("{pad}{marker} {body}").trim_end().to_string());
                         prev_list = true;
                         let next_is_list = matches!(blocks.get(i + 1), Some(FBlock::Para(q)) if q.list.is_some());

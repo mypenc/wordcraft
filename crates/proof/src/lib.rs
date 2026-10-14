@@ -18,6 +18,11 @@
 //!   dictionary installed on the system (VERO and friends; not bundled), suggestions tuned for
 //!   Portuguese (missing accents, `seje`/`seja` confusions, missing spaces), conservative
 //!   grammar rules with Portuguese messages, and `hyph-utf8`'s Portuguese patterns.
+//! - **Italian** ([`ProofLang::It`], module [`it`]): spelling against the Hunspell `it_IT`
+//!   dictionary installed on the system (not bundled — the upstream file is GPL-licensed),
+//!   suggestions tuned for Italian (missing accents, `REP` confusions, missing spaces),
+//!   conservative grammar rules with Italian messages, and `hyph-utf8`'s Italian patterns
+//!   (Beccari, MIT option).
 //! - **Other languages** ([`ProofLang::Other`]): no spelling or grammar marks, like Word without
 //!   the language's proofing tools.
 //! - **Hyphenation** ([`hyphen`]): dictionary, Liang patterns (English, Polish, Portuguese),
@@ -29,8 +34,10 @@
 pub mod affix;
 pub mod bg;
 pub mod dict;
+pub mod hr;
 pub mod hunspell;
 pub mod hyphen;
+pub mod it;
 pub mod lang;
 pub mod patterns;
 pub mod pl;
@@ -498,7 +505,9 @@ fn spelling_issue(text: &str, a: usize, b: usize, lang: ProofLang, opts: &Option
     }
     let message = match lang {
         ProofLang::Pl => "Możliwy błąd pisowni",
+        ProofLang::Hr => "Moguća pravopisna pogreška",
         ProofLang::Pt => "Possível erro de ortografia",
+        ProofLang::It => "Possibile errore di ortografia",
         _ => "Possible spelling mistake",
     };
     Some(Issue { start: a, end: b, kind: IssueKind::Spelling, message: message.into(), suggestions: Vec::new(), lang })
@@ -514,7 +523,9 @@ pub fn is_correct_in_with(word: &str, lang: ProofLang, opts: &Options) -> bool {
     match lang {
         ProofLang::En => is_correct_with(word, opts),
         ProofLang::Pl => accepted_by_options(word, opts) || pl::is_correct(word),
+        ProofLang::Hr => accepted_by_options(word, opts) || hr::is_correct(word),
         ProofLang::Pt => accepted_by_options(word, opts) || pt::is_correct(word),
+        ProofLang::It => accepted_by_options(word, opts) || it::is_correct(word),
         ProofLang::Bg | ProofLang::Other => true,
     }
 }
@@ -524,19 +535,23 @@ pub fn suggest_in(word: &str, max: usize, lang: ProofLang) -> Vec<String> {
     match lang {
         ProofLang::En => suggest(word, max),
         ProofLang::Pl => pl::suggest(word, max),
+        ProofLang::Hr => hr::suggest(word, max),
         ProofLang::Pt => pt::suggest(word, max),
+        ProofLang::It => it::suggest(word, max),
         ProofLang::Bg | ProofLang::Other => Vec::new(),
     }
 }
 
 /// Grammar issues in a paragraph of text in `lang`: the English rules, the Polish ones
-/// ([`pl::grammar`]), the Portuguese ones ([`pt::grammar`]), or none for a language WordCraft
-/// doesn't proof.
+/// ([`pl::grammar`]), the Portuguese ones ([`pt::grammar`]), the Italian ones ([`it::grammar`]),
+/// or none for a language WordCraft doesn't proof.
 pub fn check_grammar_in(text: &str, lang: ProofLang) -> Vec<Issue> {
     match lang {
         ProofLang::En => check_grammar(text),
         ProofLang::Pl => pl::grammar::check(text),
+        ProofLang::Hr => hr::grammar::check(text),
         ProofLang::Pt => pt::grammar::check(text),
+        ProofLang::It => it::grammar::check(text),
         ProofLang::Bg | ProofLang::Other => Vec::new(),
     }
 }
@@ -990,6 +1005,21 @@ mod tests {
     }
 
     #[test]
+    fn italian_uses_its_own_tools() {
+        it::test_dict::install();
+        let it = "La città vecchia ha un bel caffè in piazza.";
+        assert!(check_spelling_in(it, ProofLang::It).is_empty(), "{:?}", check_spelling_in(it, ProofLang::It));
+        assert!(check_spelling_in(it, ProofLang::En).len() >= 3, "Italian words are English misspellings");
+        let v = check_spelling_in("Vado a Roma con lbiro.", ProofLang::It);
+        assert_eq!(flagged("Vado a Roma con lbiro.", &v), ["lbiro"]);
+        assert_eq!((v[0].lang, v[0].message.as_str()), (ProofLang::It, "Possibile errore di ortografia"));
+        assert!(suggest_in("caffe", 5, ProofLang::It).contains(&"caffè".to_string()));
+        // Italian grammar speaks Italian and has no English a/an rule.
+        let g = check_grammar_in("questo questo è un test", ProofLang::It);
+        assert!(g.iter().any(|i| i.message.contains("ripetuta")), "{g:?}");
+    }
+
+    #[test]
     fn mixed_language_paragraphs_check_each_run_in_its_language() {
         pl::test_dict::install();
         // A Polish paragraph quoting English: English spelling and rules inside the quote only.
@@ -1014,6 +1044,12 @@ mod tests {
         let v = check_text(t, &[(0..t.len(), ProofLang::Pt)]);
         assert_eq!(flagged(t, &v), ["coraçao", "frequencia"], "{v:?}");
         assert!(v.iter().all(|i| i.lang == ProofLang::Pt && i.message == "Possível erro de ortografia"), "{v:?}");
+        // Italian checks in its span only, with the Italian message.
+        it::test_dict::install();
+        let t = "Vado a Roma con lbiro e caffe.";
+        let v = check_text(t, &[(0..t.len(), ProofLang::It)]);
+        assert_eq!(flagged(t, &v), ["lbiro", "caffe"], "{v:?}");
+        assert!(v.iter().all(|i| i.lang == ProofLang::It && i.message == "Possibile errore di ortografia"), "{v:?}");
     }
 
     proptest::proptest! {
@@ -1025,7 +1061,7 @@ mod tests {
             let _ = has_dictionary(Some(&s));
             let _ = is_correct_for(&s, Some(&s));
             let _ = hyphen::hyphen_points(&s, &hyphen::Limits::default());
-            for lang in [ProofLang::En, ProofLang::Pl, ProofLang::Pt, ProofLang::Other] {
+            for lang in [ProofLang::En, ProofLang::Pl, ProofLang::Pt, ProofLang::It, ProofLang::Other] {
                 let _ = check_spelling_in(&s, lang);
                 let _ = check_grammar_in(&s, lang);
                 let _ = is_correct_in(&s, lang);

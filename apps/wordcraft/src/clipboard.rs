@@ -8,12 +8,46 @@
 //! browser or Spectacle never arrived (#833). Compositors without the protocol fall back to X11.
 //!
 //! Everything read here comes from other programs: sizes are capped as it is read.
+//!
+//! Written here: a copy holding an equation puts HTML (the equation as MathML) beside its text
+//! (#816), for programs that read MathML (pasting into Word and LibreOffice not yet verified). arboard sets HTML with a
+//! text alternative on every desktop platform; formats of other names (Word's "Office Open XML"
+//! with OMML, #1297) it can't, so they aren't offered.
 
 use wordcraft_engine::cmd::paste::MAX_PASTE_BYTES;
 use wordcraft_ui_egui::paste_picture::ClipboardPicture;
 
 fn open() -> Option<arboard::Clipboard> {
     arboard::Clipboard::new().map_err(|e| log::warn!("clipboard: {e}")).ok()
+}
+
+thread_local! {
+    /// The clipboard copies are set through, kept open: on X11 the contents are served from it.
+    static WRITER: std::cell::RefCell<Option<arboard::Clipboard>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Put `html` on the clipboard with `text` as its plain-text alternative. `false` when it couldn't
+/// (the caller copies the text alone), including a Wayland session without the data-control
+/// protocol, where arboard would fall back to X11 and native Wayland programs might not see it.
+pub fn set_html(html: &str, text: &str) -> bool {
+    if !platform::can_set() {
+        return false;
+    }
+    WRITER.with(|w| {
+        let Ok(mut slot) = w.try_borrow_mut() else { return false };
+        if slot.is_none() {
+            *slot = open();
+        }
+        match slot.as_mut().map(|c| c.set().html(html, Some(text))) {
+            Some(Ok(())) => true,
+            Some(Err(e)) => {
+                log::warn!("clipboard: {e}");
+                *slot = None;
+                false
+            }
+            None => false,
+        }
+    })
 }
 
 /// The clipboard's text.
@@ -103,6 +137,15 @@ mod platform {
         get_mime_types_ordered(ClipboardType::Regular, Seat::Unspecified).unwrap_or_default()
     }
 
+    /// Whether arboard sets the clipboard natively: X11, or Wayland with data-control.
+    pub fn can_set() -> bool {
+        !wayland()
+            || !matches!(
+                get_mime_types_ordered(ClipboardType::Regular, Seat::Unspecified),
+                Err(wl_clipboard_rs::paste::Error::MissingProtocol { .. } | wl_clipboard_rs::paste::Error::WaylandConnection(_))
+            )
+    }
+
     pub fn rtf() -> Option<Vec<u8>> {
         if !wayland() {
             return None;
@@ -146,6 +189,10 @@ mod platform {
     pub fn encoded_picture() -> Option<Vec<u8>> {
         None
     }
+
+    pub fn can_set() -> bool {
+        true
+    }
 }
 
 #[cfg(not(any(target_os = "windows", all(unix, not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))))))]
@@ -160,5 +207,9 @@ mod platform {
 
     pub fn encoded_picture() -> Option<Vec<u8>> {
         None
+    }
+
+    pub fn can_set() -> bool {
+        true
     }
 }

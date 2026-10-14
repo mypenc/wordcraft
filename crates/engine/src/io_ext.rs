@@ -26,6 +26,7 @@ pub fn save(ext: &str, doc: &Document, opts: &crate::io::ExportOptions) -> Optio
         return Some(wordcraft_docx::write_as(doc, flavor).map_err(|e| e.to_string()));
     }
     match ext {
+        "xml" if opts.word2003 => Some(wordcraft_docx::write_wordml2003(doc).map_err(|e| e.to_string())),
         "xml" => Some(wordcraft_docx::write_flat(doc).map_err(|e| e.to_string())),
         "png" => Some(render_png(doc, 0, 2.0, opts)),
         "pdf" => {

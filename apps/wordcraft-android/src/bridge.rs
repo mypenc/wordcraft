@@ -111,6 +111,11 @@ pub fn hide_soft_keyboard(app: &AndroidApp) {
     with_activity(app, |env, activity| env.call_method(activity, "hideSoftKeyboard", "()V", &[]).map(|_| ()));
 }
 
+/// Open the on-screen keyboard by force (the bar's KB button), even where the usual request is ignored.
+pub fn force_show_soft_keyboard(app: &AndroidApp) {
+    with_activity(app, |env, activity| env.call_method(activity, "forceShowSoftKeyboard", "()V", &[]).map(|_| ()));
+}
+
 /// The system clipboard's text.
 pub fn clipboard_get(app: &AndroidApp) -> Option<String> {
     with_activity(app, |env, activity| {

@@ -121,6 +121,7 @@
 	More templates →	更多範本 →
 	New comments and tracked changes are recorded under this name and these initials.	新的註解和追蹤修訂會以此名稱和縮寫記錄。
 	New word	新單字
+	No document is open. Create a document or open one first.	沒有開啟的文件。請先新增或開啟文件。
 	No templates match your search.	沒有符合搜尋的範本。
 	No words yet. Add to Dictionary on a misspelled word puts it here.	還沒有單字。對拼字錯誤的單字選擇「新增至字典」會將它放在這裡。
 	Nothing	無
@@ -951,6 +952,7 @@
 	Word Count	字數統計
 	Word document (*.docx)	Word 文件 (*.docx)
 	Word XML Document (*.xml)	Word XML 文件 (*.xml)
+	Word 2003 XML Document (*.xml)	Word 2003 XML 文件 (*.xml)
 	Word Left	左移一個單字
 	Word Right	右移一個單字
 	WordArt	文字藝術師
@@ -1420,7 +1422,8 @@
 	Formatted	已設定格式
 	Deleted	已刪除
 	Interface size:	介面大小：
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	在系統顯示縮放的基礎上放大或縮小功能區、功能表與對話方塊。文件縮放另行設定。
+	Auto ({percent}%)	自動 ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	放大或縮小功能區、功能表與對話方塊。「自動」依循系統的顯示縮放；100% 為每點一個螢幕像素。文件縮放另行設定。
 	Resize Table by Dragging	拖曳調整表格大小
 	Print Markup	列印標記
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	在 PDF、列印和影像中於每頁旁顯示註解和修訂；在網頁、Markdown 和文字末尾附上註解清單。
@@ -2076,3 +2079,10 @@
 	Start-up	啟動
 	Show the Start screen when WordCraft starts	啟動 WordCraft 時顯示開始畫面
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	開：WordCraft 開啟時顯示「檔案 › 常用」，其中有空白文件、範本和最近使用的文件。關：直接開啟空白文件。
+	Privacy Options	隱私權選項
+	Trust Center	信任中心
+	Privacy for this document	此文件的隱私
+	Remove my name from comments, changes and file properties when saving	儲存時從註解、修訂和檔案內容中移除我的名稱
+	Leave out the date and time of comments and tracked changes when saving	儲存時不包含註解和追蹤修訂的日期與時間
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	正在編輯的文件會保留名稱和日期；只有儲存的檔案不包含它們。
+	Privacy Settings	目前的隱私設定

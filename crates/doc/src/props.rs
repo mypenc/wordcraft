@@ -6,8 +6,37 @@
 use serde::{Deserialize, Serialize};
 
 /// An sRGB colour.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Default)]
 pub struct Rgb(pub u8, pub u8, pub u8);
+
+impl<'de> Deserialize<'de> for Rgb {
+    /// Reads what it writes (`[r, g, b]`) and also a string [`Rgb::parse`] reads, so the colours in
+    /// `CharProps` / `ParaProps` take the `RRGGBB` that `para.borders` and `table.shading` take (#865).
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::{Error, SeqAccess, Unexpected, Visitor};
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = Rgb;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("`[r, g, b]`, `RRGGBB` or `#RRGGBB`")
+            }
+            fn visit_str<E: Error>(self, s: &str) -> Result<Rgb, E> {
+                Rgb::parse(s).ok_or_else(|| E::invalid_value(Unexpected::Str(s), &self))
+            }
+            fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Rgb, A::Error> {
+                let mut c = [0u8; 3];
+                for (i, x) in c.iter_mut().enumerate() {
+                    *x = a.next_element()?.ok_or_else(|| A::Error::invalid_length(i, &self))?;
+                }
+                if a.next_element::<serde::de::IgnoredAny>()?.is_some() {
+                    return Err(A::Error::invalid_length(4, &self));
+                }
+                Ok(Rgb(c[0], c[1], c[2]))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
 
 impl Rgb {
     pub const BLACK: Rgb = Rgb(0, 0, 0);
@@ -1168,11 +1197,26 @@ mod tests {
             assert_eq!(serde_json::to_string(&c).unwrap(), j, "written as before");
             assert_eq!(read(j).unwrap(), c);
         }
-        for bad in [r#""1B161""#, r#""zzzzzz""#, r#""""#, r#"{"Rgb":"1B1611"}"#, r#"{"Hex":[1,2,3]}"#, "7", "[27,22,17]"] {
+        for bad in [r#""1B161""#, r#""zzzzzz""#, r#""""#, r#"{"Rgb":"1B16"}"#, r#"{"Rgb":[1,2]}"#, r#"{"Hex":[1,2,3]}"#, "7", "[27,22,17]"] {
             assert!(read(bad).is_err(), "{bad}");
         }
+        assert_eq!(read(r#"{"Rgb":"1B1611"}"#).unwrap(), ink);
         let p: CharProps = serde_json::from_value(serde_json::json!({"color": "#1B1611", "bold": true})).unwrap();
         assert_eq!((p.color, p.bold), (Some(ink), Some(true)));
+    }
+
+    /// #865: an [`Rgb`] reads `RRGGBB` / `#RRGGBB` as well as the `[r, g, b]` it still writes.
+    #[test]
+    fn rgb_reads_hex_and_keeps_its_serialized_form() {
+        let read = |j: &str| serde_json::from_str::<Rgb>(j);
+        let ink = Rgb(0x1B, 0x16, 0x11);
+        assert_eq!(serde_json::to_string(&ink).unwrap(), "[27,22,17]", "written as before");
+        for j in ["[27,22,17]", r#""1B1611""#, r##""#1b1611""##] {
+            assert_eq!(read(j).unwrap(), ink, "{j}");
+        }
+        for bad in ["[27,22]", "[27,22,17,0]", "[27,22,300]", "[-1,0,0]", r#""auto""#, r#""1B161""#, r#""""#, "7", "null", r#"{"r":1}"#] {
+            assert!(read(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

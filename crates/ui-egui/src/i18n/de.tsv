@@ -104,6 +104,7 @@
 	Link level to style:	Ebene mit Formatvorlage verknüpfen:
 	List Definition	Listendefinition
 	More templates →	Weitere Vorlagen →
+	No document is open. Create a document or open one first.	Es ist kein Dokument geöffnet. Erstellen oder öffnen Sie zuerst ein Dokument.
 	No templates match your search.	Keine Vorlagen entsprechen Ihrer Suche.
 	Nothing	Keine
 	Number alignment:	Nummernausrichtung:
@@ -1324,7 +1325,8 @@
 	Flip Horizontal	Horizontal spiegeln
 	Formatted	Formatiert
 	Interface size:	Oberflächengröße:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Vergrößert oder verkleinert Menüband, Menüs und Dialoge, zusätzlich zur Anzeigeskalierung Ihres Systems. Die Dokumentansicht ist davon getrennt.
+	Auto ({percent}%)	Automatisch ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Vergrößert oder verkleinert Menüband, Menüs und Dialoge. „Automatisch“ folgt der Anzeigeskalierung Ihres Systems; 100% ist ein Bildschirmpixel pro Punkt. Die Dokumentansicht ist davon getrennt.
 	Base text:	Basistext:
 	Distribute letters	Buchstaben verteilen
 	Distribute spacing	Abstände verteilen
@@ -1459,6 +1461,7 @@
 	Animate the caret (it glides and fades)	Einfügemarke animieren (sie gleitet und blendet aus)
 	On: the caret glides to its new place when you type or use the arrow keys, and its blink fades. Off: it jumps and blinks on and off.	Ein: Die Einfügemarke gleitet beim Tippen oder mit den Pfeiltasten an ihre neue Stelle, und ihr Blinken blendet weich. Aus: Sie springt und blinkt hart an und aus.
 	Word XML Document (*.xml)	Word-XML-Dokument (*.xml)
+	Word 2003 XML Document (*.xml)	Word-2003-XML-Dokument (*.xml)
 	Choose the sheet that holds the recipients.	Wählen Sie das Tabellenblatt mit den Empfängern.
 	First row of data contains column headers	Erste Datenzeile enthält Spaltenüberschriften
 	Deleted	Gelöscht
@@ -2074,3 +2077,10 @@
 	Automatic ({region})	Automatisch ({region})
 	Search	Suchen
 	Title Bar	Titelleiste
+	Privacy Options	Datenschutzoptionen
+	Trust Center	Sicherheitscenter
+	Privacy for this document	Datenschutz für dieses Dokument
+	Remove my name from comments, changes and file properties when saving	Beim Speichern meinen Namen aus Kommentaren, Änderungen und Dateieigenschaften entfernen
+	Leave out the date and time of comments and tracked changes when saving	Beim Speichern Datum und Uhrzeit von Kommentaren und nachverfolgten Änderungen weglassen
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Das bearbeitete Dokument behält Namen und Daten; nur die gespeicherte Datei lässt sie weg.
+	Privacy Settings	Aktuelle Datenschutzeinstellungen

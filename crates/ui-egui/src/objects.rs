@@ -4,8 +4,9 @@
 //! `arrange.bounds` / `arrange.rotation` / `arrange.nudge`, so they're undoable and scriptable like
 //! everything else.
 //!
-//! While dragging, nothing is laid out or rendered: the preview is the object's own pixels taken
-//! from its page's cached texture. The drop is one command, one relayout.
+//! While dragging, nothing is laid out: the preview is the object drawn alone, once, when the
+//! drag starts (#1010: a cut of the page would carry along whatever is behind it). The drop is
+//! one command, one relayout.
 //!
 //! A selected connector shows a handle at each end instead of a frame: dragging one onto a shape
 //! glues it to the nearest connection site there (`shape.connect`), elsewhere leaves it free.
@@ -38,6 +39,8 @@ pub struct ObjectDrag {
     picture: bool,
     /// Dragging a connector's end (false: its start, true: its end) to this page point.
     end: Option<(bool, (f32, f32))>,
+    /// The object drawn alone over its rotated bounds, for the preview: made once it moves.
+    preview: Option<egui::TextureHandle>,
 }
 
 /// How near (screen points) a press must be to a connector's end to grab it.
@@ -161,6 +164,9 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
                 // Pictures keep their proportions from a corner unless Shift; shapes only with Shift.
                 d.drag.update(at, pages, scale, d.min, d.picture != shift);
             }
+            if d.drag.moved && d.preview.is_none() && shows_pixels(&d) {
+                d.preview = preview(app, ui.ctx(), layout, &d.object, scale);
+            }
             app.canvas.obj_drag = Some(d);
         } else {
             drop(app, &d);
@@ -179,7 +185,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
     // A selected connector's end: drag it to glue it.
     if pressed && let Some((object, which)) = connector_end_at(app, layout, pages, scale, at) {
         let drag = Drag::new(Grab::Move, object.page, object.rect, 0.0, at);
-        app.canvas.obj_drag = Some(ObjectDrag { drag, object, min: 0.0, picture: false, end: Some((which, (0.0, 0.0))) });
+        app.canvas.obj_drag = Some(ObjectDrag { drag, object, min: 0.0, picture: false, end: Some((which, (0.0, 0.0))), preview: None });
         return true;
     }
     let Some((object, grab)) = grab_at(app, layout, pages, scale, at) else { return false };
@@ -199,8 +205,14 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         };
         // Objects in table cells can be selected and resized, not moved; charts neither.
         if !fixed(app, &object) && (grab != Grab::Move || movable(app, &object)) {
-            app.canvas.obj_drag =
-                Some(ObjectDrag { drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at), object, min, picture, end: None });
+            app.canvas.obj_drag = Some(ObjectDrag {
+                drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at),
+                object,
+                min,
+                picture,
+                end: None,
+                preview: None,
+            });
         }
     }
     true
@@ -268,6 +280,26 @@ fn movable(app: &WordApp, o: &ObjectHit) -> bool {
     o.path.depth() == 0 && selectable_story(app, o.story)
 }
 
+/// Whether a drag shows the object's pixels (moved, or scaled for an unturned picture) rather
+/// than an outline: resizing reflows a text box (and redraws a shape).
+fn shows_pixels(d: &ObjectDrag) -> bool {
+    (d.picture && d.object.spin.is_identity()) || d.drag.grab == Grab::Move
+}
+
+/// `o` drawn alone over its rotated bounds, as a texture, at the canvas's `scale` (screen points
+/// per page point).
+fn preview(app: &WordApp, ctx: &egui::Context, layout: &DocLayout, o: &ObjectHit, scale: f32) -> Option<egui::TextureHandle> {
+    let obj = app.session.doc.para_at(&o.pos()).and_then(|p| p.object_at(o.off))?;
+    let page = layout.pages.get(o.page)?;
+    let mut opts = crate::canvas::screen_render_options();
+    opts.dark = app.session.view.dark_mode;
+    let items = wordcraft_layout::display::object_display(&app.session.doc, page, obj, o.rect, o.text_box, &opts.display);
+    let b = o.bounds();
+    let img = wordcraft_render::render_items(&app.session.doc, &items, b.x, b.y, b.w, b.h, scale * ctx.pixels_per_point(), &opts);
+    let ci = egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &img.to_straight());
+    Some(ctx.load_texture("object-drag", ci, egui::TextureOptions::LINEAR))
+}
+
 /// Commit a finished drag as one command.
 fn drop(app: &mut WordApp, d: &ObjectDrag) {
     if !d.drag.moved {
@@ -314,21 +346,15 @@ pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, p
             frame::paint_turning(painter, t, to, d.drag.deg);
             return;
         }
-        // The object's own pixels, from its page's cached texture: moved, or scaled for an
-        // unturned picture. Resizing reflows a text box (and redraws a shape), so that's just the
-        // new outline.
-        let turned = !d.object.spin.is_identity();
-        let pixels = (d.picture && !turned) || d.drag.grab == Grab::Move;
-        if !pixels {
+        if !shows_pixels(d) {
             frame::paint_outline(painter, t, to, d.drag.deg);
-        } else if let (Some(tex), Some(pg)) = (app.canvas.page_texture(d.object.page), layout.pages.get(d.object.page)) {
+        } else if let Some(tex) = &d.preview {
             // A turned object's pixels fill its rotated bounds, which move with it.
             let r = d.object.bounds();
             let (dx, dy) = (d.drag.rect.x - d.drag.start.x, d.drag.rect.y - d.drag.start.y);
             let moved = wordcraft_geom::Rect::new(r.x + dx, r.y + dy, r.w, r.h);
-            let to = if turned { screen(pages, scale, d.drag.to_page, moved).unwrap_or(to) } else { to };
-            let (w, h) = (pg.w.max(1.0), pg.h.max(1.0));
-            let uv = Rect::from_min_max(egui::pos2(r.x / w, r.y / h), egui::pos2(r.right() / w, r.bottom() / h));
+            let to = if d.object.spin.is_identity() { to } else { screen(pages, scale, d.drag.to_page, moved).unwrap_or(to) };
+            let uv = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
             painter.image(tex.id(), to, uv, Color32::from_white_alpha(PREVIEW_OPACITY));
         }
         frame::paint(painter, t, to, d.drag.deg, false, false, false);
@@ -469,5 +495,71 @@ mod tests {
         };
         let (app, hit) = app_with(shape);
         assert!(!fixed(&app, &hit));
+    }
+
+    /// #1010: dragging a shape off text, the preview is the shape alone, not the text that was
+    /// behind it. An unfilled red rectangle in front of black text is dragged down into the empty
+    /// page: its preview has its red outline and nothing dark inside.
+    #[test]
+    fn a_dragged_shape_leaves_the_text_behind_it() {
+        use crate::table_resize::tests::{H, button, steps};
+        let text = "MMMMMMMMMMMM ".repeat(12);
+        let mut a = WordApp::new(wordcraft_engine::Session::new(Document::from_text(&text)), Default::default());
+        let shape = InlineObject::Shape {
+            kind: ShapeKind::Rectangle,
+            w: 120.0,
+            h: 60.0,
+            fill: None,
+            stroke: Some(wordcraft_doc::Rgb(0xFF, 0, 0)),
+            stroke_width: 3.0,
+            float: wordcraft_doc::para::Float { wrap: wordcraft_doc::para::Wrap::InFrontOfText, ..Default::default() },
+            story: None,
+            freeform: None,
+            effects: Default::default(),
+            extra: Default::default(),
+        };
+        a.session.doc.insert_object(&Pos::body(0, 0), shape, &Default::default()).unwrap();
+        let mut h: H = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(0.25).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        steps(&mut h, 6);
+        let o = h.state_mut().session.layout().object(&Pos::body(0, 0), 0).expect("laid out");
+        let at = |h: &mut H, x: f32, y: f32| crate::canvas::page_to_screen(h.state_mut(), 0, x, y).unwrap();
+        let down = 200.0;
+        let start = at(&mut h, o.rect.x + o.rect.w / 2.0, o.rect.y + 4.0);
+        let end = at(&mut h, o.rect.x + o.rect.w / 2.0, o.rect.y + 4.0 + down);
+        h.event(egui::Event::PointerMoved(start));
+        h.step();
+        button(&h, start, true);
+        h.step();
+        for k in 1..=5 {
+            h.event(egui::Event::PointerMoved(start + (end - start) * (k as f32 / 5.0)));
+            h.step();
+        }
+        h.step(); // the preview is painted a frame after the move
+        assert!(h.state().canvas.obj_drag.as_ref().is_some_and(|d| d.drag.moved), "a drag is in progress");
+        let (tl, br) = (at(&mut h, o.rect.x, o.rect.y + down), at(&mut h, o.rect.right(), o.rect.bottom() + down));
+        let img = h.render().unwrap();
+        let ppp = h.ctx.pixels_per_point();
+        // Pixels in a screen area, but for the mouse pointer drawn at `end`.
+        let count = |x0: f32, y0: f32, x1: f32, y1: f32, f: &dyn Fn([u8; 4]) -> bool| {
+            let (x0, y0, x1, y1) = ((x0 * ppp).ceil() as u32, (y0 * ppp).ceil() as u32, (x1 * ppp) as u32, (y1 * ppp) as u32);
+            let pointer = Rect::from_min_size(end - egui::vec2(2.0, 2.0), egui::vec2(20.0, 26.0));
+            (y0..y1)
+                .flat_map(|y| (x0..x1).map(move |x| (x, y)))
+                .filter(|&(x, y)| !pointer.contains(egui::pos2(x as f32 / ppp, y as f32 / ppp)) && f(img.get_pixel(x, y).0))
+                .count()
+        };
+        let red = count(tl.x - 4.0, tl.y - 4.0, br.x + 4.0, br.y + 4.0, &|[r, g, b, _]| r > 200 && g < 180 && b < 180);
+        assert!(red > 50, "the preview shows the shape's outline ({red} red pixels)");
+        let dark = count(tl.x + 8.0, tl.y + 8.0, br.x - 8.0, br.y - 8.0, &|[r, g, b, _]| r < 180 && g < 180 && b < 180);
+        assert_eq!(dark, 0, "no text from behind the shape in its preview");
+        button(&h, end, false);
+        steps(&mut h, 3);
     }
 }

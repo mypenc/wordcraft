@@ -33,6 +33,9 @@ static EN_US_PAT: &str = include_str!("../../../assets/hyphenation/en-us.pat");
 static PL_PAT: &str = include_str!("../../../assets/hyphenation/pl.pat");
 /// hyph-utf8's `hyph-pt.tex`, unmodified (its BSD 3-clause header is in the file).
 static PT_PAT: &str = include_str!("../../../assets/hyphenation/pt.pat");
+/// hyph-utf8's `hyph-it.tex`, unmodified (offered under MIT or LPPL; WordCraft uses MIT, whose
+/// notice is in the file's header).
+static IT_PAT: &str = include_str!("../../../assets/hyphenation/it.pat");
 
 impl Dictionary {
     /// The bundled US English dictionary (decoded on first use).
@@ -67,6 +70,12 @@ impl Patterns {
     pub fn pt() -> &'static Patterns {
         static P: OnceLock<Patterns> = OnceLock::new();
         P.get_or_init(|| Patterns::parse(PT_PAT))
+    }
+
+    /// The bundled Italian patterns (parsed on first use; the file has no exception words).
+    pub fn it() -> &'static Patterns {
+        static P: OnceLock<Patterns> = OnceLock::new();
+        P.get_or_init(|| Patterns::parse(IT_PAT))
     }
 }
 
@@ -121,6 +130,9 @@ fn core_breaks(core: &[char], lang: ProofLang) -> (Vec<usize>, Source) {
     if lang == ProofLang::Pt {
         return core_breaks_pt(core);
     }
+    if lang == ProofLang::It {
+        return core_breaks_it(core);
+    }
     let dict = Dictionary::en_us();
     let s: String = core.iter().collect();
     let from_mask = |m: u64, len: usize| (1..len.min(64)).filter(|&i| m & (1 << i) != 0).collect::<Vec<_>>();
@@ -163,6 +175,22 @@ fn core_breaks_pl(core: &[char]) -> (Vec<usize>, Source) {
 /// [`core_breaks_pl`] for Portuguese: the bundled patterns, then the generic heuristic.
 fn core_breaks_pt(core: &[char]) -> (Vec<usize>, Source) {
     let pats = Patterns::pt();
+    let s: String = core.iter().collect();
+    if let Some(p) = pats.exception(&s) {
+        return (p.to_vec(), Source::Dictionary);
+    }
+    if !pats.is_empty()
+        && let Some(p) = pats.points(core)
+    {
+        return (p, Source::Patterns);
+    }
+    (heuristic_points(core), Source::Heuristic)
+}
+
+/// [`core_breaks_pt`] for Italian: the bundled patterns (the file has no exception words),
+/// then the generic heuristic.
+fn core_breaks_it(core: &[char]) -> (Vec<usize>, Source) {
+    let pats = Patterns::it();
     let s: String = core.iter().collect();
     if let Some(p) = pats.exception(&s) {
         return (p.to_vec(), Source::Dictionary);
@@ -704,6 +732,44 @@ mod tests {
 
     fn pt(w: &str) -> String {
         hyphenate_word_in(w, &Limits::default(), ProofLang::Pt)
+    }
+
+    fn it(w: &str) -> String {
+        hyphenate_word_in(w, &Limits::default(), ProofLang::It)
+    }
+
+    #[test]
+    fn italian_patterns_load() {
+        let p = Patterns::it();
+        assert!(p.len() > 300, "{}", p.len());
+        // The file has no exception words.
+        assert_eq!(p.exception_count(), 0);
+    }
+
+    #[test]
+    fn italian_words_hyphenate_by_italian_rules() {
+        for (w, want) in [
+            ("famiglia", "fa-mi-glia"),
+            ("finestra", "fi-ne-stra"),
+            ("bicicletta", "bi-ci-clet-ta"),
+            ("passeggiata", "pas-seg-gia-ta"),
+            ("caffè", "caf-fè"),
+            ("tavolo", "ta-vo-lo"),
+            ("bambino", "bam-bi-no"),
+            ("scuola", "scuo-la"),
+            ("notte", "not-te"),
+            ("giorno", "gior-no"),
+            ("acqua", "ac-qua"),
+            // Under five letters (`Limits::min_word`): no break.
+            ("casa", "casa"),
+            ("pane", "pane"),
+            ("libro", "li-bro"),
+            ("re", "re"),
+            ("più", "più"),
+        ] {
+            assert_eq!(it(w), want, "{w}");
+        }
+        assert_eq!(word_breaks_in("famiglia", ProofLang::It).1, Source::Patterns);
     }
 
     #[test]

@@ -416,6 +416,8 @@ pub fn escape_text(s: &str) -> String {
             '>' => o.push_str("\\textgreater{}"),
             '|' => o.push_str("\\textbar{}"),
             '\u{A0}' => o.push('~'),
+            // An opening bracket here would become an optional item or line-break argument.
+            '[' if !line_has_text => o.push_str("{[}"),
             // Keep TeX from joining `--`, ``` `` ``` and `''` into dashes and quotes.
             '-' if prev == '-' => o.push_str("{}-"),
             '`' => o.push_str("\\textasciigrave{}"),
@@ -3027,6 +3029,15 @@ Caf\'e na\"ive \c{c}a \v{s}\'{e} and {\bfseries grouped bold} after.
         // Formats without equations keep the text.
         let md = crate::markdown::export(&d);
         assert!(md.contains("π r^2"), "{md}");
+    }
+
+    #[test]
+    fn leading_brackets_stay_text() {
+        // `\item [x]` and `\\ [1]` would read the bracket as an optional argument.
+        assert_eq!(escape_text("[x] a\n [1] b [c]"), "{[}x] a\\\\\n {[}1] b [c]");
+        let doc = crate::markdown::import("- [x] done");
+        let back = import(export(&doc).as_bytes());
+        assert_eq!(back.plain_text(Default::default()), "[x] done");
     }
 
     #[test]

@@ -369,8 +369,9 @@ impl Writer<'_> {
     fn rev_attrs(&mut self, idx: u32) -> (String, String, String) {
         self.next_rev_id += 1;
         let r = self.doc.revisions.get(idx as usize);
-        let author = r.map(|r| r.author.clone()).filter(|a| !a.is_empty()).unwrap_or_else(|| "Unknown".into());
-        let date = r.map(|r| r.date.clone()).unwrap_or_default();
+        let author = super::annotation_author(self.doc, r.map_or("", |r| r.author.as_str())).to_string();
+        // Remove date and time (§17.15.1.69): tracked changes are saved without `w:date`.
+        let date = if self.doc.settings.remove_date_time { String::new() } else { r.map(|r| r.date.clone()).unwrap_or_default() };
         (self.next_rev_id.to_string(), author, date)
     }
 
@@ -535,7 +536,8 @@ impl Writer<'_> {
                     (None, None, None) => None,
                 };
                 let Some(mut root) = root else { return };
-                if ink {
+                let direct_ink = ink && root.name == "w:contentPart";
+                if ink && !direct_ink {
                     Self::ink_transform(&mut root, (graphic.w, graphic.h), (*gw, *gh), float, 0);
                 }
                 let alternate = (ink && root.name == "mc:AlternateContent").then_some(&root);
@@ -547,26 +549,30 @@ impl Writer<'_> {
                 self.rev_open(w, props);
                 w.open("w:r", &[]);
                 self.rpr(w, props);
-                if fallback.is_some() {
-                    w.open("mc:AlternateContent", &[]);
-                    w.open("mc:Choice", &[("Requires", "wpi")]);
-                }
-                w.open("w:drawing", &[]);
-                let docpr = self.next_docpr();
-                let name = match graphic.kind {
-                    wordcraft_doc::graphic::GraphicKind::Chart => format!("Chart {docpr}"),
-                    wordcraft_doc::graphic::GraphicKind::Diagram => format!("Diagram {docpr}"),
-                    wordcraft_doc::graphic::GraphicKind::Ink => format!("Ink {docpr}"),
-                };
-                self.drawing_open(w, float, *gw, *gh, &docpr, &name, alt);
-                w.empty("wp:cNvGraphicFramePr", &[]);
-                w.raw(&native.unwrap_or(&root).to_xml());
-                w.close(if float.wrap == Wrap::Inline { "wp:inline" } else { "wp:anchor" });
-                w.close("w:drawing");
-                if let Some(fallback) = fallback {
-                    w.close("mc:Choice");
-                    w.raw(&fallback.to_xml());
-                    w.close("mc:AlternateContent");
+                if direct_ink {
+                    w.raw(&root.to_xml());
+                } else {
+                    if fallback.is_some() {
+                        w.open("mc:AlternateContent", &[]);
+                        w.open("mc:Choice", &[("Requires", "wpi")]);
+                    }
+                    w.open("w:drawing", &[]);
+                    let docpr = self.next_docpr();
+                    let name = match graphic.kind {
+                        wordcraft_doc::graphic::GraphicKind::Chart => format!("Chart {docpr}"),
+                        wordcraft_doc::graphic::GraphicKind::Diagram => format!("Diagram {docpr}"),
+                        wordcraft_doc::graphic::GraphicKind::Ink => format!("Ink {docpr}"),
+                    };
+                    self.drawing_open(w, float, *gw, *gh, &docpr, &name, alt);
+                    w.empty("wp:cNvGraphicFramePr", &[]);
+                    w.raw(&native.unwrap_or(&root).to_xml());
+                    w.close(if float.wrap == Wrap::Inline { "wp:inline" } else { "wp:anchor" });
+                    w.close("w:drawing");
+                    if let Some(fallback) = fallback {
+                        w.close("mc:Choice");
+                        w.raw(&fallback.to_xml());
+                        w.close("mc:AlternateContent");
+                    }
                 }
                 w.close("w:r");
                 self.rev_close(w, props);
@@ -886,7 +892,7 @@ impl Writer<'_> {
         self.used_media.insert(media.clone());
         w.open("pic:pic", &[]);
         w.open("pic:nvPicPr", &[]);
-        nv_props(w, "pic:cNvPr", "0", file, alt, &float.alt);
+        nv_props(w, "pic:cNvPr", "0", file, alt, &float.alt, float.hidden);
         w.open("pic:cNvPicPr", &[]);
         w.empty("a:picLocks", &[("noChangeAspect", "1"), ("noChangeArrowheads", "1")]);
         w.close("pic:cNvPicPr");
@@ -918,7 +924,7 @@ impl Writer<'_> {
         w.open("wps:wsp", &[]);
         if let Some(id) = id {
             let name = shape_name(*kind, freeform.as_deref(), id);
-            nv_props(w, "wps:cNvPr", id, &name, &float.alt.text, &float.alt);
+            nv_props(w, "wps:cNvPr", id, &name, &float.alt.text, &float.alt, float.hidden);
         }
         if kind.is_connector() {
             // A connector's glued ends (ECMA-376 §20.1.2.2.8 `cNvCxnSpPr`).
@@ -1134,7 +1140,7 @@ impl Writer<'_> {
             Wrap::TopAndBottom => w.empty("wp:wrapTopAndBottom", &[]),
             Wrap::BehindText | Wrap::InFrontOfText => w.empty("wp:wrapNone", &[]),
         }
-        nv_props(w, "wp:docPr", docpr, name, alt, &float.alt);
+        nv_props(w, "wp:docPr", docpr, name, alt, &float.alt, float.hidden);
     }
 
     fn table(&mut self, w: &mut W, t: &Table, rels: &mut PartRels, depth: usize) {
@@ -1537,13 +1543,16 @@ fn toc_span(bl: &Blocks) -> Option<(usize, usize)> {
 /// `CT_NonVisualDrawingProps`) with its alt text `descr`, its title, and the decorative mark as
 /// the `adec:decorative` extension ([MS-ODRAWXML]). A description that is only the title (read
 /// from a file with no description) is not written twice.
-pub(super) fn nv_props(w: &mut W, tag: &str, id: &str, name: &str, descr: &str, alt: &AltText) {
+pub(super) fn nv_props(w: &mut W, tag: &str, id: &str, name: &str, descr: &str, alt: &AltText, hidden: bool) {
     let mut attrs = vec![("id", id), ("name", name)];
     if descr != alt.title || descr.is_empty() {
         attrs.push(("descr", descr));
     }
     if !alt.title.is_empty() {
         attrs.push(("title", alt.title.as_str()));
+    }
+    if hidden {
+        attrs.push(("hidden", "1"));
     }
     if !alt.decorative {
         w.empty(tag, &attrs);

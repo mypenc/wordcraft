@@ -119,6 +119,7 @@
 	Millimeters	Міліметри
 	New comments and tracked changes are recorded under this name and these initials.	Нові коментарі та відстежувані зміни записуються під цим іменем і цими ініціалами.
 	New word	Нове слово
+	No document is open. Create a document or open one first.	Немає відкритого документа. Спочатку створіть або відкрийте документ.
 	No words yet. Add to Dictionary on a misspelled word puts it here.	Слів ще немає. «Додати до словника» для слова з помилкою додає його сюди.
 	Mirror indents	Дзеркальні відступи
 	Nothing	Нічого
@@ -978,6 +979,7 @@
 	Word Count	Кількість слів
 	Word document (*.docx)	Документ Word (*.docx)
 	Word XML Document (*.xml)	Документ Word XML (*.xml)
+	Word 2003 XML Document (*.xml)	Документ Word 2003 XML (*.xml)
 	Word Left	На слово ліворуч
 	Word Right	На слово праворуч
 	WordArt	WordArt
@@ -1431,7 +1433,8 @@
 	Formatted	Відформатовано
 	Deleted	Видалено
 	Interface size:	Розмір інтерфейсу:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Збільшує або зменшує стрічку, меню й діалогові вікна понад системне масштабування екрана. Масштаб документа налаштовується окремо.
+	Auto ({percent}%)	Авто ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Збільшує або зменшує стрічку, меню й діалогові вікна. «Авто» відповідає системному масштабуванню екрана; 100% — один піксель екрана на точку. Масштаб документа налаштовується окремо.
 	Resize Table by Dragging	Змінити розмір таблиці перетягуванням
 	Print Markup	Друкувати примітки та виправлення
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Коментарі біля кожної сторінки й відстежені зміни в PDF, друку та зображеннях; список коментарів наприкінці вебсторінок, Markdown і тексту.
@@ -2087,3 +2090,10 @@
 	Start-up	Запуск
 	Show the Start screen when WordCraft starts	Показувати початковий екран під час запуску WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Увімкнено: WordCraft відкривається на сторінці Файл › Основне з порожнім документом, шаблонами та нещодавніми документами. Вимкнено: відкривається порожній документ.
+	Privacy Options	Параметри конфіденційності
+	Trust Center	Центр безпеки
+	Privacy for this document	Конфіденційність цього документа
+	Remove my name from comments, changes and file properties when saving	Вилучати моє ім’я з приміток, змін і властивостей файлу під час збереження
+	Leave out the date and time of comments and tracked changes when saving	Не зберігати дату й час приміток і відстежуваних змін
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Документ, який ви редагуєте, зберігає імена й дати; їх не буде лише у збереженому файлі.
+	Privacy Settings	Поточні налаштування конфіденційності

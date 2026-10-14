@@ -53,6 +53,9 @@ pub struct Touch {
     /// Help ▸ Block Keyboard: keep the on-screen keyboard (Gboard…) from opening. A hardware
     /// keyboard still types.
     pub block_keyboard: bool,
+    /// The bar's KB button was tapped: the host opens the on-screen keyboard by force, even when
+    /// Block Keyboard is on or the system ignored the usual request.
+    pub keyboard_request: bool,
     rec: Recognizer,
     queue: VecDeque<Event>,
     shift: Sticky,
@@ -285,6 +288,9 @@ impl Touch {
                             if ui.add(egui::Button::new("Enter").min_size(min)).on_hover_text("Enter").clicked() {
                                 self.key(Key::Enter, Modifiers::NONE);
                             }
+                        if ui.add(egui::Button::new("KB").min_size(min)).on_hover_text("Open the keyboard").clicked() {
+                            self.keyboard_request = true;
+                        }
                         if !self.collapsed {
                             if ui.add(egui::Button::new("Undo").min_size(min)).on_hover_text("Undo").clicked() {
                                 self.actions.push(Action::Undo);

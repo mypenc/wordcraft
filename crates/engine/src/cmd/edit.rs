@@ -162,7 +162,17 @@ fn copy(s: &mut Session, _: &Value) -> CmdResult {
     s.clipboard_text = f.clipboard_text();
     s.clip_history.push(&f, &s.clipboard_text);
     s.clipboard = Some(f);
-    Ok(json!({"text": s.clipboard_text}))
+    Ok(copy_result(s))
+}
+
+/// What Copy and Cut return: the clipboard's text, and HTML with the equations as MathML when
+/// the copy holds any (#816), for the host to put on the system clipboard too.
+pub(crate) fn copy_result(s: &mut Session) -> Value {
+    s.clipboard_html = match &s.clipboard {
+        Some(f) if f.has_equation() => wordcraft_formats::html::export_fragment(&f.to_document()),
+        _ => String::new(),
+    };
+    if s.clipboard_html.is_empty() { json!({"text": s.clipboard_text}) } else { json!({"text": s.clipboard_text, "html": s.clipboard_html}) }
 }
 
 fn cut(s: &mut Session, v: &Value) -> CmdResult {

@@ -96,6 +96,7 @@
 	Link level to style:	Lier le niveau au style :
 	List Definition	Définition de liste
 	Mirror indents	Retraits en miroir
+	No document is open. Create a document or open one first.	Aucun document n’est ouvert. Créez ou ouvrez d’abord un document.
 	Nothing	Rien
 	Number alignment:	Alignement des numéros :
 	Number format	Format des numéros
@@ -1354,7 +1355,8 @@
 	Edit Field…	Modifier le champ…
 	Formatted	Mis en forme
 	Interface size:	Taille de l’interface :
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Agrandit ou réduit le ruban, les menus et les boîtes de dialogue en plus de la mise à l’échelle d’affichage de votre système. Le zoom du document est distinct.
+	Auto ({percent}%)	Auto ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Agrandit ou réduit le ruban, les menus et les boîtes de dialogue. Auto suit la mise à l’échelle d’affichage de votre système ; 100% correspond à un pixel d’écran par point. Le zoom du document est distinct.
 	1. Formatting restrictions	1. Restrictions de mise en forme
 	2. Editing restrictions	2. Restrictions de modification
 	3. Start enforcement	3. Démarrer la protection
@@ -1908,6 +1910,7 @@
 	Animate the caret (it glides and fades)	Animer le curseur (il glisse et s’estompe)
 	On: the caret glides to its new place when you type or use the arrow keys, and its blink fades. Off: it jumps and blinks on and off.	Activé : le curseur glisse jusqu’à sa nouvelle position lorsque vous tapez ou utilisez les touches fléchées, et son clignotement s’estompe en douceur. Désactivé : il saute et clignote de façon nette.
 	Word XML Document (*.xml)	Document XML Word (*.xml)
+	Word 2003 XML Document (*.xml)	Document XML Word 2003 (*.xml)
 	Deleted	Supprimé
 	Resize Table by Dragging	Redimensionner le tableau en le faisant glisser
 	Print Markup	Imprimer les marques de révision
@@ -2083,3 +2086,10 @@
 	Table Properties…	Propriétés du tableau…
 	Search	Rechercher
 	Title Bar	Barre de titre
+	Privacy Options	Options de confidentialité
+	Trust Center	Centre de gestion de la confidentialité
+	Privacy for this document	Confidentialité de ce document
+	Remove my name from comments, changes and file properties when saving	Supprimer mon nom des commentaires, des modifications et des propriétés du fichier à l’enregistrement
+	Leave out the date and time of comments and tracked changes when saving	Omettre la date et l’heure des commentaires et des modifications suivies à l’enregistrement
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Le document en cours de modification garde les noms et les dates ; seul le fichier enregistré les omet.
+	Privacy Settings	Paramètres de confidentialité actuels

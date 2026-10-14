@@ -188,6 +188,18 @@ class MainActivity : GameActivity() {
         }
     }
 
+    /** The bar's KB button: open the keyboard even where the normal request is ignored (some Xiaomi pads). */
+    @Suppress("unused")
+    fun forceShowSoftKeyboard() = runOnUiThread {
+        val view = window.decorView
+        view.requestFocus()
+        val inputMethod = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        inputMethod.restartInput(view)
+        @Suppress("DEPRECATION")
+        val shown = inputMethod.showSoftInput(view, InputMethodManager.SHOW_FORCED)
+        if (shown) softKeyboardVisible = true else Log.w("WordCraft", "Android did not accept the request to show the soft keyboard")
+    }
+
     /** The system clipboard's text, for the ribbon's Paste (Ctrl+V uses egui's in-app clipboard). */
     @Suppress("unused")
     fun clipboardText(): String? {

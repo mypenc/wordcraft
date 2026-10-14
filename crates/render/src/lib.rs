@@ -430,6 +430,57 @@ pub fn render_region(doc: &Document, page: &Page, w: u32, h: u32, view: Affine, 
     Rendered { width: w16 as u32, height: h16 as u32, pixels }
 }
 
+/// The on-screen colour behind page point (`x`, `y`): the paper (page colour), then any
+/// shading, highlight or filled shape drawn over that point, blended in drawing order. Text,
+/// pictures and turned or rotated content are left out. The caret takes its colour from this
+/// so it shows against whatever lies behind it (#299).
+pub fn background_at(doc: &Document, page: &Page, opts: &RenderOptions, x: f32, y: f32) -> Rgb {
+    let paper = opts.ink(doc.settings.page_color.unwrap_or(opts.paper));
+    if !(x.is_finite() && y.is_finite()) {
+        return paper;
+    }
+    let mut bg = [paper.0 as f32, paper.1 as f32, paper.2 as f32];
+    let items = page_display(doc, page, &opts.display);
+    blend_backgrounds(&items, wordcraft_geom::Point::new(x, y), opts, &mut bg, 0);
+    let c = |v: f32| v.round().clamp(0.0, 255.0) as u8;
+    Rgb(c(bg[0]), c(bg[1]), c(bg[2]))
+}
+
+fn blend_backgrounds(items: &[Draw], p: wordcraft_geom::Point, opts: &RenderOptions, bg: &mut [f32; 3], depth: u32) {
+    if depth > 16 {
+        return;
+    }
+    for it in items {
+        let (color, alpha) = match it {
+            Draw::Fill { rect, color, alpha } if rect.contains(p) => (*color, *alpha),
+            // The shape's own outline (an ellipse's corners are not inside it). Shape fills are
+            // drawn opaque (the model has no fill transparency), so they cover what's beneath.
+            Draw::Shape { rect, kind, fill: Some(fill), .. }
+                if *kind != ShapeKind::Line && rect.contains(p) && {
+                    let r = kurbo::Rect::new(rect.x as f64, rect.y as f64, rect.right() as f64, rect.bottom() as f64);
+                    kurbo::Shape::contains(&shape_path(*kind, r), kurbo::Point::new(p.x as f64, p.y as f64))
+                } =>
+            {
+                (*fill, 1.0)
+            }
+            Draw::Clip { rect, items } if rect.contains(p) => {
+                blend_backgrounds(items, p, opts, bg, depth + 1);
+                continue;
+            }
+            Draw::Figure { draws, .. } => {
+                blend_backgrounds(draws, p, opts, bg, depth + 1);
+                continue;
+            }
+            _ => continue,
+        };
+        let a = if alpha.is_finite() { alpha.clamp(0.0, 1.0) } else { 1.0 };
+        let c = opts.ink(color);
+        for (v, n) in bg.iter_mut().zip([c.0, c.1, c.2]) {
+            *v += (n as f32 - *v) * a;
+        }
+    }
+}
+
 /// One line of `text` in `face` at `size` points, black on white, in a `w`×`h` point raster at
 /// `scale` pixels per point, starting `margin` points in with the baseline `margin` + the face's
 /// ascent down: a font list entry. Outlines come straight from the face, not the shared outline
@@ -940,10 +991,82 @@ pub fn render_area(doc: &Document, page: &Page, x: f32, y: f32, w: f32, h: f32, 
     render_region(doc, page, pw, ph, view, opts)
 }
 
+/// Draw `items` (page points) alone, on nothing, over the page area (`x`, `y`, `w`×`h` points)
+/// at `scale` px/pt: no paper, no watermark. A dragged object's preview.
+pub fn render_items(doc: &Document, items: &[Draw], x: f32, y: f32, w: f32, h: f32, scale: f32, opts: &RenderOptions) -> Rendered {
+    let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+    let w16 = ((w * scale).ceil() as u32).clamp(1, MAX_SIDE) as u16;
+    let h16 = ((h * scale).ceil() as u32).clamp(1, MAX_SIDE) as u16;
+    let view = Affine::scale(scale as f64) * Affine::translate((-x as f64, -y as f64));
+    let mut ctx = RenderContext::new_with(w16, h16, vello_cpu::RenderSettings { num_threads: 0, ..Default::default() });
+    let visible = view.inverse().transform_rect_bbox(kurbo::Rect::new(0.0, 0.0, w16 as f64, h16 as f64)).inflate(40.0, 40.0);
+    for it in items {
+        draw(&mut ctx, doc, it, view, &visible, opts);
+    }
+    ctx.flush();
+    let mut pixels = vec![0u8; w16 as usize * h16 as usize * 4];
+    let mut res = Resources::new();
+    if let Some(pm) = vello_cpu::PixmapMut::new(w16, h16, &mut pixels) {
+        ctx.render(pm, &mut res);
+    }
+    Rendered { width: w16 as u32, height: h16 as u32, pixels }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use wordcraft_layout::{LayoutCache, LayoutOptions, layout};
+
+    /// #299: the caret's background is the page colour, a highlight, or the dark page.
+    #[test]
+    fn background_at_caret_follows_page_colour_highlight_and_dark_mode() {
+        use wordcraft_doc::Pos;
+        use wordcraft_doc::props::Highlight;
+        let mut d = Document::from_text("Hello WordCraft");
+        let mid = |d: &Document, off: usize| {
+            let l = layout(d, &mut LayoutCache::new(), &LayoutOptions::default());
+            let c = l.caret_on(&Pos::body(0, off), 0).unwrap();
+            let page = l.pages[c.page].clone();
+            (page, c.x, c.top + c.height / 2.0)
+        };
+        let light = RenderOptions::default();
+        let dark = RenderOptions { dark: true, ..Default::default() };
+        let (page, x, y) = mid(&d, 2);
+        assert_eq!(background_at(&d, &page, &light, x, y), Rgb::WHITE);
+        assert_eq!(background_at(&d, &page, &dark, x, y), Rgb(DARK_PAPER, DARK_PAPER, DARK_PAPER));
+        assert_eq!(background_at(&d, &page, &light, f32::NAN, f32::INFINITY), Rgb::WHITE, "junk points fall back to the paper");
+        d.settings.page_color = Some(Rgb(0x10, 0x10, 0x40));
+        assert_eq!(background_at(&d, &page, &light, x, y), Rgb(0x10, 0x10, 0x40));
+        d.settings.page_color = None;
+        d.format_range(&Pos::body(0, 0), &Pos::body(0, 5), &|c| c.highlight = Some(Highlight::Black)).unwrap();
+        let (page, x, y) = mid(&d, 2);
+        assert_eq!(background_at(&d, &page, &light, x, y), Rgb::BLACK, "inside the highlight");
+        let (page, x, y) = mid(&d, 9);
+        assert_eq!(background_at(&d, &page, &light, x, y), Rgb::WHITE, "past the highlight");
+    }
+
+    /// #299: a filled shape colours the caret's background only inside its outline: an
+    /// ellipse's corner shows what lies beneath, its centre the fill.
+    #[test]
+    fn background_follows_a_shapes_outline_not_its_box() {
+        let opts = RenderOptions::default();
+        let ellipse = Draw::Shape {
+            rect: wordcraft_geom::Rect::new(100.0, 100.0, 200.0, 100.0),
+            kind: ShapeKind::Ellipse,
+            fill: Some(Rgb::BLACK),
+            stroke: None,
+            stroke_width: 0.0,
+            effects: Default::default(),
+        };
+        let at = |x: f32, y: f32| {
+            let mut bg = [255.0; 3];
+            blend_backgrounds(std::slice::from_ref(&ellipse), wordcraft_geom::Point::new(x, y), &opts, &mut bg, 0);
+            bg
+        };
+        assert_eq!(at(200.0, 150.0), [0.0; 3], "the centre is the fill");
+        assert_eq!(at(103.0, 103.0), [255.0; 3], "the box's corner is outside the ellipse");
+        assert_eq!(at(350.0, 150.0), [255.0; 3], "outside the box");
+    }
 
     #[test]
     fn renders_text_dark_pixels() {

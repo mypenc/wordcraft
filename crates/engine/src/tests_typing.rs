@@ -50,6 +50,84 @@ fn typed(keys: &str) -> Session {
 }
 
 #[test]
+fn sample_text_formulas_expand_on_enter() {
+    for name in ["rand", "lorem"] {
+        for (args, paragraphs, sentences) in [("", 5, 3), ("2", 2, 3), ("2,4", 2, 4), ("1,1", 1, 1), ("200,1", 200, 1), ("1,200", 1, 200)] {
+            let mut s = typed(&format!("={name}({args})"));
+            let depth = s.undo_depth();
+            typ(&mut s, "\n");
+            let generated: Vec<_> = paras(&s).into_iter().map(|p| p.0).collect();
+            assert_eq!(generated.len(), paragraphs + 1, "{name}({args})");
+            for text in generated.iter().take(paragraphs) {
+                assert_eq!(text.matches('.').count(), sentences);
+                assert!(text.starts_with(if name == "lorem" { "Lorem ipsum" } else { "A blank page" }), "{name}({args}): {text:?}");
+            }
+            assert_eq!(generated.last().unwrap(), "");
+            assert_eq!(s.sel.focus, Pos::body(paragraphs, 0));
+            assert_eq!(s.undo_depth(), depth + 1);
+            let expanded = s.doc.clone();
+            run(&mut s, "edit.undo", json!({}));
+            assert_eq!(texts(&s), [format!("={name}({args})")]);
+            run(&mut s, "edit.redo", json!({}));
+            assert_eq!(s.doc, expanded);
+        }
+    }
+}
+
+#[test]
+fn sample_text_invalid_parameters_use_defaults() {
+    for name in ["rand", "lorem"] {
+        for args in ["0", "-1", "201", "abc", "1.5", "99999999999999999999999999999", "2,0", "0,4", "2,201", "2,no", "2,", ",4", "1,2,3"] {
+            let s = typed(&format!("={name}({args})\n"));
+            let texts = texts(&s);
+            assert_eq!(texts.len(), 6, "{name}({args})");
+            assert!(texts.iter().take(5).all(|text| text.matches('.').count() == 3));
+        }
+    }
+}
+
+#[test]
+fn sample_text_requires_an_exact_paragraph_and_caret_at_end() {
+    for formula in [" =rand()", "=rand() ", "prefix =rand()", "=lorem() suffix", "=other()", "=rand(", "=rand(())"] {
+        assert_eq!(texts(&typed(&format!("{formula}\n"))), [formula, ""]);
+    }
+    let mut s = typed("=rand()");
+    run(&mut s, "caret.home", json!({}));
+    typ(&mut s, "\n");
+    assert_eq!(texts(&s), ["", "=rand()"]);
+    let mut s = typed("=rand()suffix");
+    s.sel = crate::Selection { anchor: Pos::body(0, 7), focus: Pos::body(0, 13) };
+    typ(&mut s, "\n");
+    assert_eq!(texts(&s), ["=rand()", ""]);
+}
+
+#[test]
+fn sample_text_preserves_typing_and_paragraph_formatting() {
+    let mut s = s();
+    run(&mut s, "format.bold", json!({}));
+    run(&mut s, "para.alignCenter", json!({}));
+    typ(&mut s, "=rand(2,1)\n");
+    for p in s.doc.body.iter().filter_map(|b| b.as_para()).take(2) {
+        assert_eq!(p.props.align, Some(wordcraft_doc::props::Align::Center));
+        assert_eq!(p.props_at(0).bold, Some(true));
+    }
+}
+
+#[test]
+fn sample_text_replacement_tracks_changes() {
+    let mut s = typed("=lorem(2,1)");
+    run(&mut s, "review.trackChanges", json!({}));
+    typ(&mut s, "\n");
+    assert!(s.doc.body.iter().filter_map(|b| b.as_para()).flat_map(|p| &p.runs).any(|r| r.props.ins.is_some()));
+    run(&mut s, "review.rejectAll", json!({}));
+    assert_eq!(texts(&s), ["=lorem(2,1)"]);
+    run(&mut s, "edit.undo", json!({}));
+    run(&mut s, "review.acceptAll", json!({}));
+    assert_eq!(texts(&s).len(), 3);
+    assert!(!s.doc.plain_text(StoryRef::Body).contains("=lorem"));
+}
+
+#[test]
 fn enter_twice_after_a_list_item_ends_the_list() {
     let s = typed("* item\n\ntext");
     assert_eq!(paras(&s), vec![para("Item", Some(0)), para("text", None)]);

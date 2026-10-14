@@ -90,6 +90,10 @@ fn keytip_badge(ui: &Ui, rect: Rect, id: &str, name: &str) {
 
 /// Whether a command exists and is enabled.
 pub fn enabled(app: &WordApp, id: &str) -> bool {
+    // No document open (#1129): only what opens one, Help and the settings.
+    if !app.has_document() && !crate::works_without_document(id) {
+        return false;
+    }
     match app.session.registry.get(id) {
         Some(s) => (s.enabled)(&app.session).is_none(),
         // Zotero: one command at a time, and only in the desktop app.

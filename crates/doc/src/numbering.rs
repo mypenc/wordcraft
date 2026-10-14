@@ -208,6 +208,11 @@ impl Numbering {
         let n = self.num(num)?;
         self.abstracts.iter().find(|a| a.id == n.abstract_id)
     }
+    /// Whether a paragraph in list `num` at `level` gets a label ([`Counters::next_label`] gives
+    /// one), without counting it.
+    pub fn shows_label(&self, num: u32, level: u8) -> bool {
+        self.abstract_of(num).is_some() && self.level(num, level.min(8)).is_some_and(|d| d.format != NumFormat::None)
+    }
     pub fn level(&self, num: u32, level: u8) -> Option<&Level> {
         if let Some((_, l)) = self.num(num)?.level_overrides.iter().find(|(i, _)| *i == level) {
             return Some(l);

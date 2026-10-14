@@ -120,6 +120,7 @@
 	More templates →	その他のテンプレート →
 	New comments and tracked changes are recorded under this name and these initials.	新しいコメントと変更履歴は、この名前とイニシャルで記録されます。
 	New word	新しい単語
+	No document is open. Create a document or open one first.	開いている文書がありません。先に文書を作成するか開いてください。
 	No templates match your search.	検索に一致するテンプレートはありません。
 	No words yet. Add to Dictionary on a misspelled word puts it here.	まだ単語はありません。スペルミスの単語で [辞書に追加] を選ぶと、ここに追加されます。
 	Nothing	なし
@@ -950,6 +951,7 @@
 	Word Count	文字カウント
 	Word document (*.docx)	Word 文書 (*.docx)
 	Word XML Document (*.xml)	Word XML ドキュメント (*.xml)
+	Word 2003 XML Document (*.xml)	Word 2003 XML ドキュメント (*.xml)
 	Word Left	前の単語へ
 	Word Right	次の単語へ
 	WordArt	ワードアート
@@ -1419,7 +1421,8 @@
 	Formatted	書式変更
 	Deleted	削除
 	Interface size:	表示サイズ:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	リボン、メニュー、ダイアログを、システムの表示倍率に加えて拡大または縮小します。文書のズームは別に設定します。
+	Auto ({percent}%)	自動 ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	リボン、メニュー、ダイアログを拡大または縮小します。自動はシステムの表示倍率に従います。100% は 1 ポイントあたり画面の 1 ピクセルです。文書のズームは別に設定します。
 	Resize Table by Dragging	ドラッグで表のサイズを変更
 	Print Markup	変更履歴とコメントを印刷
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	PDF、印刷、画像では各ページの横にコメントと変更履歴を表示し、Web ページ、Markdown、テキストでは末尾にコメント一覧を付けます。
@@ -2075,3 +2078,10 @@
 	Start-up	起動
 	Show the Start screen when WordCraft starts	WordCraft の起動時にスタート画面を表示する
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	オン: WordCraft は [ファイル] › [ホーム] で開き、白紙の文書、テンプレート、最近使った文書を表示します。オフ: 白紙の文書を開きます。
+	Privacy Options	プライバシー オプション
+	Trust Center	セキュリティ センター
+	Privacy for this document	このドキュメントのプライバシー
+	Remove my name from comments, changes and file properties when saving	保存時にコメント、変更、ファイルのプロパティから自分の名前を削除する
+	Leave out the date and time of comments and tracked changes when saving	保存時にコメントと変更履歴の日時を含めない
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	編集中のドキュメントには名前と日時が残ります。保存したファイルにだけ含まれません。
+	Privacy Settings	現在のプライバシー設定

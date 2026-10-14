@@ -79,53 +79,88 @@ impl From<Appearance> for String {
     }
 }
 
-/// Interface size (File › Options › General, `ui.interfaceSize`), in percent (#475): scales the
-/// ribbon, menus, panes and dialogs on top of the display scale the system reports, through
-/// egui's zoom factor. Document zoom (View › Zoom) is a separate setting and never changes with it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
-#[serde(from = "serde_json::Value", into = "u16")]
-pub struct InterfaceSize(u16);
+/// Interface size (File › Options › General, `ui.interfaceSize`): how large the ribbon, menus, panes
+/// and dialogs are drawn, through egui's zoom factor. Document zoom (View › Zoom) is a separate
+/// setting and never changes with it.
+///
+/// `Auto` (the default) keeps the display scale the system reports. A chosen size is absolute, as in
+/// PhotoCraft and PdfCraft (#822): "100%" is one screen pixel per point whatever the display reports,
+/// so a system that guesses 200 % (a bare window manager on X11, where winit falls back to the
+/// monitor's DPI) doesn't make "100%" draw at 200 %. The display's scale is divided back out in
+/// [`InterfaceSize::zoom_factor`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(from = "serde_json::Value", into = "serde_json::Value")]
+pub struct InterfaceSize(Option<u16>);
 
 impl InterfaceSize {
-    pub const MIN: u16 = 75;
-    pub const MAX: u16 = 200;
-    pub const DEFAULT: InterfaceSize = InterfaceSize(100);
-    /// The choices in File › Options, in percent.
-    pub const PRESETS: [u16; 9] = [75, 80, 90, 100, 110, 125, 150, 175, 200];
+    pub const MIN: u16 = 50;
+    pub const MAX: u16 = 300;
+    /// Follow the display scale the system reports.
+    pub const AUTO: InterfaceSize = InterfaceSize(None);
+    /// The sizes File › Options offers after Auto, in percent (PhotoCraft's and PdfCraft's).
+    pub const PRESETS: [u16; 12] = [75, 80, 85, 90, 95, 100, 125, 150, 175, 200, 250, 300];
 
-    /// A size from any number: rounded and clamped to 75–200 %; `None` for NaN or infinity.
+    /// A chosen size from any number: rounded and clamped to 50–300 %; `None` for NaN or infinity.
     pub fn from_percent(percent: f64) -> Option<InterfaceSize> {
-        percent.is_finite().then(|| InterfaceSize(percent.round().clamp(f64::from(Self::MIN), f64::from(Self::MAX)) as u16))
+        percent.is_finite().then(|| InterfaceSize(Some(percent.round().clamp(f64::from(Self::MIN), f64::from(Self::MAX)) as u16)))
     }
 
-    pub fn percent(self) -> u16 {
+    /// The chosen size in percent, or `None` for Auto.
+    pub fn percent(self) -> Option<u16> {
         self.0
     }
 
-    /// The egui zoom factor (1.0 at 100 %).
-    pub fn zoom_factor(self) -> f32 {
-        f32::from(self.0) / 100.0
+    pub fn is_auto(self) -> bool {
+        self.0.is_none()
+    }
+
+    /// The egui zoom factor on a display whose own scale (native pixels per point) is `native`:
+    /// 1.0 for Auto, or the chosen size with the display's scale divided back out.
+    pub fn zoom_factor(self, native: f32) -> f32 {
+        match self.0 {
+            None => 1.0,
+            Some(pct) => f32::from(pct) / 100.0 / usable_scale(native),
+        }
+    }
+
+    /// The size the interface is drawn at on that display, in percent (screen pixels per point × 100).
+    pub fn drawn_percent(self, native: f32) -> u16 {
+        let drawn = usable_scale(native) * self.zoom_factor(native) * 100.0;
+        drawn.round().clamp(0.0, f32::from(u16::MAX)) as u16
     }
 }
 
-impl Default for InterfaceSize {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
+/// The display's scale, or 1.0 when egui doesn't know it (or reports nonsense).
+pub fn usable_scale(native: f32) -> f32 {
+    if native.is_finite() && native > 0.0 { native } else { 1.0 }
 }
 
-/// A saved value that isn't a number reads as 100 %, and an out-of-range one is clamped, rather than
-/// discarding the whole `ui.json`.
+/// `"auto"`, or a percentage; anything else reads as Auto rather than discarding the whole `ui.json`.
 impl From<serde_json::Value> for InterfaceSize {
     fn from(v: serde_json::Value) -> Self {
         v.as_f64().and_then(InterfaceSize::from_percent).unwrap_or_default()
     }
 }
 
-impl From<InterfaceSize> for u16 {
+impl From<InterfaceSize> for serde_json::Value {
     fn from(s: InterfaceSize) -> Self {
-        s.0
+        s.0.map_or_else(|| serde_json::Value::from("auto"), serde_json::Value::from)
     }
+}
+
+/// A `ui.json` from before #822 saved `interfaceSize` as a percentage on top of the display scale.
+/// Its default, 100, meant "the display's scale", which is Auto now (`None`); another value was
+/// picked on purpose and is returned, to become an absolute size once the display's scale is
+/// known ([`migrate_legacy_interface_size`]). Junk reads as Auto.
+pub fn legacy_interface_percent(v: &serde_json::Value) -> Option<f64> {
+    v.as_f64().filter(|p| p.is_finite() && (p - 100.0).abs() >= 0.5)
+}
+
+/// The absolute size a pre-#822 `interfaceSize` of `old` percent drew at on a display whose own
+/// scale is `native`: `old × native`, clamped to 50–300 %. A 2× display with 125 % drew at 250 %,
+/// and keeps drawing there.
+pub fn migrate_legacy_interface_size(old: f64, native: f32) -> InterfaceSize {
+    InterfaceSize::from_percent(old * f64::from(usable_scale(native))).unwrap_or_default()
 }
 
 /// The Animation effects setting (File › Options › Accessibility, `ui.animations`): on, off, or
@@ -226,7 +261,6 @@ pub struct Tokens {
     pub selection: Color32,
     /// Find › Reading Highlight.
     pub find_highlight: Color32,
-    pub caret: Color32,
     pub page_shadow: Color32,
     /// Selection-frame handles (pictures, shapes, text boxes) and their shadow.
     pub handle: Color32,
@@ -268,7 +302,6 @@ impl Tokens {
             status_bar: Color32::from_rgb(0xF0, 0xF0, 0xF0),
             selection: Color32::from_rgba_unmultiplied(0x3B, 0x5B, 0xDB, 0x48),
             find_highlight: Color32::from_rgba_unmultiplied(0xFF, 0xE0, 0x3D, 0x90),
-            caret: Color32::BLACK,
             page_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x22),
             handle: Color32::WHITE,
             handle_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x28),
@@ -309,7 +342,6 @@ impl Tokens {
             status_bar: Color32::from_rgb(0x1F, 0x1F, 0x1F),
             selection: Color32::from_rgba_unmultiplied(0x7A, 0x93, 0xF0, 0x55),
             find_highlight: Color32::from_rgba_unmultiplied(0xC8, 0xA8, 0x00, 0x70),
-            caret: Color32::BLACK,
             page_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x60),
             handle: Color32::from_rgb(0xF2, 0xF2, 0xF2),
             handle_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x5A),

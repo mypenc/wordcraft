@@ -505,6 +505,36 @@ fn windows_powershell(system_root: Option<std::ffi::OsString>) -> std::path::Pat
     std::path::Path::new(&root).join("System32").join("WindowsPowerShell").join("v1.0").join("powershell.exe")
 }
 
+/// Win32 `CREATE_NO_WINDOW` process creation flag: a console program starts without a console window.
+#[cfg(any(target_os = "windows", test))]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// How Read Aloud starts Windows PowerShell to speak at `rate`: the program, its arguments and
+/// its process creation flags. `speak` builds its `Command` from exactly this; std can't read
+/// creation flags back from a `Command`, so the tests check this value instead.
+#[cfg(any(target_os = "windows", test))]
+struct WindowsSpeech {
+    program: std::path::PathBuf,
+    args: [String; 4],
+    creation_flags: u32,
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_speech(system_root: Option<std::ffi::OsString>, rate: f32) -> WindowsSpeech {
+    // SAPI rate: -10 (a third of normal speed) … 10 (three times).
+    let r = ((rate.ln() / 3f32.ln()) * 10.0).round().clamp(-10.0, 10.0) as i64;
+    let script = format!(
+        "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Rate = {r}; $s.Speak([Console]::In.ReadToEnd())"
+    );
+    WindowsSpeech {
+        program: windows_powershell(system_root),
+        args: ["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), script],
+        // PowerShell is a console program: without this, every sentence flashes a console window
+        // over the document (#1122).
+        creation_flags: CREATE_NO_WINDOW,
+    }
+}
+
 /// Speak one sentence with the system's speech program, stopping early when `changed()`.
 #[cfg(not(target_arch = "wasm32"))]
 fn speak(text: &str, rate: f32, changed: &dyn Fn() -> bool) -> Spoken {
@@ -521,13 +551,10 @@ fn speak(text: &str, rate: f32, changed: &dyn Fn() -> bool) -> Spoken {
     }
     #[cfg(target_os = "windows")]
     {
-        // SAPI rate: -10 (a third of normal speed) … 10 (three times).
-        let r = ((rate.ln() / 3f32.ln()) * 10.0).round().clamp(-10.0, 10.0) as i64;
-        let script = format!(
-            "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Rate = {r}; $s.Speak([Console]::In.ReadToEnd())"
-        );
-        let mut c = Command::new(windows_powershell(std::env::var_os("SystemRoot")));
-        c.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+        let w = windows_speech(std::env::var_os("SystemRoot"), rate);
+        let mut c = Command::new(&w.program);
+        c.args(&w.args);
+        std::os::windows::process::CommandExt::creation_flags(&mut c, w.creation_flags);
         tries.push(c);
     }
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -590,6 +617,19 @@ mod tests {
             let p = windows_powershell(root);
             assert!(p.starts_with("C:\\Windows") && p.ends_with(&tail), "{}", p.display());
         }
+    }
+
+    #[test]
+    fn powershell_starts_without_a_console_window() {
+        // The flags `speak` passes to `creation_flags` (std can't read them back from the
+        // `Command`): Win32's CREATE_NO_WINDOW (0x0800_0000), or every sentence flashes a
+        // console (#1122).
+        let w = windows_speech(Some("D:\\Win".into()), 1.0);
+        assert_eq!(w.creation_flags, 0x0800_0000);
+        assert_eq!(w.program, windows_powershell(Some("D:\\Win".into())));
+        assert_eq!(w.args[..3], ["-NoProfile", "-NonInteractive", "-Command"]);
+        assert!(w.args[3].contains("$s.Rate = 0;"), "{}", w.args[3]);
+        assert!(windows_speech(None, 3.0).args[3].contains("$s.Rate = 10;"));
     }
 
     #[test]

@@ -482,6 +482,7 @@
 	No Paragraph Space	Lõiguvaheta
 	No Spacing	Vahedeta
 	No contributor data was built into this copy.	Selles versioonis pole kaasautorite andmeid.
+	No document is open. Create a document or open one first.	Ükski dokument pole avatud. Looge või avage kõigepealt dokument.
 	No model credits were built into this copy.	Selles versioonis pole mudelite autoriteavet.
 	No templates match your search.	Otsingule vastavaid malle pole.
 	No words yet. Add to Dictionary on a misspelled word puts it here.	Sõnu veel pole. Valik „Lisa sõnastikku“ valesti kirjutatud sõnal lisab selle siia.
@@ -877,6 +878,7 @@
 	Word Right	Sõna paremale
 	Word document (*.docx)	Wordi dokument (*.docx)
 	Word XML Document (*.xml)	Wordi XML-dokument (*.xml)
+	Word 2003 XML Document (*.xml)	Word 2003 XML-dokument (*.xml)
 	WordArt	WordArt
 	WordCraft	WordCraft
 	Words	Sõnad
@@ -1438,7 +1440,8 @@
 	Formatted	Vormindatud
 	Deleted	Kustutatud
 	Interface size:	Kasutajaliidese suurus:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Muudab menüülindi, menüüd ja dialoogid suuremaks või väiksemaks, lisaks süsteemi ekraani skaleerimisele. Dokumendi suum on eraldi.
+	Auto ({percent}%)	Automaatne ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Muudab menüülindi, menüüd ja dialoogid suuremaks või väiksemaks. Automaatne järgib süsteemi ekraani skaleerimist; 100% on üks ekraanipiksel punkti kohta. Dokumendi suum on eraldi.
 	Resize Table by Dragging	Tabeli suuruse muutmine lohistades
 	Print Markup	Prindi märgistus
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Kommentaarid iga lehe kõrval ja jälitatud muudatused PDF-ides, väljatrükkides ja piltides; kommentaaride loend veebilehtede, Markdowni ja teksti lõpus.
@@ -2109,3 +2112,10 @@
 	Start-up	Käivitamine
 	Show the Start screen when WordCraft starts	Näita WordCrafti käivitamisel avakuva
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Sees: WordCraft avaneb vaates Fail › Avaleht, kus on tühi dokument, mallid ja hiljutised dokumendid. Väljas: avaneb tühi dokument.
+	Privacy Options	Privaatsussuvandid
+	Trust Center	Usalduskeskus
+	Privacy for this document	Selle dokumendi privaatsus
+	Remove my name from comments, changes and file properties when saving	Eemalda salvestamisel minu nimi kommentaaridest, muudatustest ja faili atribuutidest
+	Leave out the date and time of comments and tracked changes when saving	Jäta salvestamisel välja kommentaaride ja jälitatud muudatuste kuupäev ja kellaaeg
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Redigeeritav dokument säilitab nimed ja kuupäevad; need jäetakse välja ainult salvestatud failist.
+	Privacy Settings	Praegused privaatsussätted

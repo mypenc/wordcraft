@@ -639,6 +639,11 @@ impl Reader<'_> {
                     self.emit_obj(sc, pb, o, props);
                 }
             }
+            "w:contentPart" => {
+                if let Some(o) = self.read_ink_content_part(k, rels) {
+                    self.emit_obj(sc, pb, o, props);
+                }
+            }
             "w:footnoteReference" | "w:endnoteReference" => {
                 let foot = k.name == "w:footnoteReference";
                 let fid = k.attr("w:id").and_then(int).unwrap_or(i64::MIN);
@@ -888,6 +893,7 @@ impl Reader<'_> {
         let (alt, meta) = nv_alt(c.child("wp:docPr"));
         let mut float = if anchored { anchor_float(c) } else { Float::default() };
         float.alt = meta;
+        float.hidden = c.child("wp:docPr").is_some_and(|p| on_off_attr(p, "hidden"));
         if let Some(e) = c.child("wp:effectExtent") {
             for (slot, n) in float.effect.iter_mut().zip(["l", "t", "r", "b"]) {
                 // Negative for a rotated object narrower than its frame; settled below.
@@ -996,6 +1002,17 @@ impl Reader<'_> {
             }
         }
         Some(object)
+    }
+
+    fn read_ink_content_part(&mut self, content: &El, rels: &Rels) -> Option<InlineObject> {
+        let part = super::part_of(rels, content.attr("r:id")?, INK_REL)?;
+        let pkg = self.pkg;
+        if self.content_types.get_or_insert_with(|| ContentTypes::read(pkg)).of(&part) != Some("application/inkml+xml") {
+            return None;
+        }
+        let source = self.keep_embedded(content, rels, &[])?;
+        let graphic = Arc::new(Graphic { kind: GraphicKind::Ink, source: Some(source), ..Default::default() });
+        Some(InlineObject::Graphic { w: 0.0, h: 0.0, alt: String::new(), float: Float::default(), graphic })
     }
 
     /// The chart or SmartArt diagram in an `a:graphicData`, as items in points from its top-left
@@ -1149,8 +1166,9 @@ impl Reader<'_> {
             let max = crate::units::MAX_LEN_PT;
             let fit = |v: f32, lo: f32| wordcraft_geom::finite(v).clamp(lo, max);
             let (w, h) = (fit(ew * sx, 0.0), fit(eh * sy, 0.0));
-            let (alt, meta) = nv_alt(if e.name == "pic:pic" { e.find("pic:cNvPr") } else { e.child("wps:cNvPr") });
-            let float = Float { alt: meta, ..Float::default() };
+            let nv = if e.name == "pic:pic" { e.find("pic:cNvPr") } else { e.child("wps:cNvPr") };
+            let (alt, meta) = nv_alt(nv);
+            let float = Float { alt: meta, hidden: nv.is_some_and(|p| on_off_attr(p, "hidden")), ..Float::default() };
             let obj = if e.name == "pic:pic" {
                 self.read_pic(e, rels, w, h, alt.clone(), float)
             } else {
@@ -1294,10 +1312,35 @@ impl Reader<'_> {
         let stroke = on("stroked").then(|| shape.attr("strokecolor").map_or(Some(Rgb::BLACK), vml_color)).flatten();
         let stroke_width = shape.attr("strokeweight").and_then(|v| measure(v, 1.0)).unwrap_or(0.75).clamp(0.0, 100.0);
         let fill = on("filled").then(|| shape.attr("fillcolor").map_or(Some(Rgb::WHITE), vml_color)).flatten();
-        if let Some(t) = shape.find("w:txbxContent")
+        if let Some((tb, t)) = vml_textbox(shape, 0)
             && sc.story_depth < MAX_STORY_DEPTH
         {
-            let story = Some(self.read_textbox(sc, t, rels));
+            let id = self.read_textbox(sc, t, rels);
+            if let Some(part) = self.doc.parts.get_mut(&id) {
+                // Internal margins `inset="l,t,r,b"` (ECMA-376 Part 4 §19.1.2.22), each one left
+                // out keeping Word's default; a bare number is in EMUs, VML's base unit.
+                // `o:insetmode="auto"` leaves them to the application.
+                let mut inset = wordcraft_doc::TEXT_BOX_INSET;
+                let custom = tb.attr("o:insetmode").is_none_or(|m| !m.eq_ignore_ascii_case("auto"));
+                for (slot, v) in inset.iter_mut().zip(tb.attr("inset").filter(|_| custom).unwrap_or("").split(',')) {
+                    if let Some(pt) = measure(v, 12_700.0) {
+                        *slot = (pt.max(0.0) * 12_700.0).round().min(wordcraft_doc::MAX_TEXT_BOX_INSET as f32) as u32;
+                    }
+                }
+                part.body.inset = (inset != wordcraft_doc::TEXT_BOX_INSET).then_some(inset);
+                // Resize shape to fit text (DrawingML's `a:spAutoFit`).
+                let fit = vml_style(tb.attr("style").unwrap_or(""), "mso-fit-shape-to-text");
+                part.body.auto_fit = fit.is_some_and(|v| v.eq_ignore_ascii_case("t") || v.eq_ignore_ascii_case("true"));
+                // Where the text sits between the box's top and bottom (DrawingML's `anchor`).
+                if let Some(a) = vml_style(style, "v-text-anchor") {
+                    part.body.anchor = match a {
+                        a if a.starts_with("middle") => wordcraft_doc::props::VAlign::Center,
+                        a if a.starts_with("bottom") => wordcraft_doc::props::VAlign::Bottom,
+                        _ => wordcraft_doc::props::VAlign::Top,
+                    };
+                }
+            }
+            let story = Some(id);
             return Some(InlineObject::Shape {
                 kind: ShapeKind::TextBox,
                 w,
@@ -1574,6 +1617,18 @@ fn wrap_polygon(e: &El) -> Option<wordcraft_doc::wrap::WrapPolygon> {
 }
 
 /// The value of property `key` in a VML `style` attribute (CSS declarations; the last one wins).
+/// The first `v:textbox` under `e` holding text, with its `w:txbxContent` (depth-first, bounded
+/// like `El::find`): in a group, a member's margins go with that member's text.
+fn vml_textbox(e: &El, depth: usize) -> Option<(&El, &El)> {
+    if depth > crate::xml::MAX_DEPTH {
+        return None;
+    }
+    e.els().find_map(|c| match c.child("w:txbxContent") {
+        Some(t) if c.name == "v:textbox" => Some((c, t)),
+        _ => vml_textbox(c, depth + 1),
+    })
+}
+
 fn vml_style<'a>(style: &'a str, key: &str) -> Option<&'a str> {
     style.rsplit(';').filter_map(|d| d.split_once(':')).find(|(k, _)| k.trim().eq_ignore_ascii_case(key)).map(|(_, v)| v.trim())
 }
@@ -1586,9 +1641,10 @@ fn vml_style<'a>(style: &'a str, key: &str) -> Option<&'a str> {
 /// `z-index`. Anything else stays inline.
 fn vml_float(shape: &El, style: &str) -> Float {
     let get = |k: &str| vml_style(style, k);
+    let hidden = get("visibility").is_some_and(|v| v.eq_ignore_ascii_case("hidden"));
     if !get("position").is_some_and(|p| p.eq_ignore_ascii_case("absolute")) {
         // Inline: only the turn (an OLE object turned in WordCraft is saved so, #319).
-        let mut f = Float::default();
+        let mut f = Float { hidden, ..Float::default() };
         f.set_spin(vml_spin(style));
         return f;
     }
@@ -1635,6 +1691,7 @@ fn vml_float(shape: &El, style: &str) -> Float {
         dist: dist("mso-wrap-distance-left").max(dist("mso-wrap-distance-right")),
         dist_top: dist("mso-wrap-distance-top"),
         dist_bottom: dist("mso-wrap-distance-bottom"),
+        hidden,
         ..Float::default()
     };
     f.set_spin(vml_spin(style));

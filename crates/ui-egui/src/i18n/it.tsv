@@ -93,6 +93,7 @@
 	Legal style numbering	Numerazione stile legale
 	Link level to style:	Collega livello allo stile:
 	List Definition	Definizione elenco
+	No document is open. Create a document or open one first.	Nessun documento aperto. Crea o apri prima un documento.
 	Nothing	Niente
 	Number alignment:	Allineamento numero:
 	Number format	Formato numero
@@ -1330,7 +1331,8 @@
 	Flip Horizontal	Capovolgi orizzontalmente
 	Formatted	Formattato
 	Interface size:	Dimensioni interfaccia:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Ingrandisce o riduce la barra multifunzione, i menu e le finestre di dialogo, in aggiunta al ridimensionamento dello schermo del sistema. Lo zoom del documento è separato.
+	Auto ({percent}%)	Auto ({percent}%)
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Ingrandisce o riduce la barra multifunzione, i menu e le finestre di dialogo. Auto segue il ridimensionamento dello schermo del sistema; 100% è un pixel dello schermo per punto. Lo zoom del documento è separato.
 	Title	Titolo
 	Subject	Oggetto
 	Keywords	Parole chiave
@@ -1534,6 +1536,7 @@
 	Use the Insert key to switch overtype on and off	Usa il tasto Ins per attivare e disattivare la sovrascrittura
 	Extend Selection by Units	Estendi selezione per unità
 	Word XML Document (*.xml)	Documento Word XML (*.xml)
+	Word 2003 XML Document (*.xml)	Documento Word 2003 XML (*.xml)
 	Deleted	Eliminato
 	Print Markup	Stampa revisioni
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Commenti accanto a ogni pagina e revisioni in PDF, stampe e immagini; un elenco dei commenti alla fine di pagine web, Markdown e testo.
@@ -2459,3 +2462,10 @@ preview	Title	Esempio
 	Automatic ({region})	Automatico ({region})
 	Search	Cerca
 	Title Bar	Barra del titolo
+	Privacy Options	Opzioni di privacy
+	Trust Center	Centro protezione
+	Privacy for this document	Privacy di questo documento
+	Remove my name from comments, changes and file properties when saving	Rimuovi il mio nome da commenti, modifiche e proprietà del file al salvataggio
+	Leave out the date and time of comments and tracked changes when saving	Ometti data e ora di commenti e revisioni al salvataggio
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Il documento che stai modificando conserva nomi e date; solo il file salvato li omette.
+	Privacy Settings	Impostazioni di privacy attuali

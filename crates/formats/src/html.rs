@@ -1125,6 +1125,15 @@ pub fn parse_with(s: &str, images: ImageLoader) -> Flow {
             Tok::Text(t) => b.text(&t),
             Tok::Start { name, attrs, self_close } => {
                 b.close_head_for_start(&name);
+                if crate::mathml::local(&name) == "math" && !self_close {
+                    let el = read_math(&mut lx, name, attrs);
+                    if !b.in_head()
+                        && let Some((linear, display)) = crate::mathml::read(&el)
+                    {
+                        b.start_para().inlines.push(Inline::Equation { linear, display });
+                    }
+                    continue;
+                }
                 if matches!(name.as_str(), "script" | "style" | "noscript" | "template" | "textarea") && !self_close {
                     lx.skip_past(&format!("</{name}"));
                     lx.skip_past(">");
@@ -1136,6 +1145,86 @@ pub fn parse_with(s: &str, images: ImageLoader) -> Flow {
         }
     }
     b.finish()
+}
+
+/// A `<math>` element (#816): its tokens up to the matching end tag, as a tree. Nesting and size
+/// are bounded; an unclosed element ends with the input.
+fn read_math(lx: &mut Lexer, name: String, attrs: Vec<(String, String)>) -> crate::mathml::El {
+    use crate::mathml::{El, Item, MAX_NODES, local};
+    let mut stack: Vec<El> = vec![El { name, attrs, children: Vec::new() }];
+    let mut count = 0usize;
+    let close = |stack: &mut Vec<El>| {
+        if stack.len() > 1
+            && let Some(done) = stack.pop()
+            && let Some(parent) = stack.last_mut()
+        {
+            parent.children.push(Item::El(done));
+        }
+    };
+    while let Some(t) = lx.next() {
+        count += 1;
+        if count > MAX_NODES * 4 {
+            // Over the cap: drop the rest of this element so its tokens aren't read as HTML text.
+            skip_math(lx, t);
+            break;
+        }
+        match t {
+            Tok::Text(t) => {
+                if let Some(top) = stack.last_mut()
+                    && !t.is_empty()
+                {
+                    top.children.push(Item::Text(t));
+                }
+            }
+            Tok::Start { name, attrs, self_close } => {
+                let el = El { name, attrs, children: Vec::new() };
+                if self_close || stack.len() > wordcraft_doc::math::MAX_DEPTH {
+                    if let Some(top) = stack.last_mut() {
+                        top.children.push(Item::El(el));
+                    }
+                } else {
+                    stack.push(el);
+                }
+            }
+            Tok::End(name) => {
+                let name = local(&name).to_string();
+                // Close up to the matching open element; a stray end tag is ignored.
+                if let Some(k) = stack.iter().rposition(|e| local(&e.name) == name) {
+                    if k == 0 {
+                        break;
+                    }
+                    while stack.len() > k {
+                        close(&mut stack);
+                    }
+                }
+            }
+        }
+    }
+    while stack.len() > 1 {
+        close(&mut stack);
+    }
+    stack.pop().unwrap_or_default()
+}
+
+/// Skip tokens (starting with `first`) up to and including the `</math>` that closes the element
+/// being read; nested `<math>` elements are counted. An unclosed element ends with the input.
+fn skip_math(lx: &mut Lexer, first: Tok) {
+    use crate::mathml::local;
+    let mut depth = 0usize;
+    let mut t = Some(first);
+    while let Some(tok) = t {
+        match tok {
+            Tok::Start { name, self_close: false, .. } if local(&name) == "math" => depth = depth.saturating_add(1),
+            Tok::End(name) if local(&name) == "math" => {
+                if depth == 0 {
+                    return;
+                }
+                depth = depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+        t = lx.next();
+    }
 }
 
 /// Parse HTML into a document.
@@ -1198,7 +1287,6 @@ fn text_html(t: &str) -> String {
 /// Inline spans → HTML.
 pub fn inlines_html(inlines: &[Inline]) -> String {
     let mut o = String::new();
-    let inlines = crate::model::equations_as_text(inlines);
     for i in inlines.iter() {
         match i {
             Inline::Text(t, f) => {
@@ -1269,7 +1357,8 @@ pub fn inlines_html(inlines: &[Inline]) -> String {
             Inline::Anchor(a) => o.push_str(&format!("<a id=\"{}\"></a>", esc(a))),
             // No picture to show: the browser shows the alt text in its place.
             Inline::Figure(alt) => o.push_str(&format!("<img alt=\"{}\">", esc(alt))),
-            Inline::Equation { .. } => {}
+            // MathML, which browsers, Word and LibreOffice show as an equation (#816).
+            Inline::Equation { linear, display } => o.push_str(&crate::mathml::linear_to_mathml(linear, *display)),
         }
     }
     o
@@ -1446,6 +1535,15 @@ fn close_list(stack: &mut Vec<(bool, bool)>, out: &mut String) {
 pub fn export(doc: &Document) -> String {
     let flow = model::from_doc(doc);
     export_flow(&flow, doc.styles.default_chr.lang.as_deref().unwrap_or("en"))
+}
+
+/// `doc`'s content as an HTML fragment (no head or style sheet): what a copy puts on the system
+/// clipboard beside its text, equations as MathML (#816).
+pub fn export_fragment(doc: &Document) -> String {
+    let flow = model::from_doc(doc);
+    let mut out = String::from("<meta charset=\"utf-8\">");
+    blocks_html(&flow.blocks, &mut out, 0);
+    out
 }
 
 pub fn export_flow(flow: &Flow, lang: &str) -> String {

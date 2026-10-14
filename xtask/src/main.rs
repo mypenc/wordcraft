@@ -9,6 +9,7 @@ mod layers;
 mod parity;
 mod stats;
 mod version;
+mod visual_diff;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -25,6 +26,9 @@ commands:
                   show where test corpora live; --download fetches PngSuite into corpus/pngsuite
   stats [--exact] count tests and lines per crate (--exact: ask the test harness via `-- --list`)
   parity          recompute the Word feature-parity summary in docs/parity-checklist.md
+  visual-diff <ref.pdf> <test.pdf> <outdir> [--private] [--dpi N]
+                  compare two PDFs of a document page by page (SSIM, line breaks, offsets);
+                  needs poppler (pdftoppm, pdftotext)
   ico <out.ico> <in.png>...
                   pack square PNGs (<= 256 px) into a Windows .ico (see packaging/icons.sh)
 ";
@@ -41,6 +45,7 @@ fn main() -> ExitCode {
         Some("stats") => stats::run(&root(), rest.contains(&"--exact")),
         Some("parity") => parity::run(&root()),
         Some("ico") => ico::run(&rest),
+        Some("visual-diff") => visual_diff::run(&rest),
         Some("version") => version::run(&root(), &rest),
         Some("-h" | "--help" | "help") | None => {
             print!("{USAGE}");

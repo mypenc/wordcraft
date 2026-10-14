@@ -1609,6 +1609,88 @@ fn cover_page_group_fills_freeforms_and_text_box_margins() {
     check(&wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap());
 }
 
+/// #886: saving dropped Word's DrawingML shapes (rectangles, ellipses, triangles, arrows,
+/// stars, connectors and their theme fills). Each kind the report lists is read, saved and read
+/// back with the same kind, fill, outline, size and position, and the saved part still holds a
+/// `wps:wsp` with its preset geometry.
+#[test]
+fn drawingml_shapes_survive_saving() {
+    let style = r#"<wps:style><a:lnRef idx="2"><a:schemeClr val="accent1"><a:shade val="15000"/></a:schemeClr></a:lnRef><a:fillRef idx="1"><a:schemeClr val="accent1"/></a:fillRef><a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></wps:style>"#;
+    let geom = |prst: &str| format!(r#"<a:prstGeom prst="{prst}"><a:avLst/></a:prstGeom>"#);
+    let presets = ["rect", "ellipse", "triangle", "rightArrow", "star5"];
+    let mut body: String = presets.iter().map(|p| anchored_wsp(p, 2009775, 819150, &geom(p), style, "<wps:cNvSpPr/>")).collect();
+    body.push_str(&anchored_wsp(
+        "Connector",
+        2362200,
+        390525,
+        r#"<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom><a:ln><a:tailEnd type="triangle"/></a:ln>"#,
+        style,
+        "<wps:cNvCnPr/>",
+    ));
+    body.push_str(&anchored_wsp(
+        "Text Box",
+        2324100,
+        571500,
+        r#"<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:schemeClr val="lt1"/></a:solidFill><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln>"#,
+        "",
+        r#"<wps:cNvSpPr txBox="1"/><wps:txbx><w:txbxContent><w:p><w:r><w:t>Floating text box</w:t></w:r></w:p></w:txbxContent></wps:txbx>"#,
+    ));
+    let shapes = |d: &Document| {
+        paras(d)[0]
+            .objects
+            .iter()
+            .map(|o| match o {
+                InlineObject::Shape { kind, w, h, fill, stroke, stroke_width, float, extra, .. } => {
+                    (*kind, *w, *h, *fill, *stroke, *stroke_width, float.x, float.y, float.wrap, extra.arrow_end)
+                }
+                o => panic!("{o:?}"),
+            })
+            .collect::<Vec<_>>()
+    };
+    let d = read_body(&format!("<w:p>{body}</w:p>"));
+    let accent = d.settings.theme_colors[4];
+    let read = shapes(&d);
+    let kinds: Vec<ShapeKind> = read.iter().map(|s| s.0).collect();
+    assert_eq!(
+        kinds,
+        [
+            ShapeKind::Rectangle,
+            ShapeKind::Ellipse,
+            ShapeKind::Triangle,
+            ShapeKind::Arrow,
+            ShapeKind::Star,
+            ShapeKind::StraightConnector,
+            ShapeKind::TextBox
+        ]
+    );
+    for s in &read[..5] {
+        assert_eq!(s.3, Some(accent), "{:?} is filled from the theme", s.0);
+        assert!(s.4.is_some() && s.5 > 0.0, "{:?} has its outline", s.0);
+        assert_eq!((s.6, s.7, s.8), (1.0, 2.0, Wrap::InFrontOfText), "{:?} keeps its place", s.0);
+    }
+    assert!(read[5].9, "the connector keeps its arrowhead");
+    let bytes = wordcraft_docx::write(&d).unwrap();
+    let again = wordcraft_docx::read(&bytes).unwrap();
+    assert_eq!(shapes(&again), read, "every shape survives saving");
+    assert_eq!(part_text_box(&again), "Floating text box");
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(&bytes[..])).unwrap();
+    let mut xml = String::new();
+    std::io::Read::read_to_string(&mut z.by_name("word/document.xml").unwrap(), &mut xml).unwrap();
+    assert_eq!(xml.matches("<wps:wsp>").count(), 7);
+    for p in presets.iter().chain(&["straightConnector1"]) {
+        assert!(xml.contains(&format!(r#"<a:prstGeom prst="{p}">"#)), "{p} is written");
+    }
+}
+
+/// The text of the first text box in `d`.
+fn part_text_box(d: &Document) -> String {
+    let story = paras(d)[0].objects.iter().find_map(|o| match o {
+        InlineObject::Shape { kind: ShapeKind::TextBox, story, .. } => *story,
+        _ => None,
+    });
+    story.and_then(|id| d.parts.get(&id)).map(|p| p.blocks.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect()).unwrap_or_default()
+}
+
 #[test]
 fn embedded_fonts_survive_a_round_trip() {
     let table = r#"<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:font w:name="Roboto"><w:embedRegular r:id="rId1"/><w:embedBold r:id="rId2"/></w:font></w:fonts>"#;
@@ -1694,6 +1776,36 @@ fn native_ink_survives_unrelated_edit_and_two_saves() {
         let files = unzip(&out);
         check_ink(&files);
         assert!(text(&files, "word/document.xml").contains("Edited"));
+        d = wordcraft_docx::read(&out).unwrap();
+        assert_eq!(graphics(&d).len(), 1);
+    }
+}
+
+#[test]
+fn direct_native_ink_content_part_survives_unrelated_edit_and_two_saves() {
+    let body = r#"<w:p><w:r><w:t>Original</w:t></w:r><w:r><w:contentPart r:id="rInk"/></w:r></w:p>"#;
+    let mut d = wordcraft_docx::read(&docx(
+        body,
+        &[("rInk", "customXml", "ink/ink1.xml")],
+        &[("[Content_Types].xml", INK_TYPES), ("word/ink/ink1.xml", INK_XML)],
+    ))
+    .unwrap();
+    assert_eq!(graphics(&d).len(), 1, "direct native ink must remain a model object");
+    let p = std::sync::Arc::make_mut(&mut d.body[0]);
+    let Block::Para(p) = p else { panic!() };
+    p.delete(0, 8).unwrap();
+    p.insert_text(0, "Edited", &Default::default()).unwrap();
+    for _ in 0..2 {
+        let out = wordcraft_docx::write(&d).unwrap();
+        let files = unzip(&out);
+        let body = text(&files, "word/document.xml");
+        assert!(body.contains("<w:contentPart"), "direct content part must stay direct: {body}");
+        let [id] = attr_values(&body, "w:contentPart", "r:id").try_into().unwrap();
+        let (kind, target) = rel(&text(&files, "word/_rels/document.xml.rels"), &id);
+        assert!(kind.ends_with("/customXml"));
+        let part = part_at("word", &target);
+        assert_eq!(text(&files, &part), INK_XML);
+        assert!(text(&files, "[Content_Types].xml").contains(&format!(r#"PartName="/{part}" ContentType="application/inkml+xml""#)));
         d = wordcraft_docx::read(&out).unwrap();
         assert_eq!(graphics(&d).len(), 1);
     }

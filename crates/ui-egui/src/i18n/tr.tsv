@@ -189,6 +189,7 @@
 	Delete Style	Stili Sil
 	Delete Table	Tabloyu Sil
 	Design	Tasarım
+	No document is open. Create a document or open one first.	Açık belge yok. Önce bir belge oluşturun veya açın.
 	development build	geliştirme derlemesi
 	Diagonal	Çapraz
 	Diamond	Eşkenar Dörtgen
@@ -1719,7 +1720,8 @@ preview	Title	Örnek
 	✓ None	✓ Yok
 	Formatted	Biçimlendirildi
 	Interface size:	Arabirim boyutu:
-	Makes the ribbon, menus and dialogs larger or smaller, on top of your system's display scaling. Document zoom is separate.	Şeridi, menüleri ve iletişim kutularını sisteminizin ekran ölçeklendirmesine ek olarak büyütür veya küçültür. Belge yakınlaştırması ayrıdır.
+	Auto ({percent}%)	Otomatik (%{percent})
+	Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate.	Şeridi, menüleri ve iletişim kutularını büyütür veya küçültür. Otomatik, sisteminizin ekran ölçeklendirmesini izler; %100, nokta başına bir ekran pikselidir. Belge yakınlaştırması ayrıdır.
 	Deleted	Silindi
 	Copyright Sign	Telif Hakkı İşareti
 	Demote	Düzey Düşür
@@ -2201,6 +2203,7 @@ preview	Title	Örnek
 	Print to PDF	PDF'ye yazdır
 # Word XML Document (#548).
 	Word XML Document (*.xml)	Word XML Belgesi (*.xml)
+	Word 2003 XML Document (*.xml)	Word 2003 XML Belgesi (*.xml)
 # Find and Replace special characters and wildcards (#543).
 	Use wildcards	Joker karakter kullan
 	Special	Özel
@@ -2473,3 +2476,10 @@ preview	Title	Örnek
 	Level 7	Düzey 7
 	Level 8	Düzey 8
 	Level 9	Düzey 9
+	Privacy Options	Gizlilik Seçenekleri
+	Trust Center	Güven Merkezi
+	Privacy for this document	Bu belgenin gizliliği
+	Remove my name from comments, changes and file properties when saving	Kaydederken adımı açıklamalardan, değişikliklerden ve dosya özelliklerinden kaldır
+	Leave out the date and time of comments and tracked changes when saving	Kaydederken açıklamaların ve izlenen değişikliklerin tarih ve saatini dahil etme
+	The document you are editing keeps the names and dates; only the saved file leaves them out.	Düzenlediğiniz belge adları ve tarihleri korur; yalnızca kaydedilen dosya bunları içermez.
+	Privacy Settings	Geçerli gizlilik ayarları

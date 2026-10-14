@@ -315,7 +315,13 @@ impl eframe::App for AndroidHost {
         }
         self.folder_poll -= 1;
         // Help ▸ Block Keyboard: focusing the page raises the keyboard by itself; close it again.
-        if self.app.touch.block_keyboard && bridge::soft_keyboard_visible(&self.android) == Some(true) {
+        // The bar's KB button wins over Block Keyboard.
+        let force_keyboard = std::mem::take(&mut self.app.touch.keyboard_request);
+        if force_keyboard {
+            self.app.touch.block_keyboard = false; // else the next frame would close it again
+            bridge::force_show_soft_keyboard(&self.android);
+        }
+        if !force_keyboard && self.app.touch.block_keyboard && bridge::soft_keyboard_visible(&self.android) == Some(true) {
             bridge::hide_soft_keyboard(&self.android);
         }
         // Copy / Cut → the system clipboard.
