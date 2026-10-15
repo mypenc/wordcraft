@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -41,7 +41,30 @@ jobs:
         run: cargo clippy -p wordcraft-engine -p wordcraft-ui-egui --all-targets -- -D warnings
 
       - name: Engine tests
-        run: cargo test -p wordcraft-engine
+        run: |
+          set -o pipefail
+          cargo test -p wordcraft-engine --no-fail-fast 2>&1 | tee engine-tests.log
 
       - name: UI tests
-        run: cargo test -p wordcraft-ui-egui
+        if: always()
+        run: |
+          set -o pipefail
+          cargo test -p wordcraft-ui-egui --no-fail-fast 2>&1 | tee ui-tests.log
+
+      - name: Publish test summaries to the ci-logs branch
+        if: always()
+        run: |
+          mkdir -p /tmp/out
+          for f in engine-tests ui-tests; do
+            [ -f $f.log ] || continue
+            grep -E "^test .* (FAILED|failed)|panicked at|^failures:|test result:|^error|^warning: unused" -A6 $f.log | head -400 > /tmp/out/$f-summary.txt || true
+            tail -60 $f.log > /tmp/out/$f-tail.txt
+          done
+          git config user.name "ci"; git config user.email "ci@users.noreply.github.com"
+          git fetch origin ci-logs || true
+          git checkout --orphan ci-logs-new
+          git rm -rf -q . || true
+          cp /tmp/out/* .
+          git add -A
+          git commit -q -m "CI logs for ${GITHUB_SHA}"
+          git push -f origin HEAD:ci-logs
