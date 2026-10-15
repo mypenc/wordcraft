@@ -46,6 +46,7 @@ class MainActivity : GameActivity() {
     @Volatile private var softKeyboardVisible = false
     @Volatile private var fullscreen = false
     private var loadingView: View? = null
+    private var loadingBar: ProgressBar? = null
     private val prefs by lazy { getSharedPreferences("wordcraft", MODE_PRIVATE) }
 
     private class Request(val id: Long, val arg: String)
@@ -174,20 +175,28 @@ class MainActivity : GameActivity() {
         }
     }
 
+    /** Rust: how far startup has got (0 to 100). */
+    @Suppress("unused")
+    fun setLoadingProgress(percent: Int) = runOnUiThread { loadingBar?.progress = percent.coerceIn(0, 100) }
+
     /** Rust: the first WordCraft frame is drawn, so the loading bar goes away. */
     @Suppress("unused")
     fun hideLoading() = runOnUiThread {
         loadingView?.let { (it.parent as? ViewGroup)?.removeView(it) }
         loadingView = null
+        loadingBar = null
     }
 
     /** A plain classic Android loading bar on the window colour, shown until WordCraft draws. */
     private fun showLoading() {
         val blue = 0xFF33B5E5.toInt() // the classic Holo blue
         val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            isIndeterminate = true
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(blue)
+            isIndeterminate = false // real progress, reported by Rust as startup proceeds
+            max = 100
+            progress = 3
+            progressTintList = android.content.res.ColorStateList.valueOf(blue)
         }
+        loadingBar = bar
         val overlay = FrameLayout(this).apply {
             setBackgroundColor(0xFF1E2327.toInt())
             isClickable = true

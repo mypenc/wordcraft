@@ -85,7 +85,8 @@ jobs:
       - name: Build release APK
         working-directory: android
         run: |
-          if [ -x ./gradlew ]; then ./gradlew assembleRelease; else gradle assembleRelease; fi
+          CODE=$(( 1000 + ${{ github.run_number }} ))
+          if [ -x ./gradlew ]; then ./gradlew assembleRelease -PwcVersionCode=$CODE; else gradle assembleRelease -PwcVersionCode=$CODE; fi
 
       # Release APKs from Gradle are unsigned and Android refuses to install them
       # ("package appears to be invalid"). Align + sign with apksigner.

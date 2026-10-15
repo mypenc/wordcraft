@@ -18,7 +18,8 @@ android {
         applicationId = "ai.storyteller.wordcraft"
         minSdk = 29 // scoped storage; AAudio and Vulkan are solid from here
         targetSdk = 35
-        versionCode = 1
+        // CI passes the run number so every build is a valid update over the last one.
+        versionCode = (project.findProperty("wcVersionCode") as String?)?.toIntOrNull() ?: 1
         versionName = workspaceVersion
         // `android/scripts/build.sh` puts the Rust library here (cargo-ndk).
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }

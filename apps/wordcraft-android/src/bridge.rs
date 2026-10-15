@@ -116,6 +116,11 @@ pub fn force_show_soft_keyboard(app: &AndroidApp) {
     with_activity(app, |env, activity| env.call_method(activity, "forceShowSoftKeyboard", "()V", &[]).map(|_| ()));
 }
 
+/// Report real startup progress (0 to 100) to the loading bar.
+pub fn set_loading_progress(app: &AndroidApp, percent: i32) {
+    with_activity(app, |env, activity| env.call_method(activity, "setLoadingProgress", "(I)V", &[JValue::Int(percent)]).map(|_| ()));
+}
+
 /// Remove the startup loading bar once WordCraft's first frame is on screen.
 pub fn hide_loading(app: &AndroidApp) {
     with_activity(app, |env, activity| env.call_method(activity, "hideLoading", "()V", &[]).map(|_| ()));

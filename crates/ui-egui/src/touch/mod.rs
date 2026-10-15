@@ -56,9 +56,9 @@ pub struct Touch {
     /// The bar's KB button was tapped: the host opens the on-screen keyboard by force, even when
     /// Block Keyboard is on or the system ignored the usual request.
     pub keyboard_request: bool,
-    /// The last tap landed on the page (or something else that types), so the keyboard may open.
-    /// A tap in the ribbon or the status bar clears it: those never raise the keyboard.
-    pub typing_target: bool,
+    /// Frames left in which a keyboard request is let through (set by a tap on text).
+    ime_arm: u8,
+    wants_prev: bool,
     /// Size of the on-screen bar alone (the interface scale is untouched). 1.0 = normal.
     pub bar_scale: f32,
     /// Where the bar sits (bottom centre of the bar), kept across runs. `None` = default spot.
@@ -100,24 +100,28 @@ impl Touch {
         self.bar_pos = self.bar_restore;
     }
 
-    /// Run after the frame's UI: keep the soft keyboard from opening unless it is wanted.
+    /// Run after the frame's UI: the soft keyboard opens only when a tap lands on text.
     ///
-    /// The page asks for the keyboard whenever it has focus, and it keeps focus while the ribbon
-    /// is used, so every ribbon tap raised Gboard. Here the request is dropped unless the last
-    /// tap was on the page (or a text field wants input), and always when Block Keyboard is on,
-    /// so the keyboard is never asked for rather than opened and closed again.
+    /// The page asks for the keyboard every frame it has focus, and egui drops and re-asks around
+    /// Enter and Delete, so Gboard kept opening by itself. Now the request passes for a couple of
+    /// frames after a tap on the page or after a text field takes focus, and is dropped otherwise,
+    /// so a keyboard the user closed stays closed until the next tap on text. Block Keyboard drops
+    /// every request; the bar's KB button is the one explicit way in.
     pub fn filter_ime(&mut self, ctx: &egui::Context, canvas: Option<egui::Rect>) {
         if !self.enabled {
             return;
         }
-        if let Some(pos) = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None }) {
-            self.typing_target = canvas.is_some_and(|r| r.contains(pos));
+        let tapped_page = ctx.input(|i| i.pointer.any_click() && i.pointer.interact_pos().is_some_and(|p| canvas.is_some_and(|r| r.contains(p))));
+        let wants = ctx.egui_wants_keyboard_input();
+        let field_focused = wants && !self.wants_prev;
+        self.wants_prev = wants;
+        if tapped_page || field_focused || self.keyboard_request {
+            self.ime_arm = 3;
         }
-        if self.keyboard_request {
-            self.typing_target = true;
-        }
-        if self.block_keyboard || (!self.typing_target && !ctx.egui_wants_keyboard_input()) {
+        if self.block_keyboard || self.ime_arm == 0 {
             ctx.output_mut(|o| o.ime = None);
+        } else {
+            self.ime_arm -= 1;
         }
     }
 

@@ -8,7 +8,9 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <application
-        android:allowBackup="false"
+        android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="WordCraft"
         android:largeHeap="true"
@@ -19,7 +21,7 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|smallestScreenSize|density|colorMode"
             android:exported="true"
             android:launchMode="singleTask"
-            android:windowSoftInputMode="adjustNothing">
+            android:windowSoftInputMode="adjustNothing|stateAlwaysHidden">
 
             <meta-data android:name="android.app.lib_name" android:value="wordcraft_android" />
 

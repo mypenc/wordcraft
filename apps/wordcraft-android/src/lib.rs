@@ -38,6 +38,7 @@ use wordcraft_ui_egui::{Services, UiState, WordApp};
 #[unsafe(no_mangle)]
 fn android_main(app: AndroidApp) {
     prepare_environment(&app);
+    bridge::set_loading_progress(&app, 10);
     let logger = logging::install();
     logging::install_panic_hook();
     if let Some(logger) = logger {
@@ -52,7 +53,9 @@ fn android_main(app: AndroidApp) {
     // Mouse wheel axes are off by default in GameActivity.
     app.enable_motion_axis(Axis::Hscroll);
     app.enable_motion_axis(Axis::Vscroll);
+    bridge::set_loading_progress(&app, 20);
     load_user_fonts();
+    bridge::set_loading_progress(&app, 40);
 
     let options = eframe::NativeOptions { android_app: Some(app.clone()), wgpu_options: wgpu_options(), ..Default::default() };
     let host = app.clone();
@@ -64,10 +67,14 @@ fn android_main(app: AndroidApp) {
                 Some(rs) => log::info!("graphics: {:?}", rs.adapter.get_info()),
                 None => log::info!("graphics: no wgpu device"),
             }
+            bridge::set_loading_progress(&host, 55);
             bridge::set_context(cc.egui_ctx.clone());
             let mut word = WordApp::new(Session::new(wordcraft_doc::Document::new()), services(&host));
+            bridge::set_loading_progress(&host, 75);
             load_prefs(&mut word);
+            bridge::set_loading_progress(&host, 85);
             recover_backup(&mut word);
+            bridge::set_loading_progress(&host, 95);
             // Multi-line text field: Gboard shows Enter (new line), not the ✓ Done button. No-suggestions keeps
             // Gboard from composing words, which made it re-send each word (many Backspaces) per keystroke.
             host.set_ime_editor_info(
@@ -338,6 +345,7 @@ impl eframe::App for AndroidHost {
         // The first frame is drawn: take the system loading bar away.
         if !self.loading_hidden {
             self.loading_hidden = true;
+            bridge::set_loading_progress(&self.android, 100);
             bridge::hide_loading(&self.android);
         }
         // Copy / Cut → the system clipboard.
