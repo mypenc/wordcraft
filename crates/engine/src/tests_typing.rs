@@ -927,6 +927,23 @@ fn two_initial_capitals_are_corrected() {
     assert_eq!(s.doc.plain_text(StoryRef::Body), "WCraft ");
 }
 
+/// #1923: İ next to a capital loses its second capital as a plain i (not i + U+0307), and in
+/// Turkish text the first i of a sentence becomes İ rather than I.
+#[test]
+fn turkish_dotted_i_survives_autocorrect() {
+    // Two initial capitals: the İ is lowered to a plain i, with no combining dot.
+    assert_eq!(typed("MİSal ").doc.plain_text(StoryRef::Body), "Misal ");
+    // Sentence capital in Turkish text is İ; elsewhere an i is still I.
+    let mut s = typed("");
+    s.set_editing_language(Some("tr-TR"));
+    typ(&mut s, "istanbul güzel. iyi ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "İstanbul güzel. İyi ");
+    let mut s = typed("");
+    s.set_editing_language(Some("en-US"));
+    typ(&mut s, "istanbul ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Istanbul ");
+}
+
 #[test]
 fn accidental_caps_lock_is_corrected() {
     let s = typed("a wORD and hELLO there. iOS stays ");

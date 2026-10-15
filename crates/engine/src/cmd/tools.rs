@@ -778,8 +778,13 @@ pub fn autocorrect_word(s: &mut Session, on_enter: bool) -> Result<(), CmdError>
     if word.is_empty() {
         return Ok(());
     }
+    // Turkic text (Turkish, Azerbaijani) has a dotted capital İ and a dotless ı (#1923).
+    let turkic = s.doc.para_at(&f).is_some_and(|p| {
+        let rc = s.doc.styles.resolve_char(p.props.style.as_deref(), p.props_of_char(start));
+        is_turkic(rc.lang.as_deref().or(s.editing_lang.as_deref()))
+    });
     // TWo INitial CApitals and cAPS LOCK come first, so "TEh" is still a replacement's typo.
-    if let Some((at, reps)) = case_fix(&ac, &word) {
+    if let Some((at, reps)) = case_fix(&ac, &word, turkic) {
         let para = s.doc.para_mut(f.story, &f.path)?;
         let letters = word.get(at..).unwrap_or("").chars().take(reps.len()).collect::<String>();
         let mut end = start + at + letters.len();
@@ -870,7 +875,7 @@ pub fn autocorrect_word(s: &mut Session, on_enter: bool) -> Result<(), CmdError>
     if sentence || day {
         let para = s.doc.para_mut(f.story, &f.path)?;
         if let Some(c) = word.chars().next() {
-            let up: String = c.to_uppercase().collect();
+            let up: String = if turkic && c == 'i' { "İ".to_string() } else { c.to_uppercase().collect() };
             let props = para.props_of_char(start).clone();
             para.delete(start, start + c.len_utf8())?;
             para.insert_text(start, &up, &props)?;
@@ -890,7 +895,7 @@ const CAPS_LOCK_EXCEPTIONS: &[&str] = &["iOS", "mRNA", "tRNA", "rRNA", "cDNA", "
 /// The capitalisation fix for a finished word: TWo INitial CApitals ("WOrd" → "Word") or cAPS
 /// LOCK ("wORD" → "Word"). Returns the byte offset of the word's letters and each letter's
 /// replacement. Only words of three or more letters, optionally in quotes or brackets.
-fn case_fix(caps: &AutoCorrectPrefs, word: &str) -> Option<(usize, Vec<String>)> {
+fn case_fix(caps: &AutoCorrectPrefs, word: &str, turkic: bool) -> Option<(usize, Vec<String>)> {
     if !caps.two_initial_caps && !caps.caps_lock {
         return None;
     }
@@ -907,7 +912,18 @@ fn case_fix(caps: &AutoCorrectPrefs, word: &str) -> Option<(usize, Vec<String>)>
         _ => return None,
     };
     let one = |c: char| c.to_string();
-    let lower = |c: char| c.to_lowercase().collect::<String>();
+    // İ lowers to a plain i (not i + combining dot, which renders as a broken glyph, #1923); in
+    // Turkic text I lowers to the dotless ı.
+    let lower = |c: char| match c {
+        'İ' => "i".to_string(),
+        'I' if turkic => "ı".to_string(),
+        _ => c.to_lowercase().collect::<String>(),
+    };
+    let upper = |c: char| match c {
+        'i' if turkic => "İ".to_string(),
+        'ı' => "I".to_string(),
+        _ => c.to_uppercase().collect::<String>(),
+    };
     if caps.two_initial_caps
         && a.is_uppercase()
         && b.is_uppercase()
@@ -918,10 +934,17 @@ fn case_fix(caps: &AutoCorrectPrefs, word: &str) -> Option<(usize, Vec<String>)>
         return Some((at, std::iter::once(one(a)).chain(std::iter::once(lower(b))).chain(more.iter().map(|&c| one(c))).collect()));
     }
     if caps.caps_lock && a.is_lowercase() && b.is_uppercase() && more.iter().all(|c| c.is_uppercase()) && !CAPS_LOCK_EXCEPTIONS.contains(&letters) {
-        let up = a.to_uppercase().collect::<String>();
+        let up = upper(a);
         return Some((at, std::iter::once(up).chain(std::iter::once(lower(b))).chain(more.iter().map(|&c| lower(c))).collect()));
     }
     None
+}
+
+/// Whether a language tag is a Turkic one with the dotted/dotless i pair (Turkish, Azerbaijani, Crimean Tatar).
+fn is_turkic(lang: Option<&str>) -> bool {
+    let tag = lang.unwrap_or("").to_ascii_lowercase();
+    let primary = tag.split(['-', '_']).next().unwrap_or("");
+    matches!(primary, "tr" | "az" | "crh")
 }
 
 /// Byte length of an ordinal suffix to superscript ("1st" → 2), if `word` is a correct ordinal.
