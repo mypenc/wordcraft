@@ -1311,6 +1311,22 @@ fn clipboard_pane_is_capped_and_rejects_bad_indexes() {
     assert_eq!(s.clip_history.items()[0].text, "w29");
 }
 
+/// #1960: Cell Margins with no params (the ribbon button) keeps the table's margins; a given side
+/// changes only that side.
+#[test]
+fn cell_margins_without_params_keep_the_current_margins() {
+    let mut s = s();
+    run(&mut s, "insert.table", json!({"rows": 2, "cols": 2}));
+    let (tp, _, _) = s.sel.focus.path.cell().unwrap();
+    run(&mut s, "table.cellMargins", json!({"top": 3.0, "left": 10.0, "bottom": 4.0, "right": 12.0}));
+    let margins = |s: &Session| s.doc.table(StoryRef::Body, &tp).unwrap().props.cell_margins;
+    assert_eq!(margins(&s), Some([3.0, 10.0, 4.0, 12.0]));
+    run(&mut s, "table.cellMargins", json!({}));
+    assert_eq!(margins(&s), Some([3.0, 10.0, 4.0, 12.0]), "no params must not reset the margins");
+    run(&mut s, "table.cellMargins", json!({"left": 7.0}));
+    assert_eq!(margins(&s), Some([3.0, 7.0, 4.0, 12.0]));
+}
+
 #[test]
 fn tables_commands() {
     let mut s = s();
