@@ -82,6 +82,8 @@ fn android_main(app: AndroidApp) {
                 android: host,
                 last_copied: String::new(),
                 fullscreen_applied: false,
+                block_applied: false,
+                loading_hidden: false,
                 folder_poll: 0,
                 last_backup: Instant::now(),
                 last_prefs_check: Instant::now(),
@@ -260,6 +262,10 @@ struct AndroidHost {
     last_copied: String,
     /// Whether Help ▸ Full Screen is what Android was last told.
     fullscreen_applied: bool,
+    /// Whether Block Keyboard is what Android was last told.
+    block_applied: bool,
+    /// The startup loading bar was removed.
+    loading_hidden: bool,
     /// Frames until the documents folder state is read from Android again.
     folder_poll: u32,
     /// When the crash-recovery copy was last written.
@@ -314,15 +320,25 @@ impl eframe::App for AndroidHost {
             self.folder_poll = 120;
         }
         self.folder_poll -= 1;
-        // Help ▸ Block Keyboard: focusing the page raises the keyboard by itself; close it again.
-        // The bar's KB button wins over Block Keyboard.
+        // Help ▸ Block Keyboard: the keyboard is never asked for (`Touch::filter_ime` drops the page's
+        // request), so there is nothing to close each frame. Closing happens once, when the switch
+        // is turned on while Gboard is already up. The bar's KB button opens it by force.
         let force_keyboard = std::mem::take(&mut self.app.touch.keyboard_request);
         if force_keyboard {
-            self.app.touch.block_keyboard = false; // else the next frame would close it again
+            self.app.touch.block_keyboard = false;
+            self.block_applied = false;
             bridge::force_show_soft_keyboard(&self.android);
         }
-        if !force_keyboard && self.app.touch.block_keyboard && bridge::soft_keyboard_visible(&self.android) == Some(true) {
-            bridge::hide_soft_keyboard(&self.android);
+        if self.app.touch.block_keyboard != self.block_applied {
+            self.block_applied = self.app.touch.block_keyboard;
+            if self.block_applied && bridge::soft_keyboard_visible(&self.android) == Some(true) {
+                bridge::hide_soft_keyboard(&self.android);
+            }
+        }
+        // The first frame is drawn: take the system loading bar away.
+        if !self.loading_hidden {
+            self.loading_hidden = true;
+            bridge::hide_loading(&self.android);
         }
         // Copy / Cut → the system clipboard.
         let copied = ctx.output(|o| {

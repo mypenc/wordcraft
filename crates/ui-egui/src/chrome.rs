@@ -396,8 +396,11 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
 
 pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    // Touch controls are taller than the 26 px strip, which clipped the language text: size the
+    // strip to the row (the touch interact height) plus 4 px.
+    let status_h = if app.touch.enabled { ui.spacing().interact_size.y.max(26.0) + 4.0 } else { 26.0 };
     egui::Panel::bottom("status")
-        .exact_size(26.0)
+        .exact_size(status_h)
         .frame(
             egui::Frame::NONE
                 .fill(t.status_bar)

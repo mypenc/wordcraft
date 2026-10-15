@@ -16,7 +16,11 @@ import androidx.core.view.WindowInsetsControllerCompat
 import android.provider.OpenableColumns
 import android.util.Log
 import android.view.HapticFeedbackConstants
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.ProgressBar
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
@@ -41,6 +45,7 @@ class MainActivity : GameActivity() {
     private lateinit var exports: Exports
     @Volatile private var softKeyboardVisible = false
     @Volatile private var fullscreen = false
+    private var loadingView: View? = null
     private val prefs by lazy { getSharedPreferences("wordcraft", MODE_PRIVATE) }
 
     private class Request(val id: Long, val arg: String)
@@ -101,6 +106,7 @@ class MainActivity : GameActivity() {
             WindowInsetsCompat.CONSUMED
         }
         ViewCompat.requestApplyInsets(content)
+        showLoading()
         exports = Exports(applicationContext)
         DebugLog.install(this)
         handleViewIntent(intent)
@@ -166,6 +172,30 @@ class MainActivity : GameActivity() {
             workspaceUri()?.let { runCatching { contentResolver.releasePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) } }
             prefs.edit().remove(PREF_WORKSPACE).apply()
         }
+    }
+
+    /** Rust: the first WordCraft frame is drawn, so the loading bar goes away. */
+    @Suppress("unused")
+    fun hideLoading() = runOnUiThread {
+        loadingView?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        loadingView = null
+    }
+
+    /** A plain classic Android loading bar on the window colour, shown until WordCraft draws. */
+    private fun showLoading() {
+        val blue = 0xFF33B5E5.toInt() // the classic Holo blue
+        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(blue)
+        }
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(0xFF1E2327.toInt())
+            isClickable = true
+            val w = (resources.displayMetrics.density * 240).toInt()
+            addView(bar, FrameLayout.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        }
+        loadingView = overlay
+        addContentView(overlay, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
 
     @Suppress("unused")

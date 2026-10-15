@@ -116,6 +116,11 @@ pub fn force_show_soft_keyboard(app: &AndroidApp) {
     with_activity(app, |env, activity| env.call_method(activity, "forceShowSoftKeyboard", "()V", &[]).map(|_| ()));
 }
 
+/// Remove the startup loading bar once WordCraft's first frame is on screen.
+pub fn hide_loading(app: &AndroidApp) {
+    with_activity(app, |env, activity| env.call_method(activity, "hideLoading", "()V", &[]).map(|_| ()));
+}
+
 /// The system clipboard's text.
 pub fn clipboard_get(app: &AndroidApp) -> Option<String> {
     with_activity(app, |env, activity| {

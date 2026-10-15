@@ -56,6 +56,15 @@ pub struct Touch {
     /// The bar's KB button was tapped: the host opens the on-screen keyboard by force, even when
     /// Block Keyboard is on or the system ignored the usual request.
     pub keyboard_request: bool,
+    /// The last tap landed on the page (or something else that types), so the keyboard may open.
+    /// A tap in the ribbon or the status bar clears it: those never raise the keyboard.
+    pub typing_target: bool,
+    /// Size of the on-screen bar alone (the interface scale is untouched). 1.0 = normal.
+    pub bar_scale: f32,
+    /// Where the bar sits (bottom centre of the bar), kept across runs. `None` = default spot.
+    pub bar_pos: Option<Pos2>,
+    /// A position loaded from the preferences, applied once on the first frame the bar shows.
+    bar_restore: Option<Pos2>,
     rec: Recognizer,
     queue: VecDeque<Event>,
     shift: Sticky,
@@ -73,7 +82,43 @@ pub struct Touch {
 impl Touch {
     pub fn new() -> Self {
         let android = cfg!(target_os = "android");
-        Self { enabled: android, bar_visible: android, style_dirty: true, ..Default::default() }
+        Self { enabled: android, bar_visible: android, style_dirty: true, bar_scale: 1.0, ..Default::default() }
+    }
+
+    pub const BAR_SCALE_MIN: f32 = 0.6;
+    pub const BAR_SCALE_MAX: f32 = 2.0;
+
+    /// Set the bar's own size (clamped).
+    pub fn set_bar_scale(&mut self, scale: f32) {
+        let scale = if scale.is_finite() { scale } else { 1.0 };
+        self.bar_scale = scale.clamp(Self::BAR_SCALE_MIN, Self::BAR_SCALE_MAX);
+    }
+
+    /// Load the saved bar position (applied on the next frame the bar is shown).
+    pub fn restore_bar_pos(&mut self, pos: Option<[f32; 2]>) {
+        self.bar_restore = pos.filter(|p| p[0].is_finite() && p[1].is_finite()).map(|p| Pos2::new(p[0], p[1]));
+        self.bar_pos = self.bar_restore;
+    }
+
+    /// Run after the frame's UI: keep the soft keyboard from opening unless it is wanted.
+    ///
+    /// The page asks for the keyboard whenever it has focus, and it keeps focus while the ribbon
+    /// is used, so every ribbon tap raised Gboard. Here the request is dropped unless the last
+    /// tap was on the page (or a text field wants input), and always when Block Keyboard is on,
+    /// so the keyboard is never asked for rather than opened and closed again.
+    pub fn filter_ime(&mut self, ctx: &egui::Context, canvas: Option<egui::Rect>) {
+        if !self.enabled {
+            return;
+        }
+        if let Some(pos) = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None }) {
+            self.typing_target = canvas.is_some_and(|r| r.contains(pos));
+        }
+        if self.keyboard_request {
+            self.typing_target = true;
+        }
+        if self.block_keyboard || (!self.typing_target && !ctx.egui_wants_keyboard_input()) {
+            ctx.output_mut(|o| o.ime = None);
+        }
     }
 
     pub fn take_actions(&mut self) -> Vec<Action> {
@@ -248,69 +293,90 @@ impl Touch {
         if !self.enabled || !self.bar_visible {
             return;
         }
-        let min = egui::vec2(46.0, 40.0);
-        egui::Area::new(egui::Id::new("effectcraft_touch_bar"))
+        let k = self.bar_scale.clamp(Self::BAR_SCALE_MIN, Self::BAR_SCALE_MAX);
+        let min = egui::vec2(46.0 * k, 40.0 * k);
+        let text = move |label: &str| egui::RichText::new(label).size(14.0 * k);
+        let screen = ctx.content_rect();
+        // Not `anchor`: an anchor puts the bar back every frame, undoing a drag. The default
+        // position is only the first one; after that egui remembers where the bar was dragged.
+        let mut area = egui::Area::new(egui::Id::new("effectcraft_touch_bar"))
             .order(egui::Order::Foreground)
-            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -10.0))
-            .movable(true)
-            .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        let toggle = |ui: &mut egui::Ui, label: &str, s: &mut Sticky, hint: &str| -> bool {
-                            let text = if s.locked { format!("[{label}]") } else { label.to_owned() };
-                            let r = ui.add(egui::Button::new(text).selected(s.on).min_size(min)).on_hover_text(hint);
-                            if r.double_clicked() {
-                                *s = Sticky { on: true, locked: true };
-                                true
-                            } else if r.clicked() {
-                                *s = if s.on { Sticky::default() } else { Sticky { on: true, locked: false } };
-                                true
-                            } else {
-                                false
-                            }
-                        };
-                        toggle(ui, "Shift", &mut self.shift, "Applies to the next tap. Double-tap to lock.");
-                        toggle(ui, "Ctrl", &mut self.ctrl, "Applies to the next tap. Double-tap to lock.");
-                        toggle(ui, "Alt", &mut self.alt, "Applies to the next tap. Double-tap to lock.");
-                        let was = self.space.on;
-                        if toggle(ui, "Space", &mut self.space, "Hold-to-pan (hand tool). Stays on until tapped again.") && self.space.on != was {
-                            let on = self.space.on;
-                            self.queue.push_back(Event::Key {
-                                key: Key::Space,
-                                physical_key: Some(Key::Space),
-                                pressed: on,
-                                repeat: false,
-                                modifiers: Modifiers::NONE,
-                            });
+            .pivot(egui::Align2::CENTER_BOTTOM)
+            .default_pos(egui::pos2(screen.center().x, screen.bottom() - 10.0))
+            .constrain_to(screen)
+            .movable(true);
+        if let Some(p) = self.bar_restore.take() {
+            area = area.current_pos(p);
+        }
+        let shown = area.show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let toggle = |ui: &mut egui::Ui, label: &str, s: &mut Sticky, hint: &str| -> bool {
+                        let label = if s.locked { format!("[{label}]") } else { label.to_owned() };
+                        let r = ui.add(egui::Button::new(text(&label)).selected(s.on).min_size(min)).on_hover_text(hint);
+                        if r.double_clicked() {
+                            *s = Sticky { on: true, locked: true };
+                            true
+                        } else if r.clicked() {
+                            *s = if s.on { Sticky::default() } else { Sticky { on: true, locked: false } };
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    toggle(ui, "Shift", &mut self.shift, "Applies to the next tap. Double-tap to lock.");
+                    toggle(ui, "Ctrl", &mut self.ctrl, "Applies to the next tap. Double-tap to lock.");
+                    toggle(ui, "Alt", &mut self.alt, "Applies to the next tap. Double-tap to lock.");
+                    let was = self.space.on;
+                    if toggle(ui, "Space", &mut self.space, "Hold-to-pan (hand tool). Stays on until tapped again.") && self.space.on != was {
+                        let on = self.space.on;
+                        self.queue.push_back(Event::Key {
+                            key: Key::Space,
+                            physical_key: Some(Key::Space),
+                            pressed: on,
+                            repeat: false,
+                            modifiers: Modifiers::NONE,
+                        });
+                    }
+                    ui.separator();
+                    // Enter stays even when the bar is collapsed: the soft keyboard has none.
+                    if ui.add(egui::Button::new(text("Enter")).min_size(min)).on_hover_text("Enter").clicked() {
+                        self.key(Key::Enter, Modifiers::NONE);
+                    }
+                    if ui.add(egui::Button::new(text("KB")).min_size(min)).on_hover_text("Open the keyboard").clicked() {
+                        self.keyboard_request = true;
+                    }
+                    if !self.collapsed {
+                        if ui.add(egui::Button::new(text("Undo")).min_size(min)).on_hover_text("Undo").clicked() {
+                            self.actions.push(Action::Undo);
+                        }
+                        if ui.add(egui::Button::new(text("Redo")).min_size(min)).on_hover_text("Redo").clicked() {
+                            self.actions.push(Action::Redo);
+                        }
+                        if ui.add(egui::Button::new(text("Del")).min_size(min)).clicked() {
+                            self.key(Key::Delete, Modifiers::NONE);
+                        }
+                        if ui.add(egui::Button::new(text("Esc")).min_size(min)).clicked() {
+                            self.key(Key::Escape, Modifiers::NONE);
                         }
                         ui.separator();
-                        // Enter stays even when the bar is collapsed: the soft keyboard has none.
-                            if ui.add(egui::Button::new("Enter").min_size(min)).on_hover_text("Enter").clicked() {
-                                self.key(Key::Enter, Modifiers::NONE);
-                            }
-                        if ui.add(egui::Button::new("KB").min_size(min)).on_hover_text("Open the keyboard").clicked() {
-                            self.keyboard_request = true;
+                        // The bar's own size, apart from the interface scale.
+                        if ui.add(egui::Button::new(text("A-")).min_size(min)).on_hover_text("Smaller bar").clicked() {
+                            self.set_bar_scale(self.bar_scale - 0.15);
                         }
-                        if !self.collapsed {
-                            if ui.add(egui::Button::new("Undo").min_size(min)).on_hover_text("Undo").clicked() {
-                                self.actions.push(Action::Undo);
-                            }
-                            if ui.add(egui::Button::new("Redo").min_size(min)).on_hover_text("Redo").clicked() {
-                                self.actions.push(Action::Redo);
-                            }
-                            if ui.add(egui::Button::new("Del").min_size(min)).clicked() {
-                                self.key(Key::Delete, Modifiers::NONE);
-                            }
-                            if ui.add(egui::Button::new("Esc").min_size(min)).clicked() {
-                                self.key(Key::Escape, Modifiers::NONE);
-                            }
+                        if ui.add(egui::Button::new(text("A+")).min_size(min)).on_hover_text("Bigger bar").clicked() {
+                            self.set_bar_scale(self.bar_scale + 0.15);
                         }
-                        if ui.add(egui::Button::new(if self.collapsed { ">" } else { "<" }).min_size(min)).on_hover_text("Collapse").clicked() {
-                            self.collapsed = !self.collapsed;
-                        }
-                    });
+                    }
+                    if ui.add(egui::Button::new(text(if self.collapsed { ">" } else { "<" })).min_size(min)).on_hover_text("Collapse").clicked() {
+                        self.collapsed = !self.collapsed;
+                    }
                 });
             });
+        });
+        // Remember where it was left (bottom centre, the pivot), for the preferences.
+        let r = shown.response.rect;
+        self.bar_pos = Some(egui::pos2(r.center().x, r.bottom()));
     }
 }
 
@@ -475,5 +541,18 @@ mod tests {
         assert!(t.queue.len() <= 2, "coalesced, not queued per touch sample");
         let queued: f32 = t.queue.iter().filter_map(|e| if let Event::MouseWheel { delta, .. } = e { Some(delta.y) } else { None }).sum();
         assert!((total + queued - 87.0).abs() < 0.01, "no scroll distance lost: {}", total + queued);
+    }
+
+    #[test]
+    fn bar_size_is_clamped_and_position_survives_a_restore() {
+        let mut t = Touch::new();
+        t.set_bar_scale(9.0);
+        assert_eq!(t.bar_scale, Touch::BAR_SCALE_MAX);
+        t.set_bar_scale(f32::NAN);
+        assert_eq!(t.bar_scale, 1.0);
+        t.restore_bar_pos(Some([120.0, 300.0]));
+        assert_eq!(t.bar_pos, Some(Pos2::new(120.0, 300.0)));
+        t.restore_bar_pos(Some([f32::NAN, 1.0]));
+        assert_eq!(t.bar_pos, None);
     }
 }

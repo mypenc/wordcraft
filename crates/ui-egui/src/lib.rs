@@ -257,6 +257,10 @@ pub struct UiState {
     pub touch_bar: Option<bool>,
     /// Help ▸ Block Keyboard: keep the on-screen keyboard from opening.
     pub block_keyboard: bool,
+    /// The touch bar's own size (1.0 = normal), apart from the interface scale.
+    pub touch_bar_scale: Option<f32>,
+    /// Where the touch bar was left (bottom centre, screen points).
+    pub touch_bar_pos: Option<[f32; 2]>,
     /// Help ▸ Full Screen: hide the status bar and the notch area.
     pub fullscreen: bool,
     /// The dark-mode switch `ui.json` held before `theme` (#115): read once to migrate, never written.
@@ -358,6 +362,8 @@ impl Default for UiState {
             animations: theme::Animations::default(),
             touch_bar: None,
             block_keyboard: false,
+            touch_bar_scale: None,
+            touch_bar_pos: None,
             fullscreen: false,
             legacy_dark: None,
             nav_tab: "headings".into(),
@@ -699,6 +705,8 @@ impl WordApp {
         ui.ink_pens = self.session.view.draw.pens.clone();
         ui.touch_bar = Some(self.touch.bar_visible);
         ui.block_keyboard = self.touch.block_keyboard;
+        ui.touch_bar_scale = Some(self.touch.bar_scale);
+        ui.touch_bar_pos = self.touch.bar_pos.map(|p| [p.x, p.y]);
         ui.fullscreen = self.touch.fullscreen;
         ui
     }
@@ -711,6 +719,10 @@ impl WordApp {
             self.touch.bar_visible = on;
         }
         self.touch.block_keyboard = self.ui.block_keyboard;
+        if let Some(scale) = self.ui.touch_bar_scale {
+            self.touch.set_bar_scale(scale);
+        }
+        self.touch.restore_bar_pos(self.ui.touch_bar_pos);
         self.touch.fullscreen = self.ui.fullscreen;
         // Word opens on Home every launch, so the tab `ui.json` holds is not restored. Going File
         // and back to the editor within the run still returns to the tab that was showing.
@@ -1510,6 +1522,12 @@ impl WordApp {
                 self.touch.bar_visible = on;
                 json!({"touchBar": on})
             }
+ // Touch bar size: `value` is the new scale (0.6 to 2.0), apart from the interface scale.
+            "ui.touchBarSize" => {
+                let v = p.get("value").and_then(Value::as_f64).map_or(1.0, |v| v as f32);
+                self.touch.set_bar_scale(v);
+                json!({"touchBarSize": self.touch.bar_scale})
+            }
             // Help ▸ Full Screen: hide the status bar and the notch area (Android).
             "ui.fullscreen" => {
                 let on = p.get("value").and_then(Value::as_bool).unwrap_or(!self.touch.fullscreen);
@@ -2007,6 +2025,8 @@ impl WordApp {
     pub fn touch_frame(&mut self, ctx: &egui::Context) {
         self.touch.apply_style(ctx);
         self.touch.show_bar(ctx);
+        // After the UI has run: drop the keyboard request when the tap was not on the page.
+        self.touch.filter_ime(ctx, self.canvas.canvas_rect);
         for a in self.touch.take_actions() {
             let id = match a {
                 touch::Action::Undo => "edit.undo",
