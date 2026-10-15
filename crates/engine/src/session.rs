@@ -179,6 +179,9 @@ pub struct ViewState {
     /// and page count are unchanged.
     #[serde(default)]
     pub hide_white_space: bool,
+    /// File › Options › Display › Quick Access Toolbar: hide the toolbar in the title bar (#1945).
+    #[serde(default)]
+    pub hide_quick_access: bool,
     /// Outline view: collapsed headings, Show Level, first lines, text formatting.
     #[serde(default)]
     pub outline: crate::cmd::outline::OutlineState,
@@ -244,6 +247,7 @@ impl Default for ViewState {
             draw: Default::default(),
             field_codes: false,
             hide_white_space: false,
+            hide_quick_access: false,
             outline: Default::default(),
             design_mode: false,
             full_screen: false,

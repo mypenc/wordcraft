@@ -254,6 +254,10 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     if ui.checkbox(&mut ruler, tl!("Show rulers")).changed() {
         let _ = app.run("view.ruler", json!({"value": ruler}));
     }
+    let mut qat = !app.session.view.hide_quick_access;
+    if ui.checkbox(&mut qat, tl!("Show the Quick Access Toolbar")).changed() {
+        let _ = app.run("view.hideQuickAccess", json!({"value": !qat}));
+    }
     numeral_picker(app, ui);
     ui.add_space(8.0);
     section(ui, "Printing");

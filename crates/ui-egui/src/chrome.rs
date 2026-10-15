@@ -280,7 +280,9 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
                     }
                 }
                 ui.add_space(8.0);
-                quick_access(ui, app);
+                if !app.session.view.hide_quick_access {
+                    quick_access(ui, app);
+                }
                 qat_end = ui.min_rect().max.x;
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Account / community.

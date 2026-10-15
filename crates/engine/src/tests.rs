@@ -1311,6 +1311,17 @@ fn clipboard_pane_is_capped_and_rejects_bad_indexes() {
     assert_eq!(s.clip_history.items()[0].text, "w29");
 }
 
+/// #1945: the Quick Access Toolbar can be hidden and shown again.
+#[test]
+fn quick_access_toolbar_can_be_hidden() {
+    let mut s = s();
+    assert!(!s.view.hide_quick_access);
+    run(&mut s, "view.hideQuickAccess", json!({}));
+    assert!(s.view.hide_quick_access);
+    run(&mut s, "view.hideQuickAccess", json!({"value": false}));
+    assert!(!s.view.hide_quick_access);
+}
+
 #[test]
 fn tables_commands() {
     let mut s = s();
