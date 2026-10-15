@@ -2540,12 +2540,14 @@ fn cell_size_boxes(ui: &mut Ui, app: &mut WordApp) {
     let Some(t) = app.session.doc.table(story, &tp) else { return };
     let row = t.rows.get(r).map(|x| x.props.clone()).unwrap_or_default();
     let stored_w = t.grid.get(t.grid_col(r, c)).copied();
-    let laid = app.session.layout().pages.iter().flat_map(|pg| pg.items.iter()).find_map(|it| match it {
-        wordcraft_layout::Placed::Cell { rect, table, row, cell, story: st, .. } if *table == tp && *row == r && *cell == c && *st == story => {
-            Some(*rect)
-        }
-        _ => None,
-    });
+    // Tables in a header or footer are laid out apart from the body's items (#1930).
+    let laid =
+        app.session.layout().pages.iter().flat_map(|pg| pg.items.iter().chain(pg.header.iter()).chain(pg.footer.iter())).find_map(|it| match it {
+            wordcraft_layout::Placed::Cell { rect, table, row, cell, story: st, .. } if *table == tp && *row == r && *cell == c && *st == story => {
+                Some(*rect)
+            }
+            _ => None,
+        });
     // The row's own height: a vertically merged cell's box spans several rows, so take the
     // shortest box in this row.
     let row_h = app
@@ -2553,7 +2555,7 @@ fn cell_size_boxes(ui: &mut Ui, app: &mut WordApp) {
         .layout()
         .pages
         .iter()
-        .flat_map(|pg| pg.items.iter())
+        .flat_map(|pg| pg.items.iter().chain(pg.header.iter()).chain(pg.footer.iter()))
         .filter_map(|it| match it {
             wordcraft_layout::Placed::Cell { rect, table, row, story: st, .. } if *table == tp && *row == r && *st == story => Some(rect.h),
             _ => None,
