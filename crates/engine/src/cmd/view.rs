@@ -41,6 +41,10 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.hideWhiteSpace", "Hide White Space", "View › Show", |s, v| toggle(s, v, |x| &mut x.hide_white_space))
             .params(r#"{"value"?: bool}"#)
             .pure(),
+        // The Quick Access Toolbar in the title bar can be hidden (screen only; its commands stay set).
+        CommandSpec::new("view.hideQuickAccess", "Hide Quick Access Toolbar", "View › Show", |s, v| toggle(s, v, |x| &mut x.hide_quick_access))
+            .params(r#"{"value"?: bool}"#)
+            .pure(),
         CommandSpec::new("view.focus", "Focus", "View › Immersive", |s, v| toggle(s, v, |x| &mut x.focus_mode)).pure(),
         CommandSpec::new("view.ruler", "Ruler", "View › Show", |s, v| toggle(s, v, |x| &mut x.ruler)).pure(),
         // The drawing grid over the page (screen only; never printed or exported).
