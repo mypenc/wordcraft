@@ -152,7 +152,10 @@ fn list_autoformat(s: &mut Session) -> Result<bool, CmdError> {
     // Bullets join an existing bullet list; typing "1. " always starts numbering again at 1,
     // as in Word.
     let found = if kind.is_bullet() { s.doc.numbering.find_kind(kind) } else { None };
-    let num = found.unwrap_or_else(|| s.doc.numbering.add_list(kind));
+    let num = match found {
+        Some(n) => n,
+        None => s.doc.numbering.try_add_list(kind)?,
+    };
     let para = s.doc.para_mut(f.story, &f.path)?;
     let len = para.len();
     para.delete(0, len)?;
@@ -189,7 +192,7 @@ fn dash_autoformat(s: &mut Session) -> Result<(), CmdError> {
     } else if before.ends_with(' ')
         && let Some(i) = before.trim_end().rfind("--")
         && i > 0
-        && before.trim_end().get(i - 1..i).is_some_and(|c| c != " ")
+        && before.trim_end()[..i].chars().next_back().is_some_and(|c| c != ' ')
     {
         let p = s.doc.para_mut(f.story, &f.path)?;
         let props = p.props_at(i).clone();
@@ -524,7 +527,7 @@ fn sample_text(s: &Session) -> Option<String> {
     if args.contains(['(', ')']) {
         return None;
     }
-    let count = |arg: &str| arg.parse::<usize>().ok().filter(|n| (1..=200).contains(n));
+    let count = |arg: &str| arg.trim().parse::<usize>().ok().filter(|n| (1..=200).contains(n));
     let counts = if args.is_empty() {
         Some((5, 3))
     } else if let Some((p, s)) = args.split_once(',') {
@@ -724,8 +727,9 @@ fn backspace_inner(s: &mut Session, _: &Value) -> CmdResult {
             s.sel = Selection::caret(at);
         }
         Some(Block::Table(_)) => {
-            // Move into the table's last cell.
-            let last = s.doc.para_paths(f.story).into_iter().rfind(|q| q.0.first() == prev_path.0.first() && q.0.len() > 1);
+            // Move into the table's last cell. The table is matched by its whole path: a table
+            // nested in a cell shares only its first index with the table around it.
+            let last = s.doc.para_paths(f.story).into_iter().rfind(|q| q.0.len() > prev_path.0.len() && q.0.starts_with(&prev_path.0));
             if let Some(q) = last {
                 let off = s.doc.para(f.story, &q).map(|x| x.len()).unwrap_or(0);
                 if s.doc.para_at(&f).is_some_and(|x| x.is_empty()) && s.doc.container(f.story, &f.path).is_some_and(|c| c.len() > i + 1) {

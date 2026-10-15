@@ -42,6 +42,9 @@ pub struct ObjectDrag {
     /// Smallest size it can be resized to, points.
     min: f32,
     picture: bool,
+    /// A selected Behind Text picture overlaps text; wait for a drag threshold before taking the
+    /// gesture so a simple click can still put the caret in that text.
+    pending_behind: bool,
     /// Dragging a connector's end (false: its start, true: its end) to this page point.
     end: Option<(bool, (f32, f32))>,
     /// Ctrl/⌘ is held: dropping leaves the original and puts a copy at the new place.
@@ -146,9 +149,31 @@ fn screen(pages: &[Rect], scale: f32, page: usize, r: wordcraft_geom::Rect) -> O
 /// Pressing, dragging, releasing or double-clicking on an object (or a frame handle). Returns
 /// true when it was about an object, so the text doesn't also get it.
 pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect], layout: &DocLayout, scale: f32, at: Pos2) -> bool {
+    if let Some(taken) = crate::crop::pointer(app, ui, resp, pages, layout, scale, at) {
+        return taken;
+    }
     if let Some(mut d) = app.canvas.obj_drag.take() {
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             return true; // cancelled: dropped without a change
+        }
+        if d.pending_behind {
+            if !ui.input(|i| i.pointer.primary_down()) {
+                // No drag threshold was crossed: let the text click finish normally.
+                app.canvas.cancel_text_drag();
+                return false;
+            }
+            let shift = ui.input(|i| i.modifiers.shift);
+            d.drag.update(at, pages, scale, d.min, d.picture != shift);
+            if !d.drag.moved {
+                app.canvas.obj_drag = Some(d);
+                return false;
+            }
+            let pos = d.object.pos();
+            let end = Pos { off: pos.off + OBJ.len_utf8(), ..pos.clone() };
+            let _ = app.run("select.range", json!({"anchor": pos, "focus": end}));
+            // The text click path has been tracking the pointer until it became a drag.
+            app.canvas.cancel_text_drag();
+            d.pending_behind = false;
         }
         if let Some((which, _)) = d.end {
             if ui.input(|i| i.pointer.primary_down()) {
@@ -206,6 +231,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
             object,
             min: 0.0,
             picture: false,
+            pending_behind: false,
             end: Some((which, (0.0, 0.0))),
             guides: Vec::new(),
             preview: None,
@@ -213,7 +239,8 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         });
         return true;
     }
-    let Some((object, grab)) = grab_at(app, layout, pages, scale, at) else { return false };
+    let grabbed = grab_at(app, layout, pages, scale, at).or_else(|| pressed.then(|| behind_drag_at(app, layout, pages, scale, at)).flatten());
+    let Some((object, grab)) = grabbed else { return false };
     // Shift/Ctrl+click adds an object to the selected ones (or takes it out), for Group.
     let adding = ui.input(|i| i.modifiers.shift || i.modifiers.command);
     // Ctrl on the object that is already selected starts a copy-drag instead.
@@ -221,6 +248,24 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
     if pressed && adding && grab == Grab::Move && selected(app).is_some() && !(again && !ui.input(|i| i.modifiers.shift)) {
         let _ = app.run("select.addObject", json!({"pos": object.pos()}));
         return true;
+    }
+    if pressed && grab == Grab::Move && object.behind() && behind_draggable(app, &object) {
+        let (min, picture) = match app.session.doc.para_at(&object.pos()).and_then(|p| p.object_at(object.pos().off)) {
+            Some(o) => (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. })),
+            None => return false,
+        };
+        app.canvas.obj_drag = Some(ObjectDrag {
+            drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at),
+            object,
+            min,
+            picture,
+            pending_behind: true,
+            end: None,
+            guides: Vec::new(),
+            preview: None,
+            copy: false,
+        });
+        return false;
     }
     if pressed {
         let pos = object.pos();
@@ -238,6 +283,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
                 object,
                 min,
                 picture,
+                pending_behind: false,
                 end: None,
                 guides: Vec::new(),
                 preview: None,
@@ -348,6 +394,18 @@ fn grab_at(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Po
     });
     handle.or_else(|| {
         let (page, x, y) = crate::canvas::page_at(pages, layout, scale, at)?;
+        // A Behind Text picture is normally hit only where no body text is present, so text above
+        // it remains easy to edit. Once the picture is selected (for example with the arrow keys
+        // or the Selection Pane), let its own frame win inside the frame so the user can drag it
+        // directly without first finding an uncovered patch.
+        let selected_picture = selected(app)
+            .filter(|(_, obj)| behind_body_drag(obj))
+            .and_then(|(pos, _)| layout.object(&pos, app.session.page_hint))
+            .filter(|o| o.behind() && o.page == page && movable(app, o) && o.rect.expand(EDGE / scale.max(0.01)).contains(o.unspin(x, y)))
+            .map(|o| (o, Grab::Move));
+        if selected_picture.is_some() {
+            return selected_picture;
+        }
         // Selectable: body objects (table cells too) or the header/footer's own objects;
         // notes' objects aren't yet.
         layout.object_at_in(page, x, y, EDGE / scale.max(0.01), story).map(|o| (o, Grab::Move))
@@ -358,6 +416,38 @@ fn grab_at(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Po
 /// header/footer.
 fn movable(app: &WordApp, o: &ObjectHit) -> bool {
     o.path.depth() == 0 && selectable_story(app, o.story)
+}
+
+/// Whether a Behind Text object of this kind is grabbed by pressing its body. Pictures, shapes and
+/// groups yes; a text box no (its inside is its text, so only its border grabs it). Used so one can
+/// be dragged over the text it sits behind.
+fn behind_body_drag(obj: &InlineObject) -> bool {
+    matches!(obj, InlineObject::Image { .. } | InlineObject::Group { .. } | InlineObject::Shape { story: None, .. })
+}
+
+/// Whether the object at `o` is a Behind Text picture, shape or group that grabbing its body moves.
+fn behind_draggable(app: &WordApp, o: &ObjectHit) -> bool {
+    app.session.doc.para_at(&o.pos()).and_then(|p| p.object_at(o.pos().off)).is_some_and(behind_body_drag)
+}
+
+/// The topmost Behind Text picture, shape or group of the story being edited under `at`, even
+/// where text covers it. A press over one couldn't grab it before (text won), so a drag did
+/// nothing; with this it starts a frame drag once the pointer moves, while a plain click still
+/// edits the text it sits behind (see `pending_behind`).
+fn behind_drag_at(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Pos2) -> Option<(ObjectHit, Grab)> {
+    let story = active_story(app, layout);
+    let (page, x, y) = crate::canvas::page_at(pages, layout, scale, at)?;
+    let edge = EDGE / scale.max(0.01);
+    layout
+        .find_object(page, |o| {
+            o.page == page
+                && o.story == story
+                && o.behind()
+                && movable(app, o)
+                && behind_draggable(app, o)
+                && o.rect.expand(edge).contains(o.unspin(x, y))
+        })
+        .map(|o| (o, Grab::Move))
 }
 
 /// Whether a drag shows the object's pixels (moved, or scaled for an unturned picture) rather
@@ -407,6 +497,9 @@ fn drop(app: &mut WordApp, d: &ObjectDrag) {
 
 /// Draw the frame of the active object, or the drag preview.
 pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, pages: &[Rect], scale: f32) {
+    if crate::crop::paint(app, painter, t, layout, pages, scale) {
+        return;
+    }
     if let Some(d) = app.canvas.obj_drag.as_ref().filter(|d| d.end.is_some()) {
         paint_end_drag(app, d, painter, t, layout, pages, scale);
         return;
@@ -505,6 +598,9 @@ fn paint_end_drag(app: &WordApp, d: &ObjectDrag, painter: &Painter, t: &Tokens, 
 
 /// The pointer over an object or a handle (or dragging): its cursor.
 pub fn cursor(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Pos2) -> Option<egui::CursorIcon> {
+    if let Some(c) = crate::crop::cursor(app, layout, pages, scale, at) {
+        return Some(c);
+    }
     if let Some(d) = &app.canvas.obj_drag {
         return Some(if d.end.is_some() {
             egui::CursorIcon::Crosshair
@@ -523,6 +619,10 @@ pub fn cursor(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at:
 /// Keys for a selected object: arrows nudge a floating one; typing or Enter goes into a text box.
 /// Returns true if handled.
 pub fn key(app: &mut WordApp, key: egui::Key, m: egui::Modifiers) -> bool {
+    // Crop mode takes Esc and Enter (leaving it, the crop kept).
+    if crate::crop::key(app, key) {
+        return true;
+    }
     if selected(app).is_none() {
         return false;
     }

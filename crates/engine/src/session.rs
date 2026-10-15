@@ -351,8 +351,8 @@ pub struct Session {
     pub pending_move: Option<crate::cmd::moves::PendingMove>,
     /// Plain text mirror of the clipboard (for the system clipboard).
     pub clipboard_text: String,
-    /// HTML for the system clipboard beside [`Self::clipboard_text`] when the copy holds an
-    /// equation (as MathML, #816), for programs that read MathML; empty otherwise.
+    /// HTML for the system clipboard beside [`Self::clipboard_text`]: the copy's formatting for
+    /// programs that read HTML, equations as MathML (#816); empty when nothing was copied.
     pub clipboard_html: String,
     /// Items collected by Copy and Cut this session, for the Clipboard pane.
     pub clip_history: crate::cmd::edit::ClipHistory,
@@ -1321,7 +1321,12 @@ impl Session {
         // As in Word, text typed at either end of a hyperlink isn't part of it; only typing
         // inside the link extends it.
         let inside_link = props.link.is_some() && f.off > 0 && f.off < p.len() && p.props_of_char(f.off).link == props.link;
-        if props.link.is_some() && !inside_link { props.unlinked() } else { props.clone() }
+        let mut out = if props.link.is_some() && !inside_link { props.unlinked() } else { props.clone() };
+        // A footnote or endnote number is raised by its character style; text typed after it is body text.
+        if matches!(out.style.as_deref(), Some("FootnoteReference" | "EndnoteReference")) {
+            out.style = None;
+        }
+        out
     }
 
     /// Words in the document, as the status bar shows them (see [`Prefs::count_notes`]).

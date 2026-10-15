@@ -2,8 +2,8 @@
 
 **Stage: alpha** · next: beta, ~15 points (60% → 75% ready for real work) and ~150–230 h away
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-14 · **Change:** trivial (progress log: an option to show only the selected text's comment, #1055; previously trivial: #778 mail-merge recipient filter/sort, .xls and legacy encodings; previously trivial: progress log: clicking in a comment's text moves its caret, #1013; previously trivial: progress log: a press on the ribbon no longer scrolls the document, #1019; previously trivial: title rename and account settings; previously trivial: progress log: Down and Up no longer skip a table, #1007; previously trivial: progress log: privacy options on save, #1062; previously trivial: progress log: equation pictures in theme colours on Windows, #1002; previously trivial: symbol fonts, #776; previously trivial: the save prompt answers from the keyboard, #861; previously trivial: table column and row markers on the rulers, #700; previously trivial: table borders and the resize handle drag on the page, #217; previously trivial: formatting revisions landed, #41; previously trivial: Draw tab ink, #307, and Draw Table and Eraser, #303, landed: catalog 402/434; previously minor: readiness table with hours per audience; full number back to the additive weighted sum, 60%; mainstream and essentials numbers added; alpha gate checked; previously major: full re-measure against Word for Mac 16.113.4; restructured to the craftrules progress-docs standard) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
-
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-14 · **Change:** trivial (table style editor formats every part, #714); previously trivial: VML freeforms read and kept on save; previously trivial: progress log: consistent preferred cell widths; previously trivial: multi-paragraph field instructions no longer add blank lines; previously trivial: page-break-only list paragraphs hide their labels; previously trivial: progress log: grouped `flowChartOr` shapes draw their circle and crossing spokes; previously trivial: progress log: copies keep their formatting in other programs, #1523; previously trivial: progress log: privacy options on save, #1062; previously trivial: progress log: equation pictures in theme colours on Windows, #1002; previously trivial: symbol fonts, #776; previously trivial: the save prompt answers from the keyboard, #861; previously trivial: table column and row markers on the rulers, #700; previously trivial: table borders and the resize handle drag on the page, #217; previously trivial: formatting revisions landed, #41; previously trivial: Draw tab ink, #307, and Draw Table and Eraser, #303, landed: catalog 402/434; previously minor: readiness table with hours per audience; full number back to the additive weighted sum, 60%; mainstream and essentials numbers added; alpha gate checked; previously major: full re-measure against Word for Mac 16.113.4; restructured to the craftrules progress-docs standard) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-14 · **Change:** trivial (progress log: print-area strings translated in every catalog; previously trivial: progress log: ODT sections, #1379; previously trivial: progress log: table deletes, Change Case and Unlink Fields respect Track Changes and locked content controls, #1329; previously trivial: progress log: rounded rectangle corners, #1476; previously trivial: progress log: Save As type list, #1399; previously trivial: progress log: privacy options on save, #1062; previously trivial: progress log: equation pictures in theme colours on Windows, #1002; previously trivial: symbol fonts, #776; previously trivial: the save prompt answers from the keyboard, #861; previously trivial: table column and row markers on the rulers, #700; previously trivial: table borders and the resize handle drag on the page, #217; previously trivial: formatting revisions landed, #41; previously trivial: Draw tab ink, #307, and Draw Table and Eraser, #303, landed: catalog 402/434; previously minor: readiness table with hours per audience; full number back to the additive weighted sum, 60%; mainstream and essentials numbers added; alpha gate checked; previously major: full re-measure against Word for Mac 16.113.4; restructured to the craftrules progress-docs standard) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
 > **Printing update:** 2026-10-12 · direct desktop printing through craft-print; details below.
 > **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (Android input review; physical-device verification pending; previously trivial: Turkish interface catalog completed, #774; previously trivial: drag-select by whole units, #549; previously trivial: Insert › SmartArt landed, #497: catalog 429/451 → 437/458 (95.4%); previously trivial: Turkish interface landed; previously trivial: formatting revisions landed, #41; previously trivial: Draw tab ink, #307, and Draw Table and Eraser, #303, landed: catalog 402/434; previously minor: readiness table with hours per audience; full number back to the additive weighted sum, 60%; mainstream and essentials numbers added; alpha gate checked; previously major: full re-measure against Word for Mac 16.113.4; restructured to the craftrules progress-docs standard) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
 
@@ -16,7 +16,7 @@ agent control. This page is the summary; the assessment is
 ## Headline numbers (2026-10-10)
 
 | Number | Value | Kind |
-|---|---|---|
+| 2026-10-12 | Table formulas: cell references and ranges (`=B2+B3`, `=SUM(B2:C3)`), arithmetic and comparisons, IF, AND, OR, NOT, TRUE, FALSE, DEFINED and the `\#` number format; ABOVE and LEFT sum the run of numbers next to the cell as Word does; an unknown function or a syntax error is an error instead of a sum; Update Field (F9) recalculates formula fields |
 | Ribbon/menu catalog coverage | **487 / 502 (97.0%)** | measured (`cargo xtask parity` → [`docs/parity-checklist.md`](docs/parity-checklist.md)) |
 | **Feature breadth** (weighted, incl. dialog options, styles, languages beyond the ribbon) | **~80%** | estimated |
 | **Ready for real work** (full target) | **~60%** (55–63%) | estimated, additive weighted sum over the dimensions |
@@ -110,14 +110,14 @@ Weights and evidence per area: [docs/target-app-parity.md](docs/target-app-parit
 | Indonesian | id | none | 0% |
 | Japanese | ja | partial | ~95% |
 | German | de | partial (#574) | ~95% |
-| Korean | ko | none | 0% |
+| Korean | ko | partial (interface catalog; proofing unavailable) | 100% (2,463 entries) |
 | Vietnamese | vi | partial (#1434) | ~95% |
 
-Also shipped: Traditional Chinese (`zh-hant`), Ukrainian (`uk`), Serbian (`sr`, `sr-latn`, #250), Russian (`ru`) and Polish (`pl`), all partial (~95%). Bulgarian (`bg`) covers everything the interface audit finds (2,419 entries). Estonian (`et`), Italian (`it`, #594) and Czech (`cs`) now have complete interface catalogs, and Turkish (`tr`) a complete 2,325-entry one (every key of the Russian catalog), all with
-system-locale selection and a saved language choice (Italian also has 51 strings none of the others had yet); Estonian, Turkish, Italian and Czech proofing are not included. Hungarian (`hu`) has a
+Also shipped: Traditional Chinese (`zh-hant`), Ukrainian (`uk`), Serbian (`sr`, `sr-latn`, #250), Russian (`ru`) and Polish (`pl`), all partial (~95%). Bulgarian (`bg`) covers everything the interface audit finds (2,419 entries); Swedish (`sv`) covers that too, plus 44 newer strings no other catalog has yet (2,504 entries). Estonian (`et`), Italian (`it`, #594) and Czech (`cs`) now have complete interface catalogs, and Turkish (`tr`) a complete 2,325-entry one (every key of the Russian catalog), all with
+system-locale selection and a saved language choice (Italian also has 51 strings none of the others had yet); Estonian, Turkish and Italian proofing are not included. Hungarian (`hu`) has a
 complete 2,419-entry catalog, also without proofing. Vietnamese (`vi`, #1434) has a complete
 2,448-entry catalog, also without proofing.
-Proofing: English, Polish, Portuguese and Russian (spelling, grammar, hyphenation), chosen per run from its language. Word ships
+Proofing: English, Polish, Portuguese and Russian (spelling, grammar, hyphenation), plus Czech (system Hunspell spelling, generic checks), chosen per run from its language. Word ships
 30 interface languages and proofing for ~50. Detail: [docs/localization-parity.md](docs/localization-parity.md).
 
 ## Upcoming
@@ -136,7 +136,28 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 ## Progress log
 
 | Date | What landed |
+| 2026-10-14 | DOCX row table border exceptions render and survive saving. Explicit cell borders win; a row exception does not change other rows. |
+| 2026-10-14 | Tab stops edited on the ruler: the corner selector picks Left/Center/Right/Decimal/Bar, a click sets a stop (Alt skips the snap), dragging moves it with a guide line and position tooltip, dragging off the ruler clears it; markers draw per kind and mirror for RTL; one `para.tabs` call and one undo step per gesture |
+| 2026-10-12 | Fields keep `w:dirty` through DOCX saves (#877): a begin marker flagged by a generator that couldn't compute a result (pandoc-style TOC placeholders) keeps the flag on open/save — as a buffered field or a range field — so Word still refreshes it on open; computing a result (Update Field, Update Table) clears it, like Word's F9 |
 |---|---|
+| 2026-10-14 | Consistent preferred cell widths override a stale table grid when both totals agree, for fixed and AutoFit tables. Conflicting widths, spans and percentages remain unchanged. |
+| 2026-10-14 | Legacy VML freeforms (`v:shape` with its own `path`), such as the rule lines in many older headers, are read as freeform shapes: they show on screen and in PDFs and are saved back as DrawingML custom geometry instead of vanishing |
+| 2026-10-14 | Field instructions spanning paragraphs no longer add blank lines during pagination; empty result paragraphs still take a line. |
+| 2026-10-14 | Page-break-only list paragraphs no longer print stray bullets or numbers. The next item keeps its number, matching the reference export. |
+| 2026-10-12 | Backspace at the start of the paragraph after a table nested in a cell moves into the nested table's last cell, no longer into the last cell of the table around it |
+| 2026-10-14 | Grouped `flowChartOr` shapes draw their circle and crossing spokes, as in Word |
+| 2026-10-14 | Deleting a comment removes its anchors from headers, footers, notes and text boxes too, not just the body, and deletes the whole thread below it, replies to replies included; no anchor or reply is left pointing at a deleted comment (#1345) |
+| 2026-10-14 | Legacy DOC DIB conversion checks the BMP header and copy before allocation, uses the caller's decode allowance, and caps PNG output while encoding; a BMP fallback is kept when it fits. A generated 1-pixel regression covers 57/58/512-byte limits. Resource-exhaustion consequences remain unmeasured. Related: #1334 and #1554 |
+| 2026-10-13 | Justified vertical page alignment (#1320): a section set to Justified spreads each page's paragraphs and tables from the top margin to the bottom one, as Word does, including the last page and pages ending in a manual page break. DOCX `w:vAlign="both"` opens as Justified (it showed centred) and saves back; `layout.verticalAlign` takes `justify`, and Page Setup has a Vertical alignment box |
+| 2026-10-13 | macOS shortcuts as in Word for Mac: ⌘⇧S Save As, ⌘⌥E Insert Endnote, ⌘⌥A New Comment, ⌃H Replace, ⌘⌥R collapse the ribbon |
+| 2026-10-13 | The status bar flags a proofing language whose Hunspell dictionary isn't installed (Polish, Portuguese): "Polish (no dictionary)", with a tooltip naming the dictionary and where it is looked up (#1167) |
+| 2026-10-14 | A file name that isn't valid Unicode, such as a Latin-1 `café.docx`, no longer crashes `wordcraft-cli` or the app (#1440). The app and the CLI's `convert`, `info`, `text`, `inspect`, `render`, `zotero` and `run --file` open such a file, and saving it without a new name (`run --file … --cmd file.save`, or Save in the app) writes back to it. Any other such argument is an error naming it, an output name included; the app exits with status 2 on a `--control` port that isn't valid Unicode |
+| 2026-10-13 | A picture (or shape) set to Behind Text can be dragged over the text it overlaps, whether or not it was selected first, in the body and in a header/footer. The press becomes an object drag only after the pointer moves, so an ordinary click still places the text caret in the overlapping text. The UI regression tests cover In Front of Text too |
+| 2026-10-13 | Saving to DOCX keeps the watermark: it is written as Word's own text-watermark shape in every header, and a document without headers gains one to hold it (#1290) |
+| 2026-10-13 | DOCX files with Word's text watermark (Design › Watermark, a VML text shape in the headers) show it on every page on screen and in the PDF (#1290) |
+| 2026-10-13 | Insert › Link has Word's Place in This Document: a link to a bookmark, a heading (through a hidden _Toc bookmark) or the top of the document, from the dialog's Link to: choice or `insert.link` with `bookmark`, `heading` or `top`; `link.targets` lists the places and Go To follows `_top` (#1234) |
+| 2026-10-13 | Cut copies to the system clipboard however it is run (#1265): the ribbon, the context menu and the native menu cut deleted the words without copying them (only the Cmd+X event wrote the clipboard, so Paste re-inserted the previous copy); Copy/Cut publication is centralised in one sink and every entry point is tested |
+| 2026-10-13 | Insert › Bookmark deletes bookmarks (#1236): the dialog is laid out as Word's, with Add, Delete and Go To beside the list, Sort by Name or Location and Hidden bookmarks; it opens on the bookmark around the caret, Delete and Go To keep it open, and Go To selects the bookmark's text. `insert.deleteBookmark {name}` removes both ends of a bookmark, also one across paragraphs (adding a bookmark under a name in use left such a one's end behind) |
 | 2026-10-12 | Password-protected Word 97-2003 `.doc` files open after a password prompt (XOR obfuscation, RC4, RC4 CryptoAPI; wrong passwords are rejected by the stored verifier, #1079); written from the public specs and tested on synthetic files only, AES-encrypted `.doc` files are still refused |
 | 2026-10-12 | Comments can show only for the selected text (#1055): Track Changes Options › Comments › "Only for the selected text" drops the margin column, and the comment under the caret, or the clicked one, floats beside the page (over its edge in a narrow window). The default stays "In the margin", as in Word; `review.trackingOptions {"commentDisplay"}` for agents |
 | 2026-10-12 | Clicking inside a selected comment's balloon moves the caret in its text (#1013); the click used to leave the balloon, so the caret could only be moved with the arrow keys. A press on any balloon now belongs to the balloon, not the page behind it |
@@ -147,6 +168,16 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-13 | Rounded rectangles (#1476): a `roundRect` keeps the corner radius its file gives it (`adj`), on screen, in PDF and when saved; all were drawn with a 16% corner |
 | 2026-10-13 | PAGEREF in headers and footers (#1477): "Page X of Y" with Y a page reference to a bookmark at each letter's end shows each letter's own total instead of the result stored in the file |
 | 2026-10-13 | Replace All respects locked content controls with Track Changes on or off; it refuses the entire batch before editing when any match would change locked content or remove a control locked against deletion |
+| 2026-10-14 | File › Print translated in all 18 interface languages — printer list, duplex, grayscale, discovery/submission feedback and print commands (18 strings that shipped English-only with the craft-print integration; written from the English meaning, pending native-speaker review like the rest of the catalogs) |
+| 2026-10-14 | All Caps and Small Caps draw ß as SS, as Word does (#1581): "Straße" in All Caps reads STRASSE, not STRASE, and other letters whose capital is two characters (ﬀ, ŉ) draw in full. The ß is still one character: the caret never stops between the two S, and a click on them lands before or after it |
+| 2026-10-13 | Windows Magnifier follows the caret onto a new line: after Enter or Shift+Enter the view moves to the empty line at once, instead of staying on the line above until two more letters are typed (#1119) |
+| 2026-10-13 | A window too big for its screen shrinks to fit when it opens (#1215): on a laptop screen the first window reached under the taskbar or past the screen edge, with the end of the scroll bar, so dragging the scroll bar stopped where the pointer met the edge. A window saved that size is fitted on its next launch too |
+| 2026-10-14 | `layout.pageSetup` with a `section` checks its values like Margins, Size and Columns (#1582): non-finite numbers and margins that leave no room for text are refused with nothing changed; page sides, column count and gap, header/footer distances and line-numbering values are clamped to the same ranges |
+| 2026-10-13 | `wordcraft --control` checks its port (#1426): a missing port, one outside 1–65535 or one that isn't a number prints an error naming it and exits with status 2, instead of starting without the control channel (and dropping `WORDCRAFT_CONTROL_PORT`); a flag right after it, such as `--sample` or `--version`, is read as a flag rather than as the port |
+| 2026-10-14 | Text wrap (#1376): in the narrow strip beside a square-wrapped picture, a word that doesn't fit moves on whole to the next row; it used to be split across the strip ("docu" / "mentazione") |
+| 2026-10-14 | DOCX files with legacy VML preset shapes show them (#1377): Word's right arrow (`_x0000_t13`) and the other presets appear with their fill, outline and size, drawn as WordCraft draws the same DrawingML preset (the nearest shape when it has no exact one), and saving keeps them as DrawingML shapes; before, they were dropped |
+| 2026-10-14 | Lists numbered with Russian letters (`russianLower`, `russianUpper`) show а), б), в) … я), then аа), бб), as in Word, instead of 1), 2), 3); the 29-letter sequence (no ё, й, ъ or ь) was observed in Word |
+| 2026-10-14 | "Do you want to save changes?" answers from the keyboard after typing too (#1597): Save takes focus from the page when the prompt opens, so the arrow keys and Tab move between Save, Don't Save and Cancel instead of the caret behind it, and Enter answers |
 | 2026-10-12 | Text boxes from older Word files (VML) keep their internal margins, Resize shape to fit text and vertical alignment, so letterhead address blocks and form headers sit where Word puts them instead of 7 pt in and 4 pt down. Hidden drawings stay hidden (they were drawn as empty boxes) and are kept on save |
 | 2026-10-13 | Word's privacy options are kept and honoured when saving .docx (#1062): with Remove personal information, comments and tracked changes are saved by "Author" and the file has no creator or last-modified-by; with Remove date and time, they are saved without dates. The open document keeps the real names and dates; `file.privacyOptions` sets both |
 | 2026-10-13 | A selected comment balloon's Delete, Reply and Resolve buttons work again (#1085): pressing them no longer counts as a click on the page that closes the balloon first, so a new empty comment, or any other, can be deleted from its balloon |
@@ -158,8 +189,10 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-13 | Dragging a Square-wrapped shape or picture on a multi-column page wraps the text of the column it lands in around it, and its old place closes up (#884) |
 | 2026-10-13 | Pagination with footnotes follows Word (#1116): a paragraph ending on a page with footnotes keeps its space after above the separator, otherwise its last lines move to the next page with the note; pages without notes are unchanged |
 | 2026-10-13 | Interface size means what it says (#822): a chosen size is absolute, as in PhotoCraft and PdfCraft, so "100%" is one screen pixel per point even where the system reports 200 % (a bare window manager on X11, where winit guesses the scale from the monitor's DPI). The new default, Auto, keeps the system's display scale and its menu entry shows the size it draws at; sizes run 75–300 %. A saved size from before stays the same if it was the default (now Auto) and becomes absolute otherwise |
+| 2026-10-14 | Copied text keeps its formatting in other programs (#1523): Copy and Cut put HTML beside the plain text on the system clipboard for every selection, not only one holding an equation, so a browser, mail client or another word processor pastes bold, italic, fonts and sizes. RTF on the clipboard is not written yet |
 | 2026-10-13 | Copying an equation also puts MathML in HTML on the clipboard beside the linear text like `y=2x_s` (#816; Word/LibreOffice paste not yet verified; OMML is #1297). HTML export writes equations as MathML too, and opening or pasting HTML with MathML gives equations back |
 | 2026-10-13 | The Equation tab's galleries, structure buttons and symbols keep the theme's colours on Windows: their pictures share a few textures written in place (no wipe of pictures already on screen, room for the built-ins at high display scales), instead of hundreds of small textures freed in bulk, which on DirectX 12 showed inverted, red or teal tiles (#1002) |
+| 2026-10-13 | `file.close` over the control channel or MCP bridge no longer quits and discards unsaved changes (#1268): it returns an error unless the document is saved or `{"force": true}` is passed; the user's Save / Don't Save / Cancel prompt is unchanged |
 | 2026-10-14 | Text copied out of an exported PDF reads as shown (#1473): All Caps and Small Caps text comes out in capitals, as from Word's PDFs, and plain text after it keeps its own case (before, a capital first drawn for a lowercase letter made later capitals extract lowercase) |
 | 2026-10-14 | Web: Save in the "save changes?" prompt before New or Open now waits for the browser's save picker: the new or opened document replaces yours only once the file is written and closed. Cancelling the picker, or a write that fails, keeps your document open with its edits and undo, still unsaved, and the prompt comes back with the reason; a save that ends after another document has replaced it no longer runs the New/Open on that one or marks it unsaved, and New/Open while a picker save is still in flight ask first (#1315) |
 | 2026-10-13 | Closing with unsaved changes → Save that can't write the file (no permission, locked by another app, folder gone) now says so plainly instead of looking like Cancel: the prompt comes back with the reason in it ("Couldn't save … so it is still open and nothing was lost") for Save again, Don't Save or Cancel, the status bar says it too, and `ui.saveChanges` returns that error; the same for a Save As from the prompt; the document stays open with its edits (#1445) |
@@ -193,6 +226,10 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-14 | Draw: Ink to Shape recognises arrows. A line and a V-shaped head drawn in one stroke (shaft first or head first, any direction) becomes a straight arrow connector with the head at the tip, in the stroke's colour and width; a lone V, a line with one barb and scribbles stay as they are. Our own recogniser: Word for Mac has no Ink to Shape to compare. Two-stroke arrows and arrows with a closed triangle head not yet. |
 | 2026-10-12 | A DOCX hyperlink whose relationship has an empty target (as LibreOffice writes) is no link (#1005): no "Ctrl+Click to follow link" tooltip over the text, which keeps its Hyperlink style |
 | 2026-10-12 | Table eraser beside vertically merged cells (#1039): the border between two cells merged down the same rows merges them into one cell that stays merged down those rows; a border whose two sides can't make one rectangle is hidden on both sides along the whole edge instead of refused |
+| 2026-10-13 | Styles gallery for DOCX files that mark no style `w:qFormat` (LibreOffice) shows Word's usual quick styles: Normal, No Spacing, Headings, Title, Subtitle… (#1238) |
+| 2026-10-13 | Pictures can be cropped on the page: Picture Format › Crop shows black crop handles; dragging one trims that side (a corner, two) while the picture keeps its scale and the visible part stays put, dragging back out restores it, and the cropped-away part shows under a dark dim. Esc, Enter, a click outside or Crop again keep the crop; each drag is one undo step |
+| 2026-10-13 | Table Layout › Cell Size: the Height and Width boxes apply to every row and column the selection covers (a selected table changed only its last row and column), and to the caret's row and column without a selection (#1242) |
+| 2026-10-12 | Forms protection: filling content controls under `w:edit="forms"` (#1077) — entries and typing inside fillable controls run, every other edit rolls back ("only the editable regions of this protected document can change"); `review.restrict` reports `formFields`; Find Next Region covers form fields (pane button shows for forms documents); a save/reopen keeps the protection, the filled values and the password guard |
 | 2026-10-12 | RTF import now uses the RTF spec's defaults where a file names none (#902): no space before or after paragraphs, single line spacing, and the `\deff` default font, instead of WordCraft's Normal style; RTF files that relied on the old defaults open tighter, like in Word |
 | 2026-10-12 | `--help` and `-h` print the usage and exit (#968): `wordcraft --help` lists the app's options without opening a window (it used to try to open a file named `--help`), and `wordcraft-cli <command> --help` works for every command instead of failing with `unknown option --help` |
 | 2026-10-11 | Right-clicking a table cell offers the table's commands, and as in Word they follow the selection: with the caret in a cell Insert, Delete Cells, Split Cells, Text Direction and Table Properties…; with several cells Merge Cells instead of Split; with whole columns or rows Delete Columns or Rows, Merge Cells and Distribute Rows and Columns; with the whole table Delete Table, Distribute, AutoFit and Insert Caption…. A right-click beside selected cells moves the caret there instead of keeping them |
@@ -203,10 +240,12 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | Ribbon groups fit above their labels: View › Show splits its four check boxes into two columns (Hide White Space, #645, had pushed the fourth onto the "Show" label), Developer › Controls loses the gaps that ran into its label, and Layout › Paragraph (#654) no longer trips a debug assertion and sits 2.5 pt higher; a test draws every tab in every language and fails on any group taller than the ribbon |
 | 2026-10-12 | Down and Up from the start of a line beside a table go into it (#1007): the caret, left of the first cell's text there, used to skip the whole table to the paragraph beyond it; it now lands in the cell under it or the nearest one, as in Word |
 | 2026-10-12 | Window caption: a non-Latin file name is drawn with a document fallback face (or the CJK UI font), instead of `?` |
+| 2026-10-12 | Comments: Arabic, Hebrew and other non-Latin comment text and author names are drawn with a document fallback face (or the CJK UI font) in the balloons and Comments pane, instead of boxes; read-only balloons show right-to-left text in reading order, set against the right edge |
 | 2026-10-13 | Word 365 cover pages (#743): shapes placed relative to the page's height now sit where Word puts them (they were at the top of the column), and a freeform drawn back to its start without being closed is filled, so the cover's coloured panel and its white title show |
 | 2026-10-12 | 32-bit Windows starts on OpenGL. DirectX 12 graphics pipeline creation returns "The parameter is incorrect" and the app exited before the window appeared |
 | 2026-10-12 | New documents follow the system region (#838): A4 and centimetres outside the US (Letter in the CLDR Letter territories, inches in the US), lengths written with the region's decimal separator (`2,54 cm`) and typed with either; an explicit Measurement units choice wins; `file.options {"region"}` for agents |
 | 2026-10-12 | Paste from other programs keeps their formatting (#687): Ctrl+V and Home › Paste read the system clipboard's HTML (and RTF on Windows and Wayland); Merge Formatting takes the destination's font and paragraph and keeps bold, italic, underline and strikethrough; Paste Special lists what the system clipboard holds (HTML, RTF, picture, text). Linux: pictures copied in a browser or Spectacle paste on KDE and other Wayland desktops (data-control clipboard), and a paste that finds nothing usable names what the clipboard holds instead of "empty" (#833) |
+| 2026-10-12 | Table style editor (#714): New/Modify Table Style edits each of the 13 table style parts (header row, total row, first/last column, odd/even bands, corner cells) with font, colour, fill, borders and cell alignment; every table using the style follows; all parts round-trip in DOCX; `table.modifyStyle` takes `part`/`parts` and per-edge borders |
 | 2026-10-12 | STYLEREF fields (#775): running headers and footers show each page's chapter title (page's first, or `\l` last, paragraph of the style, else the nearest before), style names, ids, heading levels and character styles, number switches; body STYLEREF updates with the other fields; STYLEREF in the Field dialog; PDF export follows the layout |
 | 2026-10-12 | Undo history list (#701): a ▾ beside the Quick Access Toolbar's Undo lists recent steps newest first; hovering highlights what a click undoes ("Undo 3 Actions"), and a click undoes them in one go. `edit.undoTo {count}` and `edit.undoHistory` (newest first, up to 100) for CLI and MCP |
 | 2026-10-12 | Start screen (#766): launched with nothing to open, WordCraft starts on File › Home (Blank document, templates, Recent) like Word, desktop and web; Esc leaves a blank document; File › Options › General › Start-up turns it off |
@@ -215,6 +254,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | Alt+Q moves to "Tell me" command search, as in Word for Windows (#819); not on macOS, where Option+Q types a character |
 | 2026-10-12 | PDF export of long documents with many internal links (a linked table of contents) is linear: NIH's 67-page protocol template 10.6 s → 0.9 s |
 | 2026-10-12 | Keytips: Word for Windows' tab letters (File F, Design G, References S, Review R, View W, Help Y) |
+| 2026-10-13 | Keytips reach the table tabs as in Word: Alt, J, T for Table Design and Alt, J, L for Table Layout, then their controls' badges (#1183) |
 | 2026-10-12 | Table-of-contents links look like Word's: plain text, not blue and underlined (Word ignores the Hyperlink style on TOC entry links; measured in 9 cases) |
 | 2026-10-12 | Line heights like Word's: spaces and tabs never make a line taller (13 cases measured in Word for Windows); tables of contents with big tab runs were a third taller |
 | 2026-10-12 | `.doc` import: tab stops (centred titles, right-aligned dates, leaders) and sections ending at their section marks (continuous breaks, footers); EPA .doc templates now paginate like Word |
@@ -222,17 +262,21 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | A list label makes its line taller above the baseline only, as in Word (6 cases measured in Word for Windows): Symbol bullets no longer add their deeper descent, so bulleted lists keep Word's height and page breaks |
 | 2026-10-12 | Hidden end-of-cell marks (`w:hideMark`) read, written and laid out like Word (9 cases measured in Word for Windows): a cell's empty last paragraph takes no room, so rows of such empty cells shrink to their borders |
 | 2026-10-12 | Text frames (`w:framePr`) in headers, footers, cells and text boxes: placed apart with text wrapping around them, and kept on save (a framed footer page number took a line of its own and was lost on save) |
+| 2026-10-13 | A paragraph with more than 65,536 distinct formats keeps each one (#1340): the layout numbered a paragraph's formats with 16 bits, so every run past that drew with the 65,536th format's font, size, link and tracked-change marking |
 | 2026-10-12 | List indents like Word's when a numbered style has indents of its own: the style giving the list (and styles based on it) beat the level's indents, and a paragraph with its list switched off drops the styles' indents (27 cases measured in Word for Windows); NIH's Heading 3s now sit at their 0.9" |
 | 2026-10-12 | Keep with next like Word (20 cases measured in Word for Windows): a kept paragraph moves to the next page only when it would fit on this one by itself, otherwise it breaks as usual; chains of kept paragraphs move together |
 | 2026-10-12 | An empty paragraph that only carries a continuous section break takes no room, as in Word (10 cases measured in Word for Windows): text after it follows right on and balanced columns don't count it |
 | 2026-10-12 | Floating objects positioned relative to their paragraph start above its space before, as in Word (10 cases measured in Word for Windows) |
 | 2026-10-12 | Unequal columns: text after a column break is broken for the column it lands in (NIH's SARP form had a paragraph a word or two wide) |
+| 2026-10-13 | New comments, notes, text boxes and lists in a document whose file used the largest ids (#1338): they take a free id instead of overflowing (a crash) or reusing one already taken (a new list could pick up another's definition); `Document::try_add_part` and `Numbering::try_add_list` report ids running out instead |
 | 2026-10-12 | Space before at the top of a page like Word after page breaks (32 cases measured): a paragraph ending with a page break keeps its mark with it, the next paragraph gets no space before; page break before drops it in Word 2013 mode |
 | 2026-10-12 | Automatic paragraph spacing drops between list items, as in Word (16 cases measured in Word for Windows): bulleted items that ask for automatic space before and after now touch, as in NIH's monitoring plan |
 | 2026-10-12 | Rendering like Word for Windows, found by comparing real .gov documents page by page: text is kerned only where Kerning for fonts asks for it (line breaks now match Word's), and automatic paragraph spacing (`w:beforeAutospacing`/`w:afterAutospacing`, common in pasted web text) is 14 pt, dropped at the document's and cells' edges |
 | 2026-10-12 | Keyboard context menu (#821): Shift+F10 opens the page's right-click menu below the caret; `ui.contextMenu` |
 | 2026-10-12 | The Font list no longer keeps every family it previews in memory (#848): the Font box drew each family's name in its own face by loading the whole family for good, so every trip through the list kept tens of megabytes (1.47 GB after 40 changes on macOS); entries are now drawn from a face read for the preview alone and freed (120 families previewed: +17 MB RSS instead of +411 MB); only fonts actually used load |
+| 2026-10-13 | An empty file opens (#1384): the zero-byte .docx that File Explorer's New › Microsoft Word Document makes opens as a new blank document (the region's paper, the editing language), and Save writes it back to that file instead of asking for a name |
 | 2026-10-12 | Scrolling a document with one very large table stays smooth (#811): pages are fingerprinted for the texture cache once per layout and only when shown (not every page every frame), the markup-area check is cached per revision, and textures far from the view are dropped. The issue's 1,096-page table: ~600 ms → ~2.4 ms idle frames, ~590 ms → ~4.5 ms scroll frames |
+| 2026-10-13 | Paragraph dialog over differently formatted paragraphs (#1346): a field they differ in shows blank (a check box neither on nor off, no direction picked) and OK leaves it as each paragraph has it; OK sends only the fields that changed, as one undo step, instead of giving every paragraph the caret paragraph's formatting in three undo steps |
 | 2026-10-12 | Search (#819): Alt+Q, or Alt then Q, opens the Search box from anywhere with nothing typed into it; queries match every word; `tools.search` for agents |
 | 2026-10-12 | Section breaks (#852): Layout › Breaks with text selected puts the break before the selection and keeps the text, as Word does; it used to delete it, leaving the first section empty |
 | 2026-10-12 | Find, Replace and Go To like Word (#712): Ctrl+F types into the Navigation pane's search, one tabbed Find and Replace dialog, Go To by page (absolute or relative) and bookmark; `edit.findReplace`, `edit.goto` `pageBy` |
@@ -241,6 +285,11 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-11 | Hide White Space (#645): `view.hideWhiteSpace` (View › Show checkbox, or double-click the gap between pages) collapses margins, headers and footers between pages to a thin line in Print Layout; screen only, page count unchanged |
 | 2026-10-11 | Fonts: Palatino Linotype and Book Antiqua fall back to Palatino (macOS) or TeX Gyre Pagella / P052 / URW Palladio (Linux) before generic serif (#670) |
 |---|---|
+| 2026-10-12 | Czech proofing: cs-CZ spelling reads the installed Hunspell dictionary (`hunspell-cs` on Debian/Ubuntu), suggestions use runtime MAP/REP/TRY/KEY tables, generic repeated-word and spacing checks explain in Czech; Review › Language offers Czech/Čeština; the Czech interface writes new documents and opened TXT/Markdown in cs-CZ. Affix headers accept trailing comments. No system dictionary data or Czech hyphenation patterns bundled; parity estimates unchanged |
+| 2026-10-12 | Tables: dragging the border of one selected cell (Select Cell, or a click along its left edge) moves it in that cell's row only, as in Word, like the border of cells selected across (#962) |
+| 2026-10-13 | Korean interface catalog completed: all 2,463 entries translated; the ko-KR system locale and saved language choice select the interface. The UI prefers Korean embedded/system font faces so Hangul renders instead of boxes, and print settings and printer feedback are translated. Korean proofing remains unavailable; macOS Korean IME fixes are still pending (#163, #164) |
+| 2026-10-12 | Word default shortcuts expanded (gap #24): 140 commands bound on macOS (169 combinations), 158 on Linux/Windows (188 combinations). Bound Style Inspector (Shift+F1), Macros (Alt+F8), Strikethrough (Mod+Shift+X), Find Next (Shift+F4), Copy/Paste (Mod+Insert, Shift+Insert), Go Back (Mod+Alt+Z), File Open/Save/Save As/Print (Mod+Alt+F2, Alt+Shift+F2, Alt+F2, Mod+Alt+I), Field navigation (Alt+F1, Alt+Shift+F1), Outline show first line (Alt+Shift+L), Next Footnote (Alt+Shift+>), Link to Previous (Alt+Shift+R), AutoText (Alt+F3), Spelling on Mac (Mod+Alt+L) |
+| 2026-10-13 | Web and Draft Layout now render visible full-resolution raster tiles for exceptionally tall pages rather than downsampling the entire page into one texture; verified with a 440-paragraph headless UI reproduction |
 | 2026-10-12 | Track Changes: Accept All after a tracked deletion from the end of one paragraph into a later one no longer joins the paragraph that follows the range, and Reject All after typing into an empty paragraph keeps that paragraph (#864) |
 | 2026-10-12 | Ctrl+drag copies an object (#1014): holding Ctrl (⌘ on macOS) while dragging a picture, shape or text box leaves the original and drops a copy where you let go (text boxes get their own text); the copy is selected, the clipboard is untouched, one undo step; `arrange.copyTo` |
 | 2026-10-11 | Table border drags like Word's (#711): Ctrl shares a column border's change among the columns right of it (the table keeps its width), the table's left edge moves a left-aligned table's indent (a centred or right-aligned table keeps its alignment, as in Word), a border of cells selected across moves only in their rows, and Alt shows the column widths on the ruler |
@@ -248,6 +297,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | Save Changes prompt answers from the keyboard: Save has focus when it opens; arrow keys and Tab move between Save, Don't Save and Cancel; Enter answers (#861) |
 | 2026-10-12 | Builds with craft-fonts draw simplified-Chinese characters in documents from the bundled Noto Sans CJK SC (it was only used by the interface), so a CJK run gets one face covering it; fixes the FreeBSD job's `east_asian_run_uses_one_face_covering_the_whole_run` failure after #567 |
 | 2026-10-12 | Insert › Picture, drag-and-drop and paste take Windows Metafiles (`.wmf`) and Enhanced Metafiles (`.emf`) at their own frame size (#802) |
+| 2026-10-14 | A picture or icon inserted by a command (`wordcraft-cli run`, MCP, control channel) leaves the caret after it, so the next `text.newParagraph` or `text.insert` no longer deletes it, and two inserted in a row are both kept; Picture Format commands still act on it, and a picture the user inserts or pastes in the app is still selected (#965) |
 | 2026-10-12 | AutoCorrect capitals (#544): Correct TWo INitial CApitals (with exceptions), accidental cAPS LOCK, first letter of table cells; each undoable and switchable |
 | 2026-10-11 | Turkish (`tr`) interface completed (#774): 2,325 entries, every key of the Russian catalog (equation gallery, built-in style names, watermarks, paper sizes, preview tiles); the interface audit checks Turkish too |
 | 2026-10-12 | Navigation headings truncate within the resizable pane, with an ellipsis for long titles and full text on hover (#759) |
@@ -258,6 +308,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-11 | Polish: interface (`pl`, the thirteenth language, every catalog key) and proofing — spelling against the installed Hunspell `pl_PL` dictionary (read at runtime, not bundled) through a new Hunspell-style affix engine, suggestions tuned for Polish, Polish grammar rules with Polish messages, TeX Polish hyphenation patterns (MIT option); proofing language per run (`w:lang`) for squiggles, F7, suggestions and hyphenation, languages without tools left unmarked; Review › Language menu and the status bar's language; a Polish interface writes new documents in Polish |
 | 2026-10-11 | German (`de`) interface (#574): 2,021 translated entries covering the full zh-hans key set, locale and saved-preference tests, bundled-font checks; no German proofing resources |
 | 2026-10-12 | Sorting and table numbers follow the text's language (#836, #837): Table › Sort, Home › Sort, the index (with its letter headings), the bibliography and the Table of Authorities use the language's alphabet (Polish `Łódź` between `Kraków` and `Zakopane`, Swedish `å ä ö` after `z`, German `ä` with `a`); table sort and formulas read `1,5` and `1 250,00` as Polish decimals and `=SUM` writes `5,75` |
+| 2026-10-14 | `.doc` notes, headers and text boxes read their text once (#1319): a story table that steps back no longer has many footnotes, endnotes, headers or text boxes copy the same text into a part each; a story starting inside an earlier one is dropped (a header or footer left empty is linked to the previous section's), so the stories together never hold more than the file's text |
 | 2026-10-11 | `.doc` import keeps pictures and drawings (#551): inline and floating pictures (PNG, JPEG, DIB, EMF, WMF), shapes, lines, groups and text boxes with position and wrap, from [MS-ODRAW] |
 | 2026-10-14 | ODT and `.doc` pictures stay within their byte budget (#1334): an ODT picture entry is inflated once however many frames point at it, and only when the size it declares fits in what is left (one inflating past that uses the budget up); a `.doc` inline picture that can't be read or doesn't fit is no longer decoded and copied again for every anchor on it, and is decoded only within what is left |
 | 2026-10-11 | Tables resize with the mouse (#217): drag a column border (the neighbour makes up the difference; Shift moves one column), a row's bottom border, or the handle past the bottom-right corner to scale the table; a dashed guide while dragging, one undo step per drag; `table.resizeDrag` for agents |
@@ -270,8 +321,11 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-11 | File › Print: page preview, page range (all, current, selected, custom 1-3,5), odd/even, copies and collate go into the printed PDF (`file.printPdf`, `ui.print` params); printer, duplex and pages per sheet are still the system dialog's (#641, stage 1) |
 | 2026-10-11 | A vertically merged table cell (eraser on a horizontal border) lays out, shows and clicks as one cell spanning its rows (#640) |
 | 2026-10-11 | Word XML files (#548): Word XML Document (Flat OPC `.xml`) opens and saves through the DOCX reader and writer; Word 2003 XML opens (styles, lists, tables, sections, notes, comments, pictures, hyperlinks) |
+| 2026-10-14 | Open DrawingML freeform paths draw `a:tailEnd` at the final path segment |
 | 2026-10-12 | File › Print selects a system printer, copies, duplex and grayscale, submits PDF jobs through craft-print on a worker and shows spooler errors; browser printing and PDF export remain available |
 | 2026-10-11 | Font fallback indexes which characters each installed font maps, reading each font file once (#605): text in a script no installed font covers no longer re-reads every system font per distinct character (200 such characters: 13 s → 0.2 s) |
+| 2026-10-13 | Markdown import of text full of backtick runs that never close is linear (#1336): every code span and link bracket over them searched the rest of the text for a closing run (2 MB in brackets: 17.8 s → 0.06 s) |
+| 2026-10-13 | Markdown import keeps every link in a paragraph (#1452): a `[` nothing closes, bracketed text that is not a link and each link used up the bracket scans' look-ahead budget as if they had read the rest of the paragraph, so later links were plain text; a scan now costs what it reads, and brackets it has passed are looked up |
 | 2026-10-11 | Find and Replace special characters (`^p`, `^t`, `^#`, `^&` …) and Use wildcards (ranges, counts, word anchors, groups with `\1` in Replace); `^p` finds and splits paragraphs; Special ▾ menu and search options in the dialog (#543) |
 | 2026-10-11 | Typing parity (#546): `+---+` Enter makes a table, `> ` `-> ` `=> ` arrow bullets, smileys inside words (`ok:)`), Undo right after a border line brings the characters back |
 | 2026-10-11 | Windows: DirectX 12 shaders compile with FXC, built into Windows, so the app no longer quits at launch with "Parent device is lost" when no matching `dxcompiler.dll` + `dxil.dll` pair is around (#603) |
@@ -279,7 +333,9 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-11 | Outline view (#493): Outlining tab, outline symbols and indents, collapse/expand, Show Level, first line only, plain text; catalog 428/450 → 441/463 (95.2%) |
 | 2026-10-11 | Vertical sections (#491): Layout › Text Direction turns the section (or the cell or text box the caret is in); lines run top to bottom, right to left, ideographs upright; `w:textDirection` in `w:sectPr` read and written |
 | 2026-10-11 | File › Options in Word's panes (#485): General, Display, Proofing, Save, Language, Accessibility, Advanced, Agents; initials, individual formatting marks, spelling ignore options, custom dictionary, overtype, typing replaces selection, measurement units, recent-documents count, print options; `file.options` reads and sets them headlessly |
+| 2026-10-14 | Word XML Document (Flat OPC) reading is bounded everywhere in the file (#1353): nesting and elements are capped as the XML tree reader caps a part's, every child of the package and every part's data count against the part count and size limits (a repeated part name too), and data is checked before it's copied; base64 written as CDATA or with character references reads as the same bytes, and an entity in it is an error instead of bytes gone missing |
 | 2026-10-11 | Right-click Wrap Text submenu on pictures, shapes and text boxes: wrapping styles, Move with Text / Fix Position on Page (#513) |
+| 2026-10-14 | Text boxes in tables nested deeper than 16 survive edits (#1339): the paragraph walk behind text box pruning, copy and paste, reading order, drawing ids and note conversion goes through tables however deep they nest instead of stopping 16 tables down, so an unrelated edit no longer drops the text of a box shown only from deeper, and a copied deep table takes its boxes along |
 | 2026-10-11 | Caret animation: keys and typing glide the caret to its new place in 100 ms along the curve measured from Word for Windows, and the blink fades; clicks and scripted moves don't glide. File › Options › Advanced › Animation turns it off, kept between runs; `ui.caretAnimation` for agents |
 | 2026-10-11 | Paragraph dialog options (#512): mirror indents (`w:mirrorIndents`, laid out on even pages), same-style spacing, suppress line numbers, don't hyphenate |
 | 2026-10-11 | Screen readers can read the document canvas (#488): paragraphs, headings, lists, tables, links, pictures and the caret exposed through AccessKit |
@@ -315,7 +371,9 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | Native saves use exclusively created sibling temporary files, synchronize before replacement and clean up on failure; existing temporary-name files/links and original files on failed saves are protected. Synthetic CLI and focused tests on macOS; no new Word parity or readiness claim. |
 | 2026-10-11 | Field codes like Word's field keys (#339): show codes (Alt+F9, Shift+F9), edit, unlink, lock and step through fields |
 | 2026-10-11 | Word's common keyboard shortcuts (#330): 101 → 125 of ~250 |
+| 2026-10-13 | Swedish (`sv`) interface: 2,504 catalog entries (every key of the reference catalog, the equation gallery, everything the interface audit finds, and 44 newer strings no catalog had yet, among them the native print settings), `sv-SE`/`sv-FI` system locales and a saved language choice; locale, catalog and bundled-font tests; AI-assisted, terminology and the running app reviewed by a native speaker; no Swedish proofing resources |
 | 2026-10-12 | Bulgarian (`bg`) interface: 2,419 catalog entries (every key of the reference catalog, the equation gallery and everything the interface audit finds), `bg-BG` system locales and a saved language choice; locale, catalog and bundled-font tests; no Bulgarian proofing resources |
+| 2026-10-13 | Croatian (`hr`) interface: 2,507 catalog entries (every key of the reference catalog, built-in style names and the equation gallery), `hr-*` system locales and a saved language choice; locale, catalog and bundled-font tests; no Croatian proofing yet |
 | 2026-10-11 | Hungarian (`hu`) interface: all 2,419 catalog entries, built-in style names translated, `hu-HU` system locales and a saved language choice; locale, catalog and bundled-font tests; no Hungarian proofing resources |
 | 2026-10-11 | Turkish (`tr`) interface: all 1,307 catalog entries, `tr-TR`/`tr-CY` system locales and a saved language choice; command search keeps Turkish dotted and dotless I apart (`italik` finds İtalik); locale, catalog, search and bundled-font tests; no Turkish proofing resources |
 | 2026-10-11 | Italian (`it`) interface (#594): 2,399 entries, feature names as Italian Word users know them, locale and saved-preference tests, bundled-font checks; no Italian proofing resources |
@@ -346,6 +404,26 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-14 | trivial | Progress log: row table border exceptions |
+| 2026-10-12 | minor | Czech proofing review: short-word splits rank after deletion, NOSUGGEST excludes suggestions while accepting typed forms, affix comments apply only to headers, ratios keep spaces and repeated-word messages use Czech quotes; synthetic engine end-to-end and latency checks |
+| 2026-10-12 | minor | Czech spelling from the installed Hunspell dictionary, runtime-table suggestions and generic checks; Czech interface writes cs-CZ documents; no Czech hyphenation patterns bundled; estimates unchanged |
+| 2026-10-12 | trivial | Progress log: one selected cell's border drags in its row only (#962) |
+| 2026-10-12 | minor | Progress log: Word default shortcuts expanded to 140 commands on macOS (169 combinations) and 158 on Linux/Windows (188 combinations), addressing gap #24 |
+| 2026-10-13 | trivial | Web/Draft long-page blur fixed with visible full-resolution raster tiles |
+| 2026-10-14 | trivial | Progress log: VML freeforms read and kept on save |
+| 2026-10-14 | trivial | Progress log: consistent preferred cell widths |
+| 2026-10-14 | trivial | Field instructions spanning paragraphs no longer add blank lines during pagination; empty result paragraphs still take a line. |
+| 2026-10-14 | trivial | A list paragraph containing only a page break has no visible label; it still advances the list counter. Ordinary empty list items keep their label. |
+| 2026-10-14 | trivial | Floating-table overlap checks use visible line content; empty line-break lines no longer move a table |
+| 2026-10-14 | trivial | Progress log: deleting a comment leaves no dangling anchors or replies (#1345) |
+| 2026-10-14 | minor | Legacy DOC DIB conversion byte limits only; related #1334/#1554, stage and readiness estimates unchanged |
+| 2026-10-13 | trivial | Progress log: justified vertical page alignment (#1320) |
+| 2026-10-14 | trivial | Progress log: file names that aren't valid Unicode (#1440) |
+| 2026-10-13 | trivial | Behind Text pictures and shapes drag over overlapping text in the body and headers, selected or not, while ordinary clicks keep editing text; In Front of Text drag covered too |
+| 2026-10-13 | trivial | Progress log: the watermark written to DOCX (#1290) |
+| 2026-10-13 | trivial | Progress log: Word's text watermark read from DOCX (#1290) |
+| 2026-10-13 | trivial | Progress log: Insert Hyperlink › Place in This Document (#1234) |
+| 2026-10-13 | trivial | Progress log: Insert › Bookmark deletes and goes to bookmarks (#1236) |
 | 2026-10-12 | trivial | Progress log: an option to show only the selected text's comment (#1055) |
 | 2026-10-12 | trivial | Progress log: clicking in a comment's text moves its caret (#1013) |
 | 2026-10-12 | trivial | Progress log: a press on the ribbon no longer scrolls the document (#1019) |
@@ -354,6 +432,16 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-13 | trivial | Progress log: rounded rectangle corners (#1476) |
 | 2026-10-13 | trivial | Progress log: PAGEREF in headers and footers (#1477) |
 | 2026-10-13 | trivial | Replace All checks content-control locks before editing; a refused batch leaves the document and undo history unchanged; existing deletion-lock rules reused, with tracked/untracked regression coverage |
+| 2026-10-14 | trivial | Progress log: print-area strings translated in every catalog |
+| 2026-10-14 | trivial | Progress log: All Caps and Small Caps draw ß as SS (#1581) |
+| 2026-10-13 | trivial | Progress log: Windows Magnifier follows the caret onto a new line (#1119) |
+| 2026-10-13 | trivial | Progress log: a window too big for its screen shrinks to fit (#1215) |
+| 2026-10-14 | trivial | Progress log: Page Setup sections are validated (#1582) |
+| 2026-10-13 | trivial | Progress log: `--control` checks its port (#1426) |
+| 2026-10-14 | trivial | Progress log: words beside a floating picture are no longer split (#1376) |
+| 2026-10-14 | trivial | Progress log: VML preset shapes (#1377) |
+| 2026-10-14 | trivial | Progress log: Russian letter list labels |
+| 2026-10-14 | trivial | Progress log: the save prompt takes the keyboard from the page (#1597) |
 | 2026-10-12 | trivial | Progress log: VML text box margins, fit and alignment; hidden drawings |
 | 2026-10-13 | trivial | Progress log: comment balloon buttons work, empty comments can be deleted (#1085) |
 | 2026-10-12 | trivial | Progress log: sample-text formulas on Enter (#1067) |
@@ -389,10 +477,14 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | trivial | Progress log: web picture paste respects the edit target (#1349) |
 | 2026-10-14 | trivial | Progress log: table deletes, Change Case and Unlink Fields respect Track Changes and locked content controls (#1329) |
 | 2026-10-14 | trivial | Progress log: Ink to Shape recognises single-stroke arrows |
+| 2026-10-13 | trivial | Progress log: Styles gallery fallback for DOCX files without qFormat (#1238) |
+| 2026-10-13 | trivial | Progress log: crop handles on the canvas |
+| 2026-10-13 | trivial | Progress log: cell size boxes act on the whole selection (#1242) |
 | 2026-10-12 | trivial | Progress log: Accept All and Reject All keep the right paragraph marks (#864) |
 | 2026-10-12 | trivial | Progress log: `--help` for the app and every CLI subcommand (#968) |
 | 2026-10-12 | trivial | Progress log: Down and Up no longer skip a table (#1007) |
 | 2026-10-13 | trivial | Progress log: equation pictures keep the theme colours on Windows (#1002) |
+| 2026-10-12 | trivial | Progress log: table style editor (#714) |
 | 2026-10-11 | trivial | Progress log: Ctrl, Alt, left-edge and selected-cells table border drags (#711) |
 | 2026-10-11 | trivial | Progress log: table markers on the rulers (#700) |
 | 2026-10-11 | trivial | Progress log: the table context menu |
@@ -408,9 +500,12 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | trivial | Font list previews no longer grow memory (#848) |
 | 2026-10-12 | trivial | Progress log: section break keeps the selected text (#852) |
 | 2026-10-12 | trivial | Progress log: save prompt from the keyboard (#861) |
+| 2026-10-13 | trivial | Progress log: an empty .docx opens and saves back to itself (#1384) |
 | 2026-10-12 | trivial | Progress log: craft-fonts Simplified Chinese in documents |
 | 2026-10-12 | trivial | Progress log: symbol-font text drawn as Unicode symbols (#776) |
+| 2026-10-13 | trivial | Progress log: the Paragraph dialog leaves mixed formatting alone (#1346) |
 | 2026-10-12 | trivial | Progress log: WMF and EMF pictures can be inserted (#802) |
+| 2026-10-14 | trivial | Progress log: a picture inserted by a command survives the next typing (#965) |
 | 2026-10-11 | trivial | Progress log and shipped languages: Turkish interface completed, 2,325 entries (#774) |
 | 2026-10-12 | trivial | Progress log: Navigation heading truncation (#759) |
 | 2026-10-11 | trivial | Progress log: Reading Mode implementation |
@@ -427,6 +522,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-11 | trivial | Progress log: built-in file browser when the system file dialog is unavailable (#576) |
 | 2026-10-12 | trivial | Progress log: large-table scrolling (#811) |
 | 2026-10-11 | trivial | Progress log: security review fixes (temp files, exported link schemes) |
+| 2026-10-13 | trivial | Progress log: every distinct format in a paragraph keeps its own layout style (#1340) |
 | 2026-10-11 | trivial | Progress log: Find and Replace special characters and wildcards (#543) |
 | 2026-10-12 | minor | Desktop File > Print now discovers printers and submits PDF jobs through pinned craft-print with printer choice, copies, collation, duplex and grayscale; the upstream preview, ranges, parity and Print Markup remain available, along with browser printing and PDF export. Remaining print parity includes driver-specific tray/options and pages-per-sheet UI; physical printer fidelity needs hardware validation. |
 | 2026-10-11 | trivial | Progress log: Windows DX12 shaders compiled with FXC (#603) |
@@ -442,6 +538,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | trivial | Progress log: selection bar in the left margin (#856) |
 | 2026-10-11 | trivial | Progress log: content controls (#381) |
 | 2026-10-11 | trivial | Progress log: Insert › Chart (#409); catalog 408/439 (92.9%) |
+| 2026-10-13 | trivial | Progress log: free part, list and comment ids after a file's largest ones (#1338) |
 | 2026-10-11 | trivial | Progress log: Line Numbers, Hyphenation, Language, Envelopes and Labels dialogs (#407) |
 | 2026-10-11 | trivial | Progress log: Alt Text pane, decorative objects, deeper accessibility checker (#386) |
 | 2026-10-11 | trivial | Progress log: Draw lasso, Add Pen, Ink to Shape, Ink Replay (#395); catalog 406/434 |
@@ -451,6 +548,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-11 | trivial | Quick Access Toolbar KeyTips and persisted enable/disable setting (#620) |
 | 2026-10-11 | trivial | Progress log: mail-merge recipients from .xlsx/.xlsm/.ods (#334) |
 | 2026-10-11 | trivial | Insert › Icons landed (#309): catalog 402/434 → 403/434 (92.9%) |
+| 2026-10-13 | trivial | Progress log: Markdown backtick runs read in linear time (#1336) |
+| 2026-10-13 | trivial | Progress log: Markdown brackets no longer turn later links into text (#1452) |
 | 2026-10-11 | trivial | Enclose Characters (#297): catalog 403/434 (92.9%) |
 | 2026-10-12 | minor | Progress log: opaque custom XML store preservation, with synthetic package regressions and explicit limits |
 | 2026-10-12 | minor | Preserve imported TOC ranges and retain #538 refresh/undo/save coverage on current main; readiness unchanged |
@@ -460,9 +559,12 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-12 | trivial | Native saves protect existing temporary-name entries and originals on pre-replacement failure; synthetic macOS evidence, explicit durability/platform limits; readiness unchanged |
 | 2026-10-11 | trivial | Word's common keyboard shortcuts (#330): 125 of ~250 |
 | 2026-10-11 | trivial | Collapsed duplicate rows left by parallel merges |
+| 2026-10-13 | trivial | Swedish interface (`sv`): progress log and shipped languages |
 | 2026-10-12 | trivial | Bulgarian interface (`bg`): progress log and shipped languages |
+| 2026-10-13 | trivial | Croatian interface (`hr`): progress log and shipped languages |
 | 2026-10-11 | trivial | Hungarian interface (`hu`): progress log and shipped languages |
 | 2026-10-11 | trivial | Turkish interface (`tr`): progress log and shipped languages |
+| 2026-10-14 | trivial | Progress log: `.doc` notes, headers and text boxes read their text once (#1319) |
 | 2026-10-12 | minor | Native drawing-level ink and its picture fallback survive DOCX edits and repeated saves; adapted to the current graphic writer; rendering and editing InkML remain missing |
 | 2026-10-12 | minor | List-label automatic/AtLeast line-height inflation corrected; gap #4 remains open and readiness unchanged |
 | 2026-10-12 | minor | Local desktop recovery: unsaved drafts and edits are snapshotted in the profile; File › Recover restores an unsaved copy or confirms discard. Full model storage includes media and opaque parts. Password sessions skip plaintext snapshots. See [recovery.md](docs/recovery.md); stability estimates remain unchanged. |
@@ -474,8 +576,10 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 | 2026-10-10 | trivial | Draw Table and Eraser (#303): catalog 393/431 (91.2%) |
 | 2026-10-10 | trivial | Progress log: charts, SmartArt and OLE objects kept on DOCX save (#319) |
 | 2026-10-10 | trivial | Progress log: contour wrap (#354) |
+| 2026-10-14 | trivial | Progress log: text boxes in deeply nested tables kept through edits (#1339) |
 | 2026-10-10 | trivial | Progress log: free rotation and flips (#332) |
 | 2026-10-10 | trivial | Progress log: Windows OpenGL fallback without a DirectX 12 driver (#316) |
+| 2026-10-14 | trivial | Progress log: Flat OPC reading bounded everywhere in the file, CDATA base64 read (#1353) |
 | 2026-10-10 | minor | Password-protected .docx (#281): files encrypted with a password (agile encryption) open and save; File › Info › Encrypt with Password |
 | 2026-10-10 | minor | Relanded clipboard pane, table styles editor, Manage Styles, Asian typography (kinsoku), Group/Ungroup and Shape Effects (#264 #263 #270 #271 #267 #280): catalog 390/431 (90.5%) |
 | 2026-10-10 | minor | Polish interface and proofing landed: Localization 25% → 27%, Proofing 35% → 40% |

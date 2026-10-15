@@ -448,7 +448,16 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                 }
                 // The language at the caret; a click sets the proofing language (Review › Language).
                 let lang = crate::ribbon::caret_language(app);
-                let resp = st(ui, &lang).on_hover_text(tl!("Language"));
+                let missing = crate::ribbon::caret_missing_dictionary(app);
+                let shown = if missing.is_some() { crate::i18n::fmt(tl!("{language} (no dictionary)"), &[("language", &lang)]) } else { lang.clone() };
+                let tip = match missing {
+                    Some(name) => crate::i18n::fmt(
+                        tl!("No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations."),
+                        &[("language", &lang), ("name", name)],
+                    ),
+                    None => tl!("Language").to_string(),
+                };
+                let resp = st(ui, &shown).on_hover_text(tip);
                 egui::Popup::menu(&resp).show(|ui| {
                     ui.set_min_width(200.0);
                     crate::ribbon::language_menu(ui, app);

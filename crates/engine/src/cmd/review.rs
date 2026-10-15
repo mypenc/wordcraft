@@ -1,5 +1,7 @@
 //! Review tab: comments, track changes, word count, spelling (via the proofing hook).
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde_json::{Value, json};
 use wordcraft_doc::para::InlineObject;
 use wordcraft_doc::{Comment, Paragraph, PartKind, Pos, StoryRef, para_block};
@@ -9,7 +11,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("review.newComment", "New Comment", "Review › Comments", new_comment).key("Mod+Alt+M").params(r#"{"text": string}"#),
+        CommandSpec::new("review.newComment", "New Comment", "Review › Comments", new_comment).key(super::mac_or("Mod+Alt+A / Mod+Alt+M", "Mod+Alt+M")).params(r#"{"text": string}"#),
         CommandSpec::new("review.reply", "Reply", "Review › Comments", reply).params(r#"{"id": n, "text": string}"#),
         CommandSpec::new("review.editComment", "Edit Comment", "Review › Comments", edit_comment).params(r#"{"id": n, "text": string}"#),
         CommandSpec::new("review.deleteComment", "Delete", "Review › Comments", delete_comment).params(r#"{"id"?: n, "all"?: bool}"#),
@@ -52,7 +54,9 @@ pub fn specs() -> Vec<CommandSpec> {
             .key(super::non_mac("Mod+Shift+G"))
             .pure(),
         CommandSpec::new("review.changes", "Reviewing Pane", "Review › Tracking", list_changes).pure(),
-        CommandSpec::new("review.spelling", "Spelling & Grammar", "Review › Proofing", next_issue).key("F7 / Alt+F7").pure(),
+        CommandSpec::new("review.spelling", "Spelling & Grammar", "Review › Proofing", next_issue)
+            .key(super::mac_or("F7 / Alt+F7 / Mod+Alt+L", "F7 / Alt+F7"))
+            .pure(),
         CommandSpec::new("review.issues", "Proofing Issues", "Review › Proofing", all_issues).pure(),
         CommandSpec::new("review.suggestions", "Spelling Suggestions", "Review › Proofing", suggestions).params(r#"{"pos"?: Pos}"#).pure(),
         CommandSpec::new("review.addToDictionary", "Add to Dictionary", "Review › Proofing", |s, v| {
@@ -127,8 +131,8 @@ fn new_comment(s: &mut Session, v: &Value) -> CmdResult {
     } else {
         (a, b)
     };
-    let part = s.doc.add_part(PartKind::Comment, vec![para_block(Paragraph::with_text(&text, Default::default()))]);
-    let id = s.doc.comments.keys().next_back().map(|k| k + 1).unwrap_or(0);
+    let part = s.doc.try_add_part(PartKind::Comment, vec![para_block(Paragraph::with_text(&text, Default::default()))])?;
+    let id = comment_id(s)?;
     let initials = s.user_initials();
     s.doc
         .comments
@@ -146,14 +150,20 @@ fn reply(s: &mut Session, v: &Value) -> CmdResult {
         return Err(CmdError::Params("no such comment".into()));
     }
     let text = p::req_str(v, "text")?;
-    let part = s.doc.add_part(PartKind::Comment, vec![para_block(Paragraph::with_text(text, Default::default()))]);
-    let id = s.doc.comments.keys().next_back().map(|k| k + 1).unwrap_or(0);
+    let part = s.doc.try_add_part(PartKind::Comment, vec![para_block(Paragraph::with_text(text, Default::default()))])?;
+    let id = comment_id(s)?;
     let initials = s.user_initials();
     s.doc.comments.insert(
         id,
         Comment { author: s.author.clone(), initials, date: now_iso(), parent: Some(parent), resolved: false, part, ..Default::default() },
     );
     Ok(json!({"id": id}))
+}
+
+/// An id no comment has: one past the largest, or the lowest free one once a file used `u32::MAX`.
+fn comment_id(s: &Session) -> Result<u32, CmdError> {
+    let ids = &s.doc.comments;
+    wordcraft_doc::free_id(ids.keys().next_back().copied(), ids.keys().copied(), 0).ok_or_else(|| CmdError::Failed("no free comment id".into()))
 }
 
 /// Replace a comment's (or reply's) text; each line becomes a paragraph.
@@ -196,8 +206,11 @@ fn comment_at_caret(s: &Session) -> Option<u32> {
     })
 }
 
-fn remove_anchors(s: &mut Session, ids: &[u32]) -> Result<(), CmdError> {
-    for story in [StoryRef::Body] {
+/// Removes the comments' anchors from every story: the body, headers, footers, notes and text
+/// boxes (#1345).
+fn remove_anchors(s: &mut Session, ids: &BTreeSet<u32>) -> Result<(), CmdError> {
+    let stories: Vec<StoryRef> = std::iter::once(StoryRef::Body).chain(s.doc.parts.keys().map(|k| StoryRef::Part(*k))).collect();
+    for story in stories {
         for path in s.doc.para_paths(story) {
             let offs: Vec<usize> = s
                 .doc
@@ -221,17 +234,37 @@ fn remove_anchors(s: &mut Session, ids: &[u32]) -> Result<(), CmdError> {
     Ok(())
 }
 
+/// The comment and every reply below it, replies to replies included (#1345). A parent cycle
+/// from a hostile file ends the walk instead of looping.
+fn thread_of(s: &Session, id: u32) -> Vec<u32> {
+    let mut children: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+    for (k, c) in &s.doc.comments {
+        if let Some(parent) = c.parent {
+            children.entry(parent).or_default().push(*k);
+        }
+    }
+    let mut seen = BTreeSet::from([id]);
+    let mut ids = vec![id];
+    let mut i = 0;
+    while let Some(&at) = ids.get(i) {
+        for k in children.get(&at).into_iter().flatten() {
+            if seen.insert(*k) {
+                ids.push(*k);
+            }
+        }
+        i += 1;
+    }
+    ids
+}
+
 fn delete_comment(s: &mut Session, v: &Value) -> CmdResult {
     let ids: Vec<u32> = if p::bool(v, "all").unwrap_or(false) {
         s.doc.comments.keys().copied().collect()
     } else {
         let id = p::u64(v, "id").map(|x| x as u32).or_else(|| comment_at_caret(s)).ok_or_else(|| CmdError::Params("no comment here".into()))?;
-        // The comment and its replies.
-        let mut v = vec![id];
-        v.extend(s.doc.comments.iter().filter(|(_, c)| c.parent == Some(id)).map(|(k, _)| *k));
-        v
+        thread_of(s, id)
     };
-    remove_anchors(s, &ids)?;
+    remove_anchors(s, &ids.iter().copied().collect())?;
     for id in &ids {
         if let Some(c) = s.doc.comments.remove(id) {
             s.doc.parts.remove(&c.part);
@@ -1349,6 +1382,103 @@ mod tests {
         let p = body_para(&s);
         assert_eq!((p.props.align, p.props.fmt_change.is_none()), (Some(wordcraft_doc::props::Align::Center), true));
         assert!(s.run("review.changes", &json!({})).unwrap().as_array().unwrap().is_empty());
+    }
+
+    /// Comment anchors left in any story (the body, headers, footers, notes and text boxes), with
+    /// the story each sits in.
+    fn anchors(s: &Session) -> Vec<(wordcraft_doc::StoryRef, u32)> {
+        use wordcraft_doc::StoryRef;
+        use wordcraft_doc::para::InlineObject;
+        let stories = std::iter::once(StoryRef::Body).chain(s.doc.parts.keys().map(|k| StoryRef::Part(*k)));
+        let mut ids = Vec::new();
+        for story in stories {
+            for path in s.doc.para_paths(story) {
+                let p = s.doc.para(story, &path).unwrap();
+                for o in p.object_offsets() {
+                    if let Some(InlineObject::CommentStart { id } | InlineObject::CommentEnd { id }) = p.object_at(o) {
+                        ids.push((story, *id));
+                    }
+                }
+            }
+        }
+        ids
+    }
+
+    /// #1345: deleting a comment anchored in a header removes its anchors there, not just in the
+    /// body; Undo brings the comment and its anchors back.
+    #[test]
+    fn deleting_a_header_comment_removes_its_anchors() {
+        let mut s = Session::new(Document::new());
+        s.view.proofing = false;
+        s.run("document.setText", &json!({"text": "Body text"})).unwrap();
+        let hdr = s.run("insert.header", &json!({"text": "Header text"})).unwrap()["story"].as_u64().unwrap() as u32;
+        s.run("select.all", &json!({})).unwrap();
+        let id = s.run("review.newComment", &json!({"text": "in the header"})).unwrap()["id"].as_u64().unwrap() as u32;
+        let in_header = vec![(wordcraft_doc::StoryRef::Part(hdr), id); 2];
+        assert_eq!(anchors(&s), in_header, "both anchors sit in the header");
+        s.run("review.deleteComment", &json!({"id": id})).unwrap();
+        assert!(anchors(&s).is_empty(), "no anchor points at the deleted comment");
+        assert!(s.doc.comments.is_empty());
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(anchors(&s), in_header);
+        assert!(s.doc.comments.contains_key(&id));
+    }
+
+    /// #1345: deleting a comment deletes the whole thread below it, replies to replies included,
+    /// with their text parts; Undo restores all of them.
+    #[test]
+    fn deleting_a_comment_deletes_replies_to_replies() {
+        let mut s = Session::new(Document::new());
+        s.view.proofing = false;
+        s.run("document.setText", &json!({"text": "hello world"})).unwrap();
+        s.run("select.range", &json!({"anchor": {"block": 0, "off": 0}, "focus": {"block": 0, "off": 5}})).unwrap();
+        let root = s.run("review.newComment", &json!({"text": "root"})).unwrap()["id"].as_u64().unwrap();
+        let reply = s.run("review.reply", &json!({"id": root, "text": "reply"})).unwrap()["id"].as_u64().unwrap();
+        let nested = s.run("review.reply", &json!({"id": reply, "text": "reply to reply"})).unwrap()["id"].as_u64().unwrap();
+        let parts = |s: &Session| s.doc.comments.values().map(|c| c.part).collect::<Vec<_>>();
+        let before = parts(&s);
+        let deleted = s.run("review.deleteComment", &json!({"id": root})).unwrap();
+        assert_eq!(deleted["deleted"], json!([root, reply, nested]));
+        assert!(s.doc.comments.is_empty(), "no reply is left without its parent: {:?}", s.doc.comments);
+        assert!(before.iter().all(|p| !s.doc.parts.contains_key(p)), "the comments' text parts are gone");
+        assert!(anchors(&s).is_empty());
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.doc.comments.keys().map(|k| u64::from(*k)).collect::<Vec<_>>(), vec![root, reply, nested]);
+        assert_eq!(parts(&s), before);
+        assert_eq!(anchors(&s).len(), 2);
+    }
+
+    /// A parent cycle (possible in a hostile file) doesn't hang Delete; both comments go.
+    #[test]
+    fn deleting_a_comment_in_a_parent_cycle_ends() {
+        let mut s = Session::new(Document::new());
+        s.view.proofing = false;
+        s.run("document.setText", &json!({"text": "hello"})).unwrap();
+        s.run("select.all", &json!({})).unwrap();
+        let a = s.run("review.newComment", &json!({"text": "a"})).unwrap()["id"].as_u64().unwrap() as u32;
+        let b = s.run("review.reply", &json!({"id": a, "text": "b"})).unwrap()["id"].as_u64().unwrap() as u32;
+        s.doc.comments.get_mut(&a).unwrap().parent = Some(b);
+        s.run("review.deleteComment", &json!({"id": a})).unwrap();
+        assert!(s.doc.comments.is_empty());
+    }
+
+    /// A very long reply chain (as a hostile file could hold) is deleted in one pass over the
+    /// comments, not one pass per reply: 50,000 replies would otherwise freeze the app.
+    #[test]
+    fn deleting_a_long_reply_chain_stays_fast() {
+        let mut s = Session::new(Document::new());
+        s.view.proofing = false;
+        s.run("document.setText", &json!({"text": "hello"})).unwrap();
+        s.run("select.all", &json!({})).unwrap();
+        let root = s.run("review.newComment", &json!({"text": "root"})).unwrap()["id"].as_u64().unwrap() as u32;
+        let template = s.doc.comments.get(&root).unwrap().clone();
+        for k in 1..=50_000u32 {
+            s.doc.comments.insert(root + k, wordcraft_doc::Comment { parent: Some(root + k - 1), ..template.clone() });
+        }
+        let started = std::time::Instant::now();
+        s.run("review.deleteComment", &json!({"id": root})).unwrap();
+        assert!(s.doc.comments.is_empty());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5), "took {:?}", started.elapsed());
     }
 
     #[test]

@@ -67,8 +67,8 @@ pub(crate) fn fill(app: &mut WordApp, id: &str, params: &mut Value) -> Option<Re
     None
 }
 
-/// Put a copy on the system clipboard: its HTML beside the text when the copy has some (an
-/// equation as MathML, #816) and the host can set it, else the text through egui. egui sets its
+/// Put a copy on the system clipboard: its HTML beside the text (the formatting, #1523, and
+/// equations as MathML, #816) when the host can set it, else the text through egui. egui sets its
 /// text at the end of the frame, which would replace the HTML, so only one of them runs.
 pub(crate) fn put(app: &WordApp, ctx: &egui::Context, text: &str, html: &str) {
     if text.is_empty() {
@@ -263,10 +263,12 @@ mod tests {
         let got_now = got.borrow().clone();
         assert_eq!(got_now.len(), 1);
         assert!(got_now[0].0.contains("<math") && got_now[0].1.contains("y=2x_s"), "{got_now:?}");
-        // Plain text needs no HTML.
+        // Text without an equation gets HTML too, so other programs keep its formatting (#1523).
         a.run("select.range", json!({"anchor": {"block": 0, "off": 0}, "focus": {"block": 0, "off": 5}})).unwrap();
         let r = a.run("edit.copy", json!({})).unwrap();
         put_result(&a, &ctx, &r);
-        assert_eq!(got.borrow().len(), 1);
+        let got_now = got.borrow().clone();
+        assert_eq!(got_now.len(), 2);
+        assert!(got_now[1].0.contains("Speed") && !got_now[1].0.contains("<math") && got_now[1].1 == "Speed", "{got_now:?}");
     }
 }

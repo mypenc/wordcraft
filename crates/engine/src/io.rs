@@ -30,6 +30,11 @@ pub const OPEN_EXTS: &[&str] = &[
 /// Formats WordCraft saves (Save As).
 pub const SAVE_EXTS: &[&str] = &["docx", "docm", "dotx", "dotm", "pdf", "txt", "md", "html", "rtf", "odt", "tex", "png", "json", "xml"];
 
+/// Magic number for ZIP package signatures (used by .docx/.docm/.dotx/.dotm).
+const ZIP_SIG: &[u8] = b"PK\x03\x04";
+/// Magic number for OLE compound document signatures (used by .doc/.dot).
+const OLE_SIG: &[u8] = &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+
 /// The extension of a file name or path, lower-case; empty when the file name has none (a dot
 /// in a folder name doesn't count).
 fn ext_of(name: &str) -> String {
@@ -92,9 +97,31 @@ pub fn wrong_password(err: &str) -> bool {
     err.contains(wordcraft_docx::WRONG_PASSWORD)
 }
 
+/// Is the file at `path` empty, zero bytes long? File Explorer's New › Microsoft Word Document
+/// makes one, and `file.open` opens it as a new blank document (#1384). False for a file that
+/// can't be read: opening it says why.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn is_empty_file(path: &std::path::Path) -> bool {
+    crate::file_access::check_read(&path.to_string_lossy()).is_ok() && std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() == 0)
+}
+
+/// [`is_empty_file`]: on the web files come through the browser, never by path.
+#[cfg(target_arch = "wasm32")]
+pub fn is_empty_file(_path: &std::path::Path) -> bool {
+    false
+}
+
 /// Can files with this extension be saved with a password (Word's packages)?
 pub fn can_encrypt(name: &str) -> bool {
     is_word_package(&ext_of(name))
+}
+
+/// Finish a document just read from a file: never leave it empty, and bring its unlocked
+/// `DATE`/`TIME` fields up to now the way Word does on open (see
+/// [`crate::cmd::references::refresh_date_fields`]).
+fn opened(doc: &mut Document) {
+    doc.ensure_nonempty();
+    crate::cmd::references::refresh_date_fields(doc);
 }
 
 /// Parse a document from bytes; `name` gives the format by extension.
@@ -155,7 +182,7 @@ fn read_bytes(name: &str, bytes: &[u8], password: Option<&str>, page: &wordcraft
     let ext = ext_of(name);
     if matches!(ext.as_str(), "docx" | "docm" | "dotx" | "dotm" | "doc" | "dot") && wordcraft_docx::is_encrypted(bytes) {
         let mut doc = wordcraft_docx::read_with_password(bytes, password).map_err(|e| e.to_string())?;
-        doc.ensure_nonempty();
+        opened(&mut doc);
         return Ok((doc, true));
     }
     if ext.is_empty() || signature_contradicts(&ext, bytes) {
@@ -168,14 +195,18 @@ fn read_bytes(name: &str, bytes: &[u8], password: Option<&str>, page: &wordcraft
             return Ok((doc, encrypted));
         }
         // Plain text goes through the formats importer: BOMs, unmarked UTF-16, Windows-1252.
-        "txt" | "text" | "" => wordcraft_formats::txt::import_on(bytes, page),
-        "json" => serde_json::from_slice::<Document>(bytes).map_err(|e| format!("{name}: {e}"))?,
+        "txt" | "text" => wordcraft_formats::txt::import_on(bytes, page),
+        "json" => {
+            let mut d = serde_json::from_slice::<Document>(bytes).map_err(|e| format!("{name}: {e}"))?;
+            d.normalize_runs();
+            d
+        }
         other => match crate::io_ext::open(other, bytes, page) {
             Some(r) => r?,
             None => return open_by_content(name, other, bytes, password, page),
         },
     };
-    doc.ensure_nonempty();
+    opened(&mut doc);
     Ok((doc, false))
 }
 
@@ -221,11 +252,9 @@ pub(crate) fn fit_pictures(doc: &mut Document) {
 /// documents), a `.docx` package renamed `.doc` or a Word 97-2003 file renamed `.docx`: Word opens
 /// each by what it holds, so they go through [`open_by_content`] instead of failing.
 fn signature_contradicts(ext: &str, bytes: &[u8]) -> bool {
-    const ZIP: &[u8] = b"PK\x03\x04";
-    const OLE: &[u8] = &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-    let held = if bytes.starts_with(ZIP) {
+    let held = if bytes.starts_with(ZIP_SIG) {
         "zip"
-    } else if bytes.starts_with(OLE) {
+    } else if bytes.starts_with(OLE_SIG) {
         "ole"
     } else if bytes.starts_with(b"{\\rtf") {
         "rtf"
@@ -252,13 +281,11 @@ fn open_by_content(
     password: Option<&str>,
     page: &wordcraft_doc::SectionProps,
 ) -> Result<(Document, bool), String> {
-    const ZIP: &[u8] = b"PK\x03\x04";
-    const OLE: &[u8] = &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-    let (mut doc, encrypted) = if bytes.starts_with(OLE) && wordcraft_docx::is_encrypted(bytes) {
+    let (mut doc, encrypted) = if bytes.starts_with(OLE_SIG) && wordcraft_docx::is_encrypted(bytes) {
         (wordcraft_docx::read_with_password(bytes, password).map_err(|e| e.to_string())?, true)
-    } else if bytes.starts_with(ZIP) {
+    } else if bytes.starts_with(ZIP_SIG) {
         (wordcraft_docx::read(bytes).map_err(|e| format!("{name}: not a document WordCraft can open ({e})"))?, false)
-    } else if bytes.starts_with(OLE) {
+    } else if bytes.starts_with(OLE_SIG) {
         open_binary_doc(bytes, password)
             .map_err(|e| if needs_password(&e) || wrong_password(&e) { e } else { format!("{name}: not a document WordCraft can open ({e})") })?
     } else if bytes.starts_with(b"{\\rtf") {
@@ -270,7 +297,7 @@ fn open_by_content(
     } else {
         return Err(format!("{name}: unsupported format `.{ext}` (not a document or text file)"));
     };
-    doc.ensure_nonempty();
+    opened(&mut doc);
     Ok((doc, encrypted))
 }
 
@@ -332,7 +359,7 @@ pub fn open_path_in(path: &std::path::Path, password: Option<&str>, region: &wor
         let html = wordcraft_formats::html::decode(&bytes);
         let mut doc = wordcraft_formats::html::import_on(&html, &|src| images.load(src), &region_page(region));
         fit_pictures(&mut doc);
-        doc.ensure_nonempty();
+        opened(&mut doc);
         return Ok((doc, false));
     }
     open_bytes_in(&name, &bytes, password, region)
@@ -470,6 +497,18 @@ pub fn read_file_capped(path: &str, max: u64, what: &str) -> Result<Vec<u8>, Str
     std::fs::read(path).map_err(|e| format!("{path}: {e}"))
 }
 
+/// The first `max` bytes of the file at `path` (fewer when it is shorter), inside the automation
+/// read root when there is one: enough to tell a file's format by its start.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_file_head(path: &str, max: u64) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    crate::file_access::check_read(path)?;
+    let f = std::fs::File::open(path).map_err(|e| format!("{path}: {e}"))?;
+    let mut head = Vec::new();
+    f.take(max).read_to_end(&mut head).map_err(|e| format!("{path}: {e}"))?;
+    Ok(head)
+}
+
 /// Rename without replacing another file, respecting both automation access roots.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn rename_file(source: &std::path::Path, destination: &std::path::Path) -> Result<(), String> {
@@ -504,23 +543,12 @@ fn only_case_differs(source: &std::path::Path, destination: &std::path::Path) ->
     std::fs::read_dir(dir).is_ok_and(|entries| entries.filter_map(Result::ok).all(|entry| entry.file_name() != to))
 }
 
-/// The first `max` bytes of the file at `path` (fewer when it is shorter), inside the automation
-/// read root when there is one: enough to tell a file's format by its start.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn read_file_head(path: &str, max: u64) -> Result<Vec<u8>, String> {
-    use std::io::Read;
-    crate::file_access::check_read(path)?;
-    let f = std::fs::File::open(path).map_err(|e| format!("{path}: {e}"))?;
-    let mut head = Vec::new();
-    f.take(max).read_to_end(&mut head).map_err(|e| format!("{path}: {e}"))?;
-    Ok(head)
-}
-
 /// Write `bytes` to the file at `path`, inside the automation write root when there is one.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
     crate::file_access::check_write(path)?;
-    std::fs::write(path, bytes).map_err(|e| format!("{path}: {e}"))
+    // Like a document save: the old file is replaced only once the new bytes are fully written.
+    safe_save::write(std::path::Path::new(path), bytes).map_err(|e| format!("{path}: {e}"))
 }
 
 #[cfg(target_arch = "wasm32")]

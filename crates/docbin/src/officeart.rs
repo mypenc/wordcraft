@@ -6,6 +6,9 @@
 //! and record counts are capped, and decompressed metafiles are size-limited.
 
 use std::collections::HashMap;
+use std::io::Write;
+
+use image::ImageEncoder;
 
 use wordcraft_doc::props::Rgb;
 
@@ -138,7 +141,7 @@ pub(crate) fn blip(rec: &Rec, limit: usize) -> Option<Blip> {
                 rt::BLIP_PNG => Some(Blip { bytes: data.to_vec(), ext: "png", placeholder: false }),
                 rt::BLIP_JPEG | rt::BLIP_JPEG_CMYK => Some(Blip { bytes: data.to_vec(), ext: "jpeg", placeholder: false }),
                 rt::BLIP_TIFF => Some(Blip { bytes: data.to_vec(), ext: "tiff", placeholder: false }),
-                _ => dib_to_png(data),
+                _ => dib_to_png(data, limit),
             }
         }
         rt::BLIP_EMF | rt::BLIP_WMF | rt::BLIP_PICT => {
@@ -175,7 +178,7 @@ pub(crate) fn blip(rec: &Rec, limit: usize) -> Option<Blip> {
 /// A device-independent bitmap (BITMAPINFOHEADER + palette + pixels) as a PNG: the DIB gets
 /// the 14-byte BMP file header it lacks, is decoded with size limits and re-encoded. When the
 /// bitmap can't be decoded the BMP bytes are kept (and render as a grey placeholder).
-fn dib_to_png(dib: &[u8]) -> Option<Blip> {
+fn dib_to_png(dib: &[u8], limit: usize) -> Option<Blip> {
     let header = u32_at(dib, 0)? as usize;
     if !(12..=124).contains(&header) {
         return None;
@@ -193,7 +196,7 @@ fn dib_to_png(dib: &[u8]) -> Option<Blip> {
     // BI_BITFIELDS masks follow a 40-byte header.
     let masks = if header == 40 && (compression == 3 || compression == 6) { if compression == 3 { 12 } else { 16 } } else { 0 };
     let off_bits = 14usize.checked_add(header)?.checked_add(colors * entry)?.checked_add(masks)?;
-    let file_size = 14usize.checked_add(dib.len())?;
+    let file_size = 14usize.checked_add(dib.len()).filter(|&size| size <= limit)?;
     let mut bmp = Vec::with_capacity(file_size);
     bmp.extend_from_slice(b"BM");
     bmp.extend_from_slice(&u32::try_from(file_size).ok()?.to_le_bytes());
@@ -205,14 +208,40 @@ fn dib_to_png(dib: &[u8]) -> Option<Blip> {
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_DIB_SIDE);
     limits.max_image_height = Some(MAX_DIB_SIDE);
-    limits.max_alloc = Some(256 << 20);
+    limits.max_alloc = Some((256 << 20).min(limit as u64));
     reader.limits(limits);
-    let mut png = Vec::new();
+    let mut png = PictureWriter { bytes: Vec::new(), limit };
     match reader.decode() {
-        Ok(img) if img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).is_ok() => {
-            Some(Blip { bytes: png, ext: "png", placeholder: false })
+        Ok(img)
+            if image::codecs::png::PngEncoder::new(&mut png).write_image(img.as_bytes(), img.width(), img.height(), img.color().into()).is_ok() =>
+        {
+            Some(Blip { bytes: png.bytes, ext: "png", placeholder: false })
         }
         _ => Some(Blip { bytes: bmp, ext: "bmp", placeholder: true }),
+    }
+}
+
+/// Cap encoded bytes while the PNG encoder writes, before the buffer can grow.
+struct PictureWriter {
+    bytes: Vec<u8>,
+    limit: usize,
+}
+
+impl Write for PictureWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let Some(end) = self.bytes.len().checked_add(buf.len()).filter(|&end| end <= self.limit) else {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "picture exceeds remaining media budget"));
+        };
+        if end > self.bytes.capacity() {
+            let new_capacity = self.bytes.capacity().saturating_mul(2).max(end).min(self.limit);
+            self.bytes.try_reserve_exact(new_capacity - self.bytes.len()).map_err(std::io::Error::other)?;
+        }
+        self.bytes.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 

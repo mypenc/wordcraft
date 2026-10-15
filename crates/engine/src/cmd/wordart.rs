@@ -285,7 +285,7 @@ fn insert(s: &mut Session, v: &Value) -> CmdResult {
             _ => h * 1.6,
         };
     }
-    let id = s.doc.add_part(PartKind::TextBox, vec![para_block(Paragraph::with_text(&text, props))]);
+    let id = s.doc.try_add_part(PartKind::TextBox, vec![para_block(Paragraph::with_text(&text, props))])?;
     if let Some(p) = s.doc.parts.get_mut(&id)
         && let Some(b) = p.blocks.first_mut()
         && let wordcraft_doc::Block::Para(para) = std::sync::Arc::make_mut(b)

@@ -18,7 +18,13 @@ pub fn specs() -> Vec<CommandSpec> {
             .pure(),
         CommandSpec::new("font.list", "Added Fonts", "Home › Font", list).params(r#"{"all"?: bool (also every available family)}"#).pure(),
         CommandSpec::new("font.remove", "Remove Added Font", "Home › Font", remove).params(r#"{"family": string}"#).pure(),
+        CommandSpec::new("font.loadSystem", "Load System Installed Fonts…", "Home › Font", load_system).pure(),
     ]
+}
+
+fn load_system(s: &mut Session, _v: &Value) -> CmdResult {
+    s.ui_requests.push(json!({"open": "loadSystemFonts"}));
+    Ok(json!({"pending": true}))
 }
 
 fn font_json(f: &UserFont) -> Value {

@@ -317,6 +317,15 @@ impl WordApp {
         }
         let _ = self.ask_file(FileDialogRequest::Open { purpose: "font".into() }, AfterPick::Font);
     }
+
+    /// Request loading local system installed fonts (web: queryLocalFonts).
+    pub(crate) fn load_system_fonts(&mut self) {
+        if let Some(f) = &self.services.load_system_fonts {
+            f();
+        } else {
+            self.status(tl!("All system fonts are already available."));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -555,5 +564,23 @@ mod tests {
         assert_eq!(a.session.merge.headers, vec!["Name"]);
         assert_eq!(a.session.merge.rows.len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_system_fonts_runs_hook_when_present() {
+        use std::cell::Cell;
+        let called = Rc::new(Cell::new(false));
+        let called2 = called.clone();
+        let services = Services { load_system_fonts: Some(Box::new(move || called2.set(true))), ..Default::default() };
+        let mut a = WordApp::new(Session::new(wordcraft_doc::Document::new()), services);
+        a.run("font.loadSystem", json!({})).unwrap();
+        assert!(called.get());
+    }
+
+    #[test]
+    fn load_system_fonts_without_hook_reports_status() {
+        let mut a = WordApp::new(Session::new(wordcraft_doc::Document::new()), Services::default());
+        a.run("font.loadSystem", json!({})).unwrap();
+        assert_eq!(a.status_msg.as_ref().map(|(s, _)| s.as_str()), Some("All system fonts are already available."));
     }
 }

@@ -182,6 +182,36 @@ fn shapes_keep_kind_colours_wrap_and_text_box_text() {
     assert_eq!(part.blocks.first().and_then(|b| b.as_para()).map(|p| p.text.as_str()), Some("Inside"));
 }
 
+#[test]
+fn text_boxes_pointing_at_the_same_story_text_read_it_once() {
+    // Two text boxes whose PlcftxbxTxt stories are both [0, 7) (the table steps back to CP 0
+    // in between): each was read into its own part, so a hostile table could copy one story
+    // thousands of times. The second story is dropped and its box stays empty.
+    let tb = |spid: u32| sp(&[fsp(202, spid, 0xA00), fopt(&[(0x01BF, 1 << 20)], &[]), rec(0, 0, 0xF00D, &0x0001_0000u32.to_le_bytes())]);
+    let art = art_content(&[], &[tb(1027), tb(1028)]);
+    let flags = spa_flags(0, 0, 1, false);
+    let spas = plc(&[1, 2, 4], &[spa(1027, [0, 0, 2880, 720], flags), spa(1028, [0, 0, 2880, 720], flags)].concat());
+    // FTXBXS: cTxbx, cReusable, fReusable, reserved, lid, txidUndo.
+    let ftxbxs = |lid: u32| {
+        [1i32.to_le_bytes().as_slice(), &0i32.to_le_bytes(), &0i16.to_le_bytes(), &0i32.to_le_bytes(), &lid.to_le_bytes(), &0i32.to_le_bytes()]
+            .concat()
+    };
+    let txbx = plc(&[0, 7, 0, 7], &[ftxbxs(1027), ftxbxs(1), ftxbxs(1028)].concat());
+    let text = "A\u{8}\u{8}B\r";
+    let ccp = text.chars().count() as u32;
+    // As above: the endnote slot holds the text box subdocument, then the FIB is patched.
+    let spec =
+        StructSpec { text, endnote_stories: vec!["Inside\r"], extra_pairs: vec![(40, spas), (50, art), (56, txbx)], ..structured_spec(text, ccp) };
+    let doc = read(&patch_word(&struct_doc(&spec), &[(0x60, 0), (0x64, 7)])).expect("opens");
+    let p0 = doc.body.first().and_then(|b| b.as_para()).expect("para");
+    let stories: Vec<Option<u32>> =
+        p0.objects.iter().filter_map(|o| if let InlineObject::Shape { story, .. } = o { Some(*story) } else { None }).collect();
+    let [Some(first), None] = stories[..] else { panic!("stories: {stories:?}") };
+    let part = doc.parts.get(&first).expect("text box story part");
+    assert_eq!(part.blocks.first().and_then(|b| b.as_para()).map(|p| p.text.as_str()), Some("Inside"));
+    assert_eq!(doc.parts.len(), 1);
+}
+
 /// Overwrite little-endian u32s in the WordDocument stream of a compound file.
 fn patch_word(file: &[u8], at: &[(usize, u32)]) -> Vec<u8> {
     use std::io::Read;
@@ -273,4 +303,31 @@ proptest! {
         };
         let _ = read(&struct_doc(&spec));
     }
+}
+
+// A 1×1 24-bit DIB, including its padded four-byte row.
+fn one_pixel_dib() -> Vec<u8> {
+    let mut dib = [40u32, 1, 1].iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>();
+    dib.extend_from_slice(&1u16.to_le_bytes());
+    dib.extend_from_slice(&24u16.to_le_bytes());
+    dib.extend_from_slice(&[0u8; 24]);
+    dib.extend_from_slice(&[30, 60, 90, 0]);
+    dib
+}
+
+#[test]
+fn dib_conversion_caps_header_and_encoded_bytes() {
+    let dib = one_pixel_dib();
+    let record = rec(0, 0x7A8, officeart::rt::BLIP_DIB, &[[0u8; 16].as_slice(), &[0xFF], &dib].concat());
+    let (record, _) = officeart::record(&record).unwrap();
+    let bmp_size = 14 + dib.len();
+    assert!(officeart::blip(&record, bmp_size - 1).is_none(), "the BMP header also needs room");
+    let fallback = officeart::blip(&record, bmp_size).expect("the BMP fallback fits exactly");
+    assert_eq!((fallback.ext, fallback.placeholder, fallback.bytes.len()), ("bmp", true, bmp_size));
+    let img = image::load_from_memory(&fallback.bytes).unwrap().to_rgb8();
+    assert_eq!((img.width(), img.height(), img.get_pixel(0, 0).0), (1, 1, [90, 60, 30]));
+    let normal = officeart::blip(&record, 512).expect("normal conversion fits");
+    assert_eq!((normal.ext, normal.placeholder), ("png", false));
+    assert!(normal.bytes.len() > bmp_size && normal.bytes.len() <= 512);
+    assert_eq!(image::load_from_memory(&normal.bytes).unwrap().width(), 1);
 }

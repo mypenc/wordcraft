@@ -263,7 +263,7 @@ pub(crate) fn assemble(paras: Vec<ParaOut>) -> Blocks {
                 c.props.shading = *s;
             }
             if let Some((_, v)) = info.valign.iter().find(|(k, _)| *k == i) {
-                c.props.valign = *v;
+                c.props.valign = Some(*v);
             }
         }
         for &(a, b) in info.merges.iter().take(MAX_COLS) {
@@ -288,7 +288,7 @@ pub(crate) fn assemble(paras: Vec<ParaOut>) -> Blocks {
                 height_rule: info.height_rule,
                 header: info.header,
                 cant_split: info.cant_split,
-                fmt_change: None,
+                ..Default::default()
             },
             cells,
             controls: Default::default(),

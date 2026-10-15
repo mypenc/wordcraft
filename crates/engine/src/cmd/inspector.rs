@@ -28,6 +28,7 @@ pub fn specs() -> Vec<CommandSpec> {
             Ok(out)
         })
         .params(r#"{"value"?: bool (show/hide the pane)}"#)
+        .key("Shift+F1")
         .pure(),
         CommandSpec::new("styles.inspect", "Inspect Styles at Selection", "Home › Styles › Style Inspector", |s, _| Ok(inspect(s))).pure(),
         CommandSpec::new("styles.inspectorClear", "Clear Formatting Level", "Home › Styles › Style Inspector", clear)

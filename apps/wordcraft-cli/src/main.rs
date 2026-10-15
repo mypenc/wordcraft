@@ -3,8 +3,10 @@
 
 mod automation_args;
 
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use serde_json::{Value, json};
@@ -58,14 +60,41 @@ fn wants_help(cmd: &str, rest: &[String]) -> bool {
     SUBCOMMANDS.contains(&cmd) && rest.iter().any(|a| a == "--help" || a == "-h")
 }
 
-fn open(path: &str) -> Result<Session, String> {
+fn open(path: &Path) -> Result<Session, String> {
     // A file that gives no page size (HTML, Markdown, plain text) opens on the system region's
     // paper, as in the app: A4 in Italy, Letter in the US (#1381).
     let region = system_region();
-    let (doc, _) = wordcraft_engine::io::open_path_in(std::path::Path::new(path), None, &region)?;
+    let (doc, _) = wordcraft_engine::io::open_path_in(path, None, &region)?;
     let mut s = session(doc);
     s.path = Some(path.into());
     Ok(s)
+}
+
+/// The commands that open a file, and which of their arguments not starting with `--` it is (as
+/// `pos` counts). `run` opens the value of `--file`.
+const OPENS_FILE: &[(&str, usize)] = &[("convert", 0), ("info", 0), ("text", 0), ("inspect", 0), ("render", 0), ("zotero", 1)];
+
+/// The arguments as text. Only the file the command opens may have a name that isn't valid Unicode,
+/// such as a Latin-1 one (#1440): it comes back as the path to open, and lossy among the arguments.
+/// Any other such argument is an error naming it.
+fn text_args<S: AsRef<OsStr>>(raw: &[S]) -> Result<(Vec<String>, Option<PathBuf>), String> {
+    let args: Vec<String> = raw.iter().map(|a| a.as_ref().to_string_lossy().into_owned()).collect();
+    let cmd = args.first().map(String::as_str).unwrap_or("");
+    let file_at = match OPENS_FILE.iter().find(|(c, _)| *c == cmd) {
+        Some((_, n)) => args.iter().enumerate().skip(1).filter(|(_, a)| !a.starts_with("--")).nth(*n).map(|(i, _)| i),
+        None if cmd == "run" => args.iter().position(|a| a == "--file").map(|i| i + 1),
+        None => None,
+    };
+    let mut file = None;
+    for (i, a) in raw.iter().map(AsRef::as_ref).enumerate() {
+        if a.to_str().is_none() {
+            if Some(i) != file_at {
+                return Err(format!("argument {} is not valid Unicode: {}", i + 1, a.to_string_lossy()));
+            }
+            file = Some(PathBuf::from(a));
+        }
+    }
+    Ok((args, file))
 }
 
 /// A headless session in the system region: every way the CLI starts one gives `file.new` the
@@ -262,7 +291,10 @@ fn write_stdout(write: impl FnOnce(&mut std::io::StdoutLock<'static>) -> std::io
     Ok(())
 }
 
-fn run(args: &[String]) -> Result<(), Failure> {
+fn run<S: AsRef<OsStr>>(args: &[S]) -> Result<(), Failure> {
+    let (args, file) = text_args(args)?;
+    // Opens the file by its real name, which its text in `args` may have lost.
+    let open = |text: &str| open(file.as_deref().unwrap_or(Path::new(text)));
     let cmd = args.first().map(String::as_str).unwrap_or("");
     let rest: Vec<String> = args.iter().skip(1).cloned().collect();
     // Before options are checked or files and folders opened.
@@ -524,7 +556,7 @@ fn parity_markdown(p: &Value) -> String {
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     match run(&args) {
         Ok(()) | Err(Failure::StdoutClosed) => ExitCode::SUCCESS,
         Err(Failure::Error(e)) => {
@@ -652,6 +684,38 @@ mod tests {
         assert!(e.starts_with("mcp: cannot open the automation read root"), "{e}");
         // Through the command line: an error, not a server that quietly runs unconfined.
         assert!(run(&args(&["mcp", "--automation-write-root", "/definitely/not/a/folder"])).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_the_opened_file_may_be_other_than_unicode() {
+        use std::os::unix::ffi::OsStringExt;
+        let latin1 = || OsString::from_vec(b"caf\xe9.docx".to_vec());
+        let ok = |raw: Vec<OsString>| text_args(&raw).unwrap().1;
+        assert_eq!(ok(vec!["zotero".into(), "refresh".into(), latin1()]), Some(PathBuf::from(latin1())));
+        assert_eq!(ok(vec!["render".into(), latin1(), "out.png".into(), "--page".into(), "2".into()]), Some(PathBuf::from(latin1())));
+        assert_eq!(ok(vec!["run".into(), "--print".into(), "--file".into(), latin1()]), Some(PathBuf::from(latin1())));
+        assert_eq!(ok(vec!["info".into(), "in.docx".into()]), None);
+        // Every command that opens a file reaches the open with it (no such file here), so
+        // `OPENS_FILE` and the commands' own arguments agree.
+        let missing = || OsString::from_vec(b"/definitely/not/caf\xe9.docx".to_vec());
+        let mut opening: Vec<Vec<OsString>> = OPENS_FILE
+            .iter()
+            .map(|(cmd, n)| [vec![(*cmd).into()], vec![OsString::from("refresh"); *n], vec![missing(), "out.png".into()]].concat())
+            .collect();
+        opening.push(vec!["run".into(), "--file".into(), missing()]);
+        for raw in opening {
+            let e = run(&raw).unwrap_err().to_string();
+            assert!(e.contains("No such file"), "{raw:?}: {e}");
+        }
+        for (raw, n) in [
+            (vec!["zotero".into(), latin1(), "in.docx".into()], 2),
+            (vec!["render".into(), "in.docx".into(), latin1()], 3),
+            (vec!["run".into(), "--save".into(), latin1()], 3),
+            (vec!["commands".into(), latin1()], 2),
+        ] {
+            assert_eq!(text_args(&raw).unwrap_err(), format!("argument {n} is not valid Unicode: caf\u{FFFD}.docx"));
+        }
     }
 
     #[test]

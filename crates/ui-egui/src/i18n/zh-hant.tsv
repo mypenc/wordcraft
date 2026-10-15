@@ -186,6 +186,9 @@
 	Bold	粗體
 	Bookmark	書籤
 	Bookmark name:	書籤名稱：
+	Delete Bookmark	刪除書籤
+	Hidden bookmarks	隱藏書籤
+	Sort by:	排序依據：
 	Border Painter	框線複製
 	Border\nPainter	框線複製
 	Borders	框線
@@ -511,6 +514,8 @@
 	Labels	標籤
 	Landscape	橫向
 	Language	語言
+	{language} (no dictionary)	{language}（無字典）
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	未安裝{language}的拼字字典，因此不會檢查該語言。WordCraft 會在 WORDCRAFT_DICTIONARIES 資料夾和常見的系統位置尋找 Hunspell 字典 {name}。
 	Lasso	套索
 	Last Column	最後一欄
 	Last commit	最近提交
@@ -566,7 +571,7 @@
 	Multiple Pages	多頁
 	Name (A–Z)	名稱（A–Z）
 	Name:	名稱：
-	Narrow  0.5" all	窄  四周 0.5"
+	Narrow  {size} all	窄  四周 {size}
 	Navigation	導覽
 	Navigation Pane	功能窗格
 	New	新增
@@ -593,7 +598,7 @@
 	Nonbreaking Hyphen	不分行連字號
 	Nonbreaking Space	不分行空格
 	None	無
-	Normal  1" all	一般  四周 1"
+	Normal  {size} all	一般  四周 {size}
 	Normal Style	內文樣式
 	Not available right now	目前無法使用
 	Not saved	未儲存
@@ -1557,6 +1562,11 @@
 	Add Font…	新增字型…
 	Added Fonts	已新增的字型
 	Remove Added Font	移除已新增的字型
+	Load System Installed Fonts…	載入系統已安裝字型…
+	All system fonts are already available.	所有系統字型已可用。
+	Local font access is not supported by your browser.	您的瀏覽器不支援存取本機字型。
+	Local font access was denied.	本機字型存取遭到拒絕。
+	Loaded {count} system fonts.	已載入 {count} 個系統字型。
 	Recent Colors	最近使用的色彩
 	More Colors…	其他色彩…
 	Standard	標準
@@ -2082,6 +2092,16 @@
 	AutoFit Column by Double-Clicking	按兩下自動調整欄寬
 	Region:	地區：
 	Automatic ({region})	自動（{region}）
+	Odd Banded Rows	奇數帶狀列
+	Even Banded Rows	偶數帶狀列
+	Odd Banded Columns	奇數帶狀欄
+	Even Banded Columns	偶數帶狀欄
+	Top Left Cell	左上儲存格
+	Top Right Cell	右上儲存格
+	Bottom Left Cell	左下儲存格
+	Bottom Right Cell	右下儲存格
+	Inside Horizontal Border	內部水平框線
+	Inside Vertical Border	內部垂直框線
 	Text of the nearest paragraph with a given style (running headers)	具有指定樣式的最近段落文字（書眉）
 	Style name:	樣式名稱：
 # Mail merge: filter and sort recipients (#778)
@@ -2166,6 +2186,24 @@
 	Suggested	建議
 	Set Proofing Language…	設定校訂語言…
 	Language Preferences…	語言喜好設定…
+	Printer	印表機
+	Select a printer	選取印表機
+	Refresh printers	重新整理印表機
+	Two-sided printing	雙面列印
+	Printer default	印表機預設值
+	One-sided	單面
+	Two-sided: long edge	雙面：長邊
+	Two-sided: short edge	雙面：短邊
+	Grayscale	灰階
+	Finding printers…	正在尋找印表機…
+	No printers found. Configure a system printer or export a PDF.	找不到印表機。請在系統中設定印表機或匯出 PDF。
+	Printer discovery failed.	尋找印表機失敗。
+	Submitting print job…	正在提交列印工作…
+	Print job submitted.	列印工作已提交。
+	Print job submitted: {receipt}	列印工作已提交：{receipt}
+	Print failed: the printing worker stopped.	列印失敗：列印工作執行緒已停止。
+	Print settings	列印設定
+	Submit print job	提交列印工作
 
 # Dictionaries folder (#1063)
 	Dictionaries	字典
@@ -2177,3 +2215,22 @@
 
 # Backstage › Recover (#586)
 	Recover	復原
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	左右對稱邊界
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	現有的檔案或網頁
+	Link to:	連結至:
+	Place in This Document	這份文件中的位置
+# Table Layout › Sort dialog (#1205)
+	Column {n}	欄 {n}
+	Header row	有標題列
+	No header row	無標題列
+	My list has	清單包含
+# Table Layout › Formula dialog (#1210)
+	Formula:	公式：
+	Paste function:	貼上函數：
+# Reading Mode column widths (#1040)
+	Narrow	窄
+	Medium	中等

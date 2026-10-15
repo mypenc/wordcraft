@@ -37,16 +37,22 @@ fn plc(table: &[u8], (fc, lcb): (u32, u32), cb: usize) -> Vec<(u32, &[u8])> {
 
 /// The text box stories of a `PlcftxbxTxt` (or `PlcfHdrtxbxTxt`): (shape spid, story CP range
 /// relative to the text box subdocument).
+///
+/// The CPs of a well-formed PLC ascend, so the stories are disjoint. A story starting before
+/// the end of the last one kept (a hostile table pointing many text boxes at the same text,
+/// each read into its own part) is dropped: every subdocument CP becomes at most one story.
 pub(crate) fn textbox_stories(table: &[u8], pair: Option<(u32, u32)>) -> Vec<(u32, (u32, u32))> {
     let Some(pair) = pair else { return Vec::new() };
     let Some(blob) = table.get(pair.0 as usize..(pair.0 as usize).saturating_add(pair.1 as usize)) else { return Vec::new() };
     let mut out = Vec::new();
+    let mut kept_to = 0u32;
     for (i, (cp, ftxbxs)) in plc(table, pair, CB_FTXBXS).iter().enumerate() {
         // The story runs to the next entry's CP (the PLC's last CP for the last entry).
         let Some(end) = blob.get((i + 1) * 4..(i + 1) * 4 + 4).and_then(|b| b.try_into().ok()).map(u32::from_le_bytes) else { continue };
         let Some(lid) = ftxbxs.get(14..18).and_then(|b| b.try_into().ok()).map(u32::from_le_bytes) else { continue };
-        if end > *cp && lid != 0 {
+        if end > *cp && *cp >= kept_to && lid != 0 {
             out.push((lid, (*cp, end)));
+            kept_to = end;
         }
     }
     out
@@ -180,7 +186,8 @@ fn leaf(sp: &Sp, w: f32, h: f32, float: Float, b: &Build, pics: &mut Pictures) -
         2 => ShapeKind::RoundedRectangle,
         3 => ShapeKind::Ellipse,
         4 => ShapeKind::Diamond,
-        5 | 6 => ShapeKind::Triangle,
+        5 => ShapeKind::Triangle,
+        6 => ShapeKind::RightTriangle,
         12 | 187 => ShapeKind::Star,
         13 | 66 | 67 | 68 | 69 => ShapeKind::Arrow,
         20 | 32 => ShapeKind::Line,

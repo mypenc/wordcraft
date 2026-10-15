@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::props::{Align, CharProps};
 use crate::section::NumFormat;
+use crate::{DocError, free_id};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -230,20 +231,40 @@ impl Numbering {
         }
         self.abstract_of(num)?.levels.get(level as usize)
     }
-    /// Create a new list of `kind`; returns the `num` id.
+    /// Create a new list of `kind`; returns the `num` id. List ids run out only past `u32::MAX`
+    /// lists, more than memory holds; then nothing is added and the id is 0, "no list".
     pub fn add_list(&mut self, kind: ListKind) -> u32 {
-        let aid = self.abstracts.iter().map(|a| a.id + 1).max().unwrap_or(0);
-        self.abstracts.push(AbstractNum { id: aid, name: None, levels: levels_for(kind), ..Default::default() });
-        let nid = self.nums.iter().map(|n| n.id + 1).max().unwrap_or(1).max(1);
-        self.nums.push(Num { id: nid, abstract_id: aid, ..Default::default() });
-        nid
+        self.try_add_list(kind).unwrap_or(0)
     }
-    /// A new `num` that restarts numbering of an existing list.
+    /// [`Numbering::add_list`], or an error, adding nothing, when list ids are all taken.
+    pub fn try_add_list(&mut self, kind: ListKind) -> crate::Result<u32> {
+        self.try_add_levels(None, levels_for(kind))
+    }
+    /// A new list definition (`name`, `levels`) and a `num` for it; returns the `num` id. Both ids
+    /// are [`free_id`]s, so the largest ids a file can hold don't make them collide with its lists;
+    /// an error, adding nothing, when they are all taken.
+    pub fn try_add_levels(&mut self, name: Option<String>, levels: Vec<Level>) -> crate::Result<u32> {
+        let aid = free_id(self.abstracts.iter().map(|a| a.id).max(), self.abstracts.iter().map(|a| a.id), 0);
+        let (Some(aid), Some(nid)) = (aid, self.free_num_id()) else { return Err(DocError::Invalid("no free list id".into())) };
+        self.abstracts.push(AbstractNum { id: aid, name, levels, ..Default::default() });
+        self.nums.push(Num { id: nid, abstract_id: aid, ..Default::default() });
+        Ok(nid)
+    }
+    /// A `num` id no list has (`num` 0 means "no list"), `None` when they are all taken.
+    fn free_num_id(&self) -> Option<u32> {
+        free_id(self.nums.iter().map(|n| n.id).max(), self.nums.iter().map(|n| n.id), 1)
+    }
+    /// A new `num` that restarts numbering of an existing list (`None`: no such list, or list ids
+    /// are all taken).
     pub fn restart(&mut self, num: u32) -> Option<u32> {
-        let a = self.num(num)?.abstract_id;
-        let nid = self.nums.iter().map(|n| n.id + 1).max().unwrap_or(1).max(1);
-        let starts = self.abstracts.iter().find(|x| x.id == a).map(|x| x.levels.iter().enumerate().map(|(i, l)| (i as u8, l.start)).collect());
-        self.nums.push(Num { id: nid, abstract_id: a, start_overrides: starts.unwrap_or_default(), ..Default::default() });
+        let source = self.num(num)?;
+        let a = source.abstract_id;
+        let level_overrides = source.level_overrides.clone();
+        let nid = self.free_num_id()?;
+        // Every level starts again at its own effective start, so a level this list defines itself keeps its start.
+        let levels = self.abstracts.iter().find(|x| x.id == a).map_or(0, |x| x.levels.len());
+        let start_overrides = (0..levels).filter_map(|i| self.level(num, i as u8).map(|l| (i as u8, l.start))).collect();
+        self.nums.push(Num { id: nid, abstract_id: a, start_overrides, level_overrides });
         Some(nid)
     }
     /// Find an existing list whose first level matches `kind`, so consecutive bullet clicks reuse it.
@@ -448,5 +469,20 @@ mod tests {
         let b = n.add_list(ListKind::Bullet);
         assert_eq!(c.next_label(&n, b, 0).unwrap().0, "•");
         assert_eq!(n.find_kind(ListKind::Bullet), Some(b));
+    }
+
+    #[test]
+    fn restart_keeps_the_list_s_own_level_definitions() {
+        let mut n = Numbering::default();
+        let id = n.add_list(ListKind::Numbered);
+        let own = Level { format: NumFormat::UpperRoman, text: "Part %1".into(), indent: 90.0, hanging: 40.0, start: 5, ..Level::default() };
+        if let Some(num) = n.nums.iter_mut().find(|x| x.id == id) {
+            num.level_overrides.push((0, own.clone()));
+        }
+        let r = n.restart(id).unwrap();
+        assert_eq!(n.num(r).unwrap().level_overrides, vec![(0, own.clone())]);
+        assert_eq!(n.level(r, 0), Some(&own));
+        let mut c = Counters::default();
+        assert_eq!(c.next_label(&n, r, 0).unwrap().0, "Part V");
     }
 }

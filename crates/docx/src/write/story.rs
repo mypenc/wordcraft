@@ -74,7 +74,16 @@ impl Writer<'_> {
             self.move_ranges(w, &[]);
         }
         if bl.last().is_none_or(|b| matches!(**b, Block::Table(_))) {
-            w.raw("<w:p/>");
+            // A header with no paragraph of its own before: the watermark goes in this one.
+            if depth == 0
+                && let Some(run) = self.pending_watermark.take()
+            {
+                w.raw("<w:p>");
+                w.raw(&run);
+                w.raw("</w:p>");
+            } else {
+                w.raw("<w:p/>");
+            }
         }
     }
 
@@ -207,12 +216,18 @@ impl Writer<'_> {
             w.empty(mark, &[]);
             w.raw("</w:r>");
         }
+        // A header's watermark, in its first top-level paragraph (not a table cell or text box).
+        if depth == 0
+            && let Some(run) = self.pending_watermark.take()
+        {
+            w.raw(&run);
+        }
         // Taken before the content so a nested story (a text box in an entry) can't claim them.
         if std::mem::take(&mut self.toc_begin_here)
-            && let Some((instr, locked, props)) = self.toc_field.take()
+            && let Some((instr, locked, dirty, props)) = self.toc_field.take()
         {
             self.rev_open(w, &props);
-            self.field_start(w, &instr, locked, &props);
+            self.field_start(w, &instr, locked, dirty, "", &props);
             self.rev_close(w, &props);
         }
         let toc_end = std::mem::take(&mut self.toc_end_here);
@@ -481,10 +496,10 @@ impl Writer<'_> {
                     None => super::math::write_equation(w, linear, *display, math, color),
                 }
             }
-            InlineObject::Field { instr, result, locked, .. } => self.field(w, instr, result, *locked, props),
-            InlineObject::FieldStart { instr, locked } => {
+            InlineObject::Field { instr, result, locked, dirty, form, .. } => self.field(w, instr, result, *locked, *dirty, form, props),
+            InlineObject::FieldStart { instr, locked, dirty } => {
                 self.rev_open(w, props);
-                self.field_start(w, instr, *locked, props);
+                self.field_start(w, instr, *locked, *dirty, "", props);
                 self.rev_close(w, props);
             }
             InlineObject::FieldEnd => {
@@ -780,11 +795,11 @@ impl Writer<'_> {
         }
     }
 
-    fn field(&mut self, w: &mut W, instr: &str, result: &str, locked: bool, props: &CharProps) {
+    fn field(&mut self, w: &mut W, instr: &str, result: &str, locked: bool, dirty: bool, form: &str, props: &CharProps) {
         if self.toc_hold_end && is_toc(instr) {
             // A TOC heading's field opens in the first entry and closes after the last (see `toc_span`).
             self.toc_hold_end = false;
-            self.toc_field = Some((instr.to_string(), locked, props.clone()));
+            self.toc_field = Some((instr.to_string(), locked, dirty, props.clone()));
             return;
         }
         if let Some(e) = wordcraft_doc::eq::Enclosure::parse(instr) {
@@ -801,7 +816,7 @@ impl Writer<'_> {
             w.close("w:r");
         };
         self.rev_open(w, props);
-        self.field_start(w, instr, locked, props);
+        self.field_start(w, instr, locked, dirty, form, props);
         if !result.is_empty() {
             run(w, &|w| {
                 let mut buf = String::new();
@@ -879,7 +894,9 @@ impl Writer<'_> {
     }
 
     /// A field's begin, instruction and separate runs.
-    fn field_start(&self, w: &mut W, instr: &str, locked: bool, props: &CharProps) {
+    /// A field's begin, code and separator; `form` is a legacy form field's `w:ffData`, which
+    /// belongs inside the begin.
+    fn field_start(&self, w: &mut W, instr: &str, locked: bool, dirty: bool, form: &str, props: &CharProps) {
         let del = self.is_del(props);
         let run = |w: &mut W, f: &dyn Fn(&mut W)| {
             w.open("w:r", &[]);
@@ -888,10 +905,19 @@ impl Writer<'_> {
             w.close("w:r");
         };
         run(w, &|w| {
+            let mut attrs: Vec<(&str, &str)> = vec![("w:fldCharType", "begin")];
             if locked {
-                w.empty("w:fldChar", &[("w:fldCharType", "begin"), ("w:fldLock", "1")])
+                attrs.push(("w:fldLock", "1"));
+            }
+            if dirty {
+                attrs.push(("w:dirty", "true"));
+            }
+            if form.is_empty() {
+                w.empty("w:fldChar", &attrs);
             } else {
-                w.empty("w:fldChar", &[("w:fldCharType", "begin")])
+                w.open("w:fldChar", &attrs);
+                w.raw(form);
+                w.close("w:fldChar");
             }
         });
         let instr_text = format!(" {} ", instr.trim());
@@ -965,7 +991,9 @@ impl Writer<'_> {
             ShapeKind::Rectangle | ShapeKind::TextBox | ShapeKind::Freeform => "rect",
             ShapeKind::RoundedRectangle => "roundRect",
             ShapeKind::Ellipse => "ellipse",
+            ShapeKind::FlowchartOr => "flowChartOr",
             ShapeKind::Triangle => "triangle",
+            ShapeKind::RightTriangle => "rtTriangle",
             ShapeKind::Diamond => "diamond",
             ShapeKind::Line => "line",
             ShapeKind::StraightConnector => "straightConnector1",
@@ -1235,9 +1263,34 @@ impl Writer<'_> {
         w.close("w:tbl");
     }
 
+    /// The section's headers, plus the header holding only the watermark in each slot the
+    /// pages show (first page with a title page, even pages with even/odd headers) that has no
+    /// header of its own or linked from an earlier section. Sections are written in body order.
+    fn watermark_headers(&mut self, s: &SectionProps) -> wordcraft_doc::section::HeaderSet {
+        let mut set = s.headers;
+        let linked = &mut self.linked_headers;
+        if self.doc.settings.watermark.as_ref().and_then(super::watermark::text).is_some() {
+            let id = self.wm_header;
+            if set.default.or(linked.default).is_none() {
+                set.default = Some(id);
+            }
+            if s.title_page && set.first.or(linked.first).is_none() {
+                set.first = Some(id);
+            }
+            if self.doc.settings.even_odd_headers && set.even.or(linked.even).is_none() {
+                set.even = Some(id);
+            }
+        }
+        linked.default = set.default.or(linked.default);
+        linked.first = set.first.or(linked.first);
+        linked.even = set.even.or(linked.even);
+        set
+    }
+
     pub fn sectpr(&mut self, w: &mut W, s: &SectionProps, rels: &mut PartRels) {
         w.open("w:sectPr", &[]);
-        for (set, footer) in [(&s.headers, false), (&s.footers, true)] {
+        let headers = self.watermark_headers(s);
+        for (set, footer) in [(&headers, false), (&s.footers, true)] {
             for (kind, id) in [("default", set.default), ("first", set.first), ("even", set.even)] {
                 let Some(id) = id else { continue };
                 if let Some(rid) = self.hf_rel(id, footer, rels) {
@@ -1316,7 +1369,7 @@ fn sectpr_body(w: &mut W, s: &SectionProps) {
             let refs: Vec<(&str, &str)> = a.iter().map(|(k, v)| (*k, v.as_str())).collect();
             w.empty("w:lnNumType", &refs);
         }
-        if s.page_num_start.is_some() || s.page_num_format != wordcraft_doc::section::NumFormat::Decimal {
+        if s.page_num_set || s.page_num_start.is_some() || s.page_num_format != wordcraft_doc::section::NumFormat::Decimal {
             let mut a = vec![("w:fmt", s.page_num_format.ooxml().to_string())];
             if let Some(st) = s.page_num_start {
                 a.push(("w:start", st.to_string()));
@@ -1343,15 +1396,19 @@ fn sectpr_body(w: &mut W, s: &SectionProps) {
             let refs: Vec<(&str, &str)> = ca.iter().map(|(k, v)| (*k, v.as_str())).collect();
             w.empty("w:cols", &refs);
         }
+        if let Some(on) = s.form_prot {
+            w.empty("w:formProt", if on { &[] } else { &[("w:val", "0")] });
+        }
         match s.valign {
-            wordcraft_doc::props::VAlign::Top => {}
-            wordcraft_doc::props::VAlign::Center => w.val("w:vAlign", "center"),
-            wordcraft_doc::props::VAlign::Bottom => w.val("w:vAlign", "bottom"),
+            wordcraft_doc::section::PageVAlign::Top => {}
+            wordcraft_doc::section::PageVAlign::Center => w.val("w:vAlign", "center"),
+            wordcraft_doc::section::PageVAlign::Justify => w.val("w:vAlign", "both"),
+            wordcraft_doc::section::PageVAlign::Bottom => w.val("w:vAlign", "bottom"),
         }
         if s.title_page {
             w.empty("w:titlePg", &[]);
         }
-        if s.text_direction.is_turned() {
+        if s.text_direction.is_turned() || s.text_direction_set {
             w.val("w:textDirection", s.text_direction.ooxml());
         }
         if s.rtl {

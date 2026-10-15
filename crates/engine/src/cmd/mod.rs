@@ -39,6 +39,7 @@ pub mod smart_art;
 pub mod speech;
 pub mod table;
 pub mod table_draw;
+pub mod table_formula;
 pub mod table_mouse;
 pub mod table_resize;
 pub mod table_style;
@@ -135,7 +136,7 @@ pub fn sel_result(s: &Session) -> CmdResult {
 /// The paragraphs the selection covers: those between its ends (not the next one when it ends at
 /// that one's start, #418) or, for whole table cells that aren't one run of the text (part of a
 /// column), just the cells' own.
-pub(crate) fn selected_paths(s: &Session) -> Vec<wordcraft_doc::Path> {
+pub fn selected_paths(s: &Session) -> Vec<wordcraft_doc::Path> {
     if s.cell_range().is_some()
         && let Some(segs) = s.column_segments()
     {

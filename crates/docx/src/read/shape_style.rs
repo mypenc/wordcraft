@@ -29,7 +29,9 @@ pub(crate) fn preset_kind(prst: &str) -> ShapeKind {
         "ellipse" | "wedgeEllipseCallout" | "cloudCallout" | "cloud" | "flowChartConnector" | "donut" | "flowChartOnlineStorage" => {
             ShapeKind::Ellipse
         }
-        "triangle" | "rtTriangle" | "flowChartExtract" | "flowChartMerge" => ShapeKind::Triangle,
+        "flowChartOr" => ShapeKind::FlowchartOr,
+        "triangle" | "flowChartExtract" | "flowChartMerge" => ShapeKind::Triangle,
+        "rtTriangle" => ShapeKind::RightTriangle,
         "diamond" | "flowChartDecision" => ShapeKind::Diamond,
         "line" | "lineInv" => ShapeKind::Line,
         "straightConnector1" => ShapeKind::StraightConnector,
@@ -42,6 +44,65 @@ pub(crate) fn preset_kind(prst: &str) -> ShapeKind {
         "heart" => ShapeKind::Heart,
         _ => ShapeKind::Rectangle,
     }
+}
+
+/// The shape kind drawn for a legacy VML preset shape type `spt` (`o:spt`, the MSOSPT numbers of
+/// [MS-ODRAW] §2.4.24): that of the DrawingML preset of the same shape, through [`preset_kind`],
+/// so a preset WordCraft has no shape for is drawn as the nearest one; None for shapes with no
+/// preset geometry (freeforms, WordArt text, picture frames) and numbers MSOSPT doesn't define.
+pub(crate) fn vml_preset_kind(spt: u32) -> Option<ShapeKind> {
+    let prst = match spt {
+        // A text box's shapetype: a text box even without text, as DrawingML's `txBox`.
+        202 => return Some(ShapeKind::TextBox),
+        // Not primitive (freeform), WordArt text shapes, picture frame, host control.
+        0 | 24..=31 | 75 | 136..=175 | 201 => return None,
+        // Line and straight connector: corner to corner of the shape's box.
+        20 | 32 => "line",
+        2 => "roundRect",
+        3 => "ellipse",
+        4 => "diamond",
+        5 => "triangle",
+        6 => "rtTriangle",
+        12 => "star5",
+        13 => "rightArrow",
+        21 => "plaque",
+        23 => "donut",
+        33 => "bentConnector2",
+        34 => "bentConnector3",
+        35 => "bentConnector4",
+        36 => "bentConnector5",
+        37 => "curvedConnector2",
+        38 => "curvedConnector3",
+        39 => "curvedConnector4",
+        40 => "curvedConnector5",
+        58 => "star8",
+        59 => "star16",
+        60 => "star32",
+        62 => "wedgeRoundRectCallout",
+        63 => "wedgeEllipseCallout",
+        66 => "leftArrow",
+        67 => "downArrow",
+        68 => "upArrow",
+        69 => "leftRightArrow",
+        70 => "upDownArrow",
+        74 => "heart",
+        92 => "star24",
+        93 => "stripedRightArrow",
+        94 => "notchedRightArrow",
+        106 => "cloudCallout",
+        110 => "flowChartDecision",
+        116 => "flowChartTerminator",
+        120 => "flowChartConnector",
+        127 => "flowChartExtract",
+        128 => "flowChartMerge",
+        130 => "flowChartOnlineStorage",
+        176 => "flowChartAlternateProcess",
+        187 => "star4",
+        // Every other preset is drawn as its box, as `preset_kind` does.
+        1..=201 => "rect",
+        _ => return None,
+    };
+    Some(preset_kind(prst))
 }
 
 /// A shape's fill and outline.
@@ -123,6 +184,11 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_or_keeps_its_spokes() {
+        assert_eq!(preset_kind("flowChartOr"), ShapeKind::FlowchartOr);
+    }
+
+    #[test]
     fn explicit_paint_wins_over_the_style() {
         let sp = el(r#"<wps:spPr xmlns:wps="w" xmlns:a="a"><a:noFill/><a:ln><a:solidFill><a:srgbClr val="EE0000"/></a:solidFill></a:ln></wps:spPr>"#);
         let st = el(
@@ -164,6 +230,26 @@ mod tests {
         assert_eq!(preset_kind("wedgeEllipseCallout"), ShapeKind::Ellipse);
         assert_eq!(preset_kind("wedgeRectCallout"), ShapeKind::Rectangle);
         assert_eq!(preset_kind("flowChartDecision"), ShapeKind::Diamond);
+    }
+
+    #[test]
+    fn vml_presets_map_like_drawingml_presets() {
+        assert_eq!(vml_preset_kind(13), Some(ShapeKind::Arrow));
+        assert_eq!(vml_preset_kind(12), Some(ShapeKind::Star));
+        assert_eq!(vml_preset_kind(32), Some(ShapeKind::Line));
+        assert_eq!(vml_preset_kind(202), Some(ShapeKind::TextBox));
+        // The nearest shape, as `preset_kind` gives it: left arrow, right triangle, four-point
+        // star, rounded callout, elbow connector, a bevel (its box).
+        assert_eq!(vml_preset_kind(66), Some(ShapeKind::Arrow));
+        assert_eq!(vml_preset_kind(6), Some(ShapeKind::RightTriangle));
+        assert_eq!(vml_preset_kind(187), Some(ShapeKind::Star));
+        assert_eq!(vml_preset_kind(62), Some(ShapeKind::RoundedRectangle));
+        assert_eq!(vml_preset_kind(34), Some(ShapeKind::ElbowConnector));
+        assert_eq!(vml_preset_kind(84), Some(ShapeKind::Rectangle));
+        // No preset geometry: freeform, WordArt text, picture frame, host control, out of range.
+        for spt in [0, 24, 31, 136, 175, 75, 201, 203, u32::MAX] {
+            assert_eq!(vml_preset_kind(spt), None, "{spt}");
+        }
     }
 
     #[test]

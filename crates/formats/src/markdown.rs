@@ -9,6 +9,8 @@
 //!
 //! Export writes the same constructs; pictures become `![alt](media-name)` placeholders.
 
+use std::collections::HashMap;
+
 use wordcraft_doc::{Align, Document};
 
 use crate::html::decode_entity;
@@ -556,10 +558,11 @@ fn push_text(nodes: &mut Vec<Node>, s: &str, f: &Fmt) {
 }
 
 /// The closing `]` matching the `[` at byte `open` (escapes and code spans respected). Gives up
-/// after looking `max` bytes ahead.
-fn matching_bracket(s: &str, open: usize, max: usize) -> Option<usize> {
+/// after looking `max` bytes ahead. Records in `known` every bracket pair it passes, and every `[`
+/// still open at the end of the text: a scan from one of those would take the same path.
+fn matching_bracket(s: &str, open: usize, max: usize, ticks: &Backticks, known: &mut HashMap<usize, Option<usize>>) -> Option<usize> {
     let b = s.as_bytes();
-    let mut depth = 0usize;
+    let mut opens: Vec<usize> = Vec::new();
     let mut i = open;
     while let Some(&c) = b.get(i) {
         if i - open > max {
@@ -569,16 +572,18 @@ fn matching_bracket(s: &str, open: usize, max: usize) -> Option<usize> {
             b'\\' => i += 1,
             b'`' => {
                 let n = b.get(i..).map(|r| r.iter().take_while(|x| **x == b'`').count()).unwrap_or(1);
-                if let Some(end) = find_backticks(s, i + n, n) {
+                if let Some(end) = ticks.find(i + n, n) {
                     i = end + n - 1;
                 } else {
                     i += n - 1;
                 }
             }
-            b'[' => depth += 1,
+            b'[' => opens.push(i),
             b']' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
+                if let Some(o) = opens.pop() {
+                    known.insert(o, Some(i));
+                }
+                if opens.is_empty() {
                     return Some(i);
                 }
             }
@@ -586,25 +591,39 @@ fn matching_bracket(s: &str, open: usize, max: usize) -> Option<usize> {
         }
         i += 1;
     }
+    for o in opens {
+        known.insert(o, None);
+    }
     None
 }
 
-/// Byte index of a run of exactly `n` backticks at or after `from`.
-fn find_backticks(s: &str, from: usize, n: usize) -> Option<usize> {
-    let b = s.as_bytes();
-    let mut i = from;
-    while let Some(&c) = b.get(i) {
-        if c == b'`' {
-            let k = b.get(i..).map(|r| r.iter().take_while(|x| **x == b'`').count()).unwrap_or(1);
-            if k == n {
-                return Some(i);
+/// Where a text's runs of backticks start, by run length. Finding the run that closes a code span
+/// is then a lookup: scanning the rest of the text for it, again for every run nothing closes
+/// (each of a different length) and from every link bracket over them, was superlinear.
+struct Backticks(HashMap<usize, Vec<usize>>);
+
+impl Backticks {
+    fn new(s: &str) -> Self {
+        let b = s.as_bytes();
+        let mut runs: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut i = 0;
+        while let Some(&c) = b.get(i) {
+            if c == b'`' {
+                let k = b.get(i..).map(|r| r.iter().take_while(|x| **x == b'`').count()).unwrap_or(1);
+                runs.entry(k).or_default().push(i);
+                i += k;
+            } else {
+                i += 1;
             }
-            i += k;
-        } else {
-            i += 1;
         }
+        Self(runs)
     }
-    None
+
+    /// Byte index of a run of exactly `n` backticks at or after `from` (which is not inside a run).
+    fn find(&self, from: usize, n: usize) -> Option<usize> {
+        let starts = self.0.get(&n)?;
+        starts.get(starts.partition_point(|&p| p < from)).copied()
+    }
 }
 
 /// Parse `(dest "title")` at byte `at` (which holds `(`): (destination, index after `)`).
@@ -706,8 +725,11 @@ fn tokenize(s: &str, base: &Fmt, depth: usize) -> Vec<Node> {
     let mut nodes: Vec<Node> = Vec::new();
     // Bytes the link and image scans below may look ahead in total. Each unmatched `[` or `![(`
     // would otherwise rescan the rest of the text, which is quadratic on hostile input; once the
-    // budget is gone, further brackets are plain text.
+    // budget is gone, further brackets are plain text. A scan pays for what it reads; brackets an
+    // earlier scan passed are looked up in `known` instead.
     let mut scan_budget = s.len().saturating_mul(8).saturating_add(8192);
+    let ticks = Backticks::new(s);
+    let mut known: HashMap<usize, Option<usize>> = HashMap::new();
     let b = s.as_bytes();
     let mut i = 0usize;
     let mut text_start = 0usize;
@@ -737,7 +759,7 @@ fn tokenize(s: &str, base: &Fmt, depth: usize) -> Vec<Node> {
             b'`' => {
                 flush!();
                 let n = b.get(i..).map(|r| r.iter().take_while(|x| **x == b'`').count()).unwrap_or(1);
-                match find_backticks(s, i + n, n) {
+                match ticks.find(i + n, n) {
                     Some(end) => {
                         let mut code = s.get(i + n..end).unwrap_or("").replace('\n', " ");
                         if code.len() >= 2 && code.starts_with(' ') && code.ends_with(' ') && !code.trim().is_empty() {
@@ -779,13 +801,21 @@ fn tokenize(s: &str, base: &Fmt, depth: usize) -> Vec<Node> {
             b'!' | b'[' if depth < MAX_NEST => {
                 let img = c == b'!';
                 let open = if img { i + 1 } else { i };
-                let parsed = if b.get(open) == Some(&b'[') && scan_budget > 0 {
-                    let found = matching_bracket(s, open, scan_budget);
-                    scan_budget = scan_budget.saturating_sub(found.map_or(scan_budget, |close| close - open));
-                    found.and_then(|close| {
+                let parsed = if b.get(open) == Some(&b'[') {
+                    let found = match known.get(&open).copied() {
+                        Some(found) => found,
+                        None if scan_budget > 0 => {
+                            let found = matching_bracket(s, open, scan_budget, &ticks, &mut known);
+                            scan_budget = scan_budget.saturating_sub(found.unwrap_or(s.len()).saturating_sub(open));
+                            found
+                        }
+                        None => None,
+                    };
+                    found.filter(|close| b.get(close + 1) == Some(&b'(') && scan_budget > 0).and_then(|close| {
                         // A destination that does not parse may have been read to the end of the text.
-                        scan_budget = scan_budget.saturating_sub(s.len().saturating_sub(close));
-                        let (dest, end) = link_dest(s, close + 1)?;
+                        let dest = link_dest(s, close + 1);
+                        scan_budget = scan_budget.saturating_sub(dest.as_ref().map_or(s.len(), |d| d.1).saturating_sub(close));
+                        let (dest, end) = dest?;
                         Some((s.get(open + 1..close)?.to_string(), dest, end))
                     })
                 } else {
@@ -1041,11 +1071,13 @@ pub(crate) fn escape(s: &str) -> String {
     out
 }
 
-/// Escape what would start a block at the beginning of a line.
+/// Escape what would start a block at the beginning of a line. Leading spaces are kept, but at
+/// most three (a tab counts as four): four would turn the line into an indented code block.
 fn escape_line_start(s: String) -> String {
-    let s = s.trim_start().to_string();
-    let t = s.as_str();
-    let lead = s.len() - t.len();
+    let t = s.trim_start_matches([' ', '\t']);
+    let lead = s.get(..s.len() - t.len()).unwrap_or("");
+    let cols: usize = lead.chars().map(|c| if c == '\t' { 4 } else { 1 }).sum();
+    let indent = " ".repeat(cols.min(3));
     let needs = t.starts_with('#')
         || t.starts_with('>')
         || t.starts_with("- ")
@@ -1059,12 +1091,12 @@ fn escape_line_start(s: String) -> String {
             d > 0 && t.get(d..).is_some_and(|r| r.starts_with(". ") || r.starts_with(") ") || r == "." || r == ")")
         };
     if !needs {
-        return s;
+        return if cols > 3 || lead.contains('\t') { format!("{indent}{t}") } else { s };
     }
     if let Some(d) = t.find(['.', ')']).filter(|_| t.starts_with(|c: char| c.is_ascii_digit())) {
-        return format!("{}{}\\{}", &s[..lead], &t[..d], &t[d..]);
+        return format!("{indent}{}\\{}", &t[..d], &t[d..]);
     }
-    format!("{}\\{}", &s[..lead], t)
+    format!("{indent}\\{t}")
 }
 
 fn code_span(t: &str) -> String {
@@ -1444,6 +1476,19 @@ mod tests {
         let FBlock::Para(q) = &back.blocks[0] else { panic!() };
         assert_eq!(q.text(), "1. not a list *really*");
         assert!(q.list.is_none());
+    }
+
+    #[test]
+    fn escape_line_start_preserves_indentation() {
+        assert_eq!(escape_line_start("   indented text".to_string()), "   indented text");
+        assert_eq!(escape_line_start("   # not a heading".to_string()), "   \\# not a heading");
+        assert_eq!(escape_line_start("  1. not a list".to_string()), "  1\\. not a list");
+        assert_eq!(escape_line_start("  > quote".to_string()), "  \\> quote");
+        // Four spaces or a tab would make an indented code block: the indent is capped at three.
+        assert_eq!(escape_line_start("      deep".to_string()), "   deep");
+        assert_eq!(escape_line_start("\tTabbed # text".to_string()), "   Tabbed # text");
+        assert_eq!(escape_line_start("    # not a heading".to_string()), "   \\# not a heading");
+        assert_eq!(escape_line_start(" \t1. not a list".to_string()), "   1\\. not a list");
     }
 
     #[test]

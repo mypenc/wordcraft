@@ -53,6 +53,7 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .key("Mod+Shift+W"),
         CommandSpec::new("format.strikethrough", "Strikethrough", "Home › Font", |s, v| toggle(s, v, |r| r.strike, |c, on| c.strike = Some(on)))
+            .key("Mod+Shift+X")
             .params(r#"{"value"?: bool}"#),
         // Note: off clears the direct property only; a border inherited from a character style stays on.
         CommandSpec::new("format.border", "Character Border", "Home › Font", |s, v| {
@@ -800,7 +801,14 @@ fn enclose(s: &mut Session, v: &Value) -> CmdResult {
         Some(shape) => {
             let style = style.or(t.current.as_ref().map(|e| e.style)).unwrap_or_default();
             let e = Enclosure { shape, style, text: t.text.clone() };
-            let obj = wordcraft_doc::InlineObject::Field { instr: e.instr(), result: t.text, locked: false, code: false };
+            let obj = wordcraft_doc::InlineObject::Field {
+                instr: e.instr(),
+                result: t.text,
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+            };
             s.doc.insert_object(&at, obj, &t.props)?
         }
         None => s.doc.insert_text(&at, &t.text, &t.props)?,

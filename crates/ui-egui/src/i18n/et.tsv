@@ -80,6 +80,9 @@
 	Bold	Paks
 	Bookmark	Järjehoidja
 	Bookmark name:	Järjehoidja nimi:
+	Delete Bookmark	Kustuta järjehoidja
+	Hidden bookmarks	Peidetud järjehoidjad
+	Sort by:	Sordi:
 	Book Title	Raamatu pealkiri
 	Border Painter	Äärisepintsel
 	Border\nPainter	Äärise-\npintsel
@@ -397,6 +400,8 @@
 	Labels	Sildid
 	Landscape	Rõhtpaigutus
 	Language	Keel
+	{language} (no dictionary)	{language} (sõnastik puudub)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Keele {language} õigekirjasõnastikku pole paigaldatud, seega seda ei kontrollita. WordCraft otsib Hunspelli sõnastikku {name} kaustast WORDCRAFT_DICTIONARIES ja tavalistest süsteemikohtadest.
 	Lasso	Lasso
 	Last Column	Viimane veerg
 	Last commit	Viimane commit
@@ -457,7 +462,7 @@
 	Multiple Pages	Mitu lehte
 	Name (A–Z)	Nimi (A–Z)
 	Name:	Nimi:
-	Narrow  0.5" all	Kitsas  0,5" kõigil külgedel
+	Narrow  {size} all	Kitsas  {size} kõigil külgedel
 	Navigation	Navigeerimine
 	Navigation Pane	Navigeerimispaan
 	New	Uus
@@ -490,7 +495,7 @@
 	Nonbreaking Hyphen	Poolitamatu sidekriips
 	Nonbreaking Space	Poolitamatu tühik
 	None	Puudub
-	Normal  1" all	Tavaline  1" kõigil külgedel
+	Normal  {size} all	Tavaline  {size} kõigil külgedel
 	Normal Style	Tavaline stiil
 	Not available right now	Praegu pole saadaval
 	Not saved	Salvestamata
@@ -1575,6 +1580,11 @@
 	Add Font…	Lisa font…
 	Added Fonts	Lisatud fondid
 	Remove Added Font	Eemalda lisatud font
+	Load System Installed Fonts…	Laadi süsteemi installitud fondid…
+	All system fonts are already available.	Kõik süsteemifondid on juba saadaval.
+	Local font access is not supported by your browser.	Teie brauser ei toeta kohalike fontide juurdepääsu.
+	Local font access was denied.	Juurdepääs kohalikele fontidele keelati.
+	Loaded {count} system fonts.	Laaditi {count} süsteemifonti.
 	Recent Colors	Viimati kasutatud värvid
 	More Colors…	Rohkem värve…
 	Standard	Standard
@@ -2115,6 +2125,16 @@
 	AutoFit Column by Double-Clicking	Veeru automaatne sobitus topeltklõpsuga
 	Region:	Piirkond:
 	Automatic ({region})	Automaatne ({region})
+	Odd Banded Rows	Paaritud vahelduvad read
+	Even Banded Rows	Paaris vahelduvad read
+	Odd Banded Columns	Paaritud vahelduvad veerud
+	Even Banded Columns	Paaris vahelduvad veerud
+	Top Left Cell	Ülemine vasak lahter
+	Top Right Cell	Ülemine parem lahter
+	Bottom Left Cell	Alumine vasak lahter
+	Bottom Right Cell	Alumine parem lahter
+	Inside Horizontal Border	Sisemine horisontaalne ääris
+	Inside Vertical Border	Sisemine vertikaalne ääris
 	Text of the nearest paragraph with a given style (running headers)	Antud stiiliga lähima lõigu tekst (jooksvad päised)
 	Style name:	Stiili nimi:
 # Mail merge: filter and sort recipients (#778)
@@ -2199,6 +2219,24 @@
 	Suggested	Soovitused
 	Set Proofing Language…	Määra õigekeelsuskontrolli keel…
 	Language Preferences…	Keele-eelistused…
+	Printer	Printer
+	Select a printer	Vali printer
+	Refresh printers	Värskenda printereid
+	Two-sided printing	Kahepoolne printimine
+	Printer default	Printeri vaikesäte
+	One-sided	Ühepoolne
+	Two-sided: long edge	Kahepoolne: pikk serv
+	Two-sided: short edge	Kahepoolne: lühike serv
+	Grayscale	Halltoonid
+	Finding printers…	Printerite otsimine…
+	No printers found. Configure a system printer or export a PDF.	Printereid ei leitud. Seadista süsteemis printer või ekspordi PDF.
+	Printer discovery failed.	Printerite otsimine nurjus.
+	Submitting print job…	Prinditöö saatmine…
+	Print job submitted.	Prinditöö saadetud.
+	Print job submitted: {receipt}	Prinditöö saadetud: {receipt}
+	Print failed: the printing worker stopped.	Printimine nurjus: printimisprotsess peatus.
+	Print settings	Printimisseaded
+	Submit print job	Saada prinditöö
 
 # Dictionaries folder (#1063)
 	Dictionaries	Sõnastikud
@@ -2210,3 +2248,22 @@
 
 # Backstage › Recover (#586)
 	Recover	Taasta
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Peegelveerised
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Olemasolev fail või veebileht
+	Link to:	Link:
+	Place in This Document	Koht selles dokumendis
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Veerg {n}
+	Header row	Päiserida
+	No header row	Päiserida puudub
+	My list has	Minu loendil on
+# Table Layout › Formula dialog (#1210)
+	Formula:	Valem:
+	Paste function:	Kleebi funktsioon:
+# Reading Mode column widths (#1040)
+	Narrow	Kitsas
+	Medium	Keskmine

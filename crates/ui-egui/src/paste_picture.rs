@@ -121,6 +121,8 @@ pub(crate) fn paste(app: &mut WordApp) -> Option<Result<Value, String>> {
             r
         }
     };
+    // Selected once, after the last picture: a selected picture is replaced by the next insert.
+    app.select_inserted_picture(&r);
     Some(r)
 }
 
@@ -238,5 +240,26 @@ mod tests {
         assert_eq!(pictures(&mut a), 1);
         let focus = a.session.sel.focus.clone();
         assert_eq!(a.session.doc.para_at(&focus).map(|p| p.text.contains("wc-ribbon-paste")), Some(false));
+    }
+
+    /// A pasted picture is selected, with handles, as one inserted from Insert › Pictures is
+    /// (#965); pasting several copied picture files keeps them all and selects the last.
+    #[test]
+    fn pasted_pictures_are_selected() {
+        let mut a = app_with(|| Some(ClipboardPicture::Pixels { width: 4, height: 4, rgba: vec![200; 4 * 4 * 4] }));
+        a.run("edit.paste", json!({})).unwrap();
+        assert!(!a.session.sel.is_collapsed() && crate::objects::selected(&a).is_some(), "pixels: the pasted picture is selected");
+        let dir = std::env::temp_dir().join(format!("wc-paste-965-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let files: Vec<PathBuf> = (0..2).map(|i| dir.join(format!("{i}.png"))).collect();
+        for f in &files {
+            std::fs::write(f, png_from_rgba(4, 4, vec![200; 4 * 4 * 4]).unwrap()).unwrap();
+        }
+        let mut a = app_with(move || Some(ClipboardPicture::Files(files.clone())));
+        let r = a.run("edit.paste", json!({}));
+        let _ = std::fs::remove_dir_all(&dir);
+        r.unwrap();
+        assert_eq!(pictures(&mut a), 2, "files: both pictures are kept");
+        assert!(!a.session.sel.is_collapsed() && crate::objects::selected(&a).is_some(), "files: the last picture is selected");
     }
 }

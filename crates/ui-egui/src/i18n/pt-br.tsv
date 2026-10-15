@@ -164,6 +164,9 @@
 	Bold	Negrito
 	Bookmark	Indicador
 	Bookmark name:	Nome do indicador:
+	Delete Bookmark	Excluir indicador
+	Hidden bookmarks	Indicadores ocultos
+	Sort by:	Classificar por:
 	Border Painter	Pincel de bordas
 	Border\nPainter	Pincel\nde bordas
 	Borders	Bordas
@@ -511,6 +514,8 @@
 	Labels	Etiquetas
 	Landscape	Paisagem
 	Language	Idioma
+	{language} (no dictionary)	{language} (sem dicionário)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Não há dicionário ortográfico instalado para {language}, então o texto não é verificado. O WordCraft procura o dicionário Hunspell {name} na pasta WORDCRAFT_DICTIONARIES e nos locais habituais do sistema.
 	Lasso	Laço
 	Last Column	Última coluna
 	Last commit	Último commit
@@ -566,7 +571,7 @@
 	Multiple Pages	Várias páginas
 	Name (A–Z)	Nome (A–Z)
 	Name:	Nome:
-	Narrow  0.5" all	Estreita  0,5" em todas as margens
+	Narrow  {size} all	Estreita  {size} em todas as margens
 	Navigation	Navegação
 	Navigation Pane	Painel de navegação
 	New	Novo
@@ -593,7 +598,7 @@
 	Nonbreaking Hyphen	Hífen inseparável
 	Nonbreaking Space	Espaço inseparável
 	None	Nenhuma
-	Normal  1" all	Normal  1" em todas as margens
+	Normal  {size} all	Normal  {size} em todas as margens
 	Normal Style	Estilo Normal
 	Not available right now	Indisponível no momento
 	Not saved	Não salvo
@@ -1568,6 +1573,11 @@
 	Add Font…	Adicionar fonte…
 	Added Fonts	Fontes adicionadas
 	Remove Added Font	Remover fonte adicionada
+	Load System Installed Fonts…	Carregar fontes do sistema instaladas…
+	All system fonts are already available.	Todas as fontes do sistema já estão disponíveis.
+	Local font access is not supported by your browser.	O acesso a fontes locais não é compatível com seu navegador.
+	Local font access was denied.	O acesso a fontes locais foi negado.
+	Loaded {count} system fonts.	{count} fontes do sistema carregadas.
 	Recent Colors	Cores recentes
 	More Colors…	Mais cores…
 	Standard	Padrão
@@ -2093,6 +2103,16 @@
 	AutoFit Column by Double-Clicking	Autoajustar coluna com clique duplo
 	Region:	Região:
 	Automatic ({region})	Automático ({region})
+	Odd Banded Rows	Linhas listradas ímpares
+	Even Banded Rows	Linhas listradas pares
+	Odd Banded Columns	Colunas listradas ímpares
+	Even Banded Columns	Colunas listradas pares
+	Top Left Cell	Célula superior esquerda
+	Top Right Cell	Célula superior direita
+	Bottom Left Cell	Célula inferior esquerda
+	Bottom Right Cell	Célula inferior direita
+	Inside Horizontal Border	Borda horizontal interna
+	Inside Vertical Border	Borda vertical interna
 	Text of the nearest paragraph with a given style (running headers)	Texto do parágrafo mais próximo com um determinado estilo (cabeçalhos dinâmicos)
 	Style name:	Nome do estilo:
 # Mail merge: filter and sort recipients (#778)
@@ -2177,6 +2197,24 @@
 	Suggested	Sugestões
 	Set Proofing Language…	Definir idioma de revisão…
 	Language Preferences…	Preferências de idioma…
+	Printer	Impressora
+	Select a printer	Selecione uma impressora
+	Refresh printers	Atualizar impressoras
+	Two-sided printing	Impressão frente e verso
+	Printer default	Padrão da impressora
+	One-sided	Somente frente
+	Two-sided: long edge	Frente e verso: borda longa
+	Two-sided: short edge	Frente e verso: borda curta
+	Grayscale	Tons de cinza
+	Finding printers…	Localizando impressoras…
+	No printers found. Configure a system printer or export a PDF.	Nenhuma impressora encontrada. Configure uma impressora no sistema ou exporte um PDF.
+	Printer discovery failed.	Falha ao localizar impressoras.
+	Submitting print job…	Enviando trabalho de impressão…
+	Print job submitted.	Trabalho de impressão enviado.
+	Print job submitted: {receipt}	Trabalho de impressão enviado: {receipt}
+	Print failed: the printing worker stopped.	A impressão falhou: o processo de impressão parou.
+	Print settings	Configurações de impressão
+	Submit print job	Enviar trabalho de impressão
 
 # Dictionaries folder (#1063)
 	Dictionaries	Dicionários
@@ -2188,3 +2226,22 @@
 
 # Backstage › Recover (#586)
 	Recover	Recuperar
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Margens espelho
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Página da Web ou arquivo existente
+	Link to:	Vincular a:
+	Place in This Document	Colocar neste documento
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Coluna {n}
+	Header row	Linha de cabeçalho
+	No header row	Sem linha de cabeçalho
+	My list has	Minha lista tem
+# Table Layout › Formula dialog (#1210)
+	Formula:	Fórmula:
+	Paste function:	Colar função:
+# Reading Mode column widths (#1040)
+	Narrow	Estreita
+	Medium	Média

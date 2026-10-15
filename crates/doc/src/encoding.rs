@@ -1,6 +1,7 @@
 //! Windows-1252 (the byte encoding legacy Word text pieces use) and the other single-byte Windows
 //! code pages RTF files name with `\ansicpg` or a font's `\fcharset` (Cyrillic 1251, Central
-//! European 1250, Greek, Turkish, Hebrew, Arabic, Baltic, Vietnamese, Thai).
+//! European 1250, Greek, Turkish, Hebrew, Arabic, Baltic, Vietnamese, Thai), and Mac OS Roman
+//! (10000, RTF `\mac`).
 
 /// Windows-1252 code points for 0x80..=0x9F.
 const CP1252: [u16; 32] = [
@@ -125,6 +126,18 @@ const CP1258: [u16; 128] = [
     0x20AB, 0x00FF,
 ];
 
+/// Mac OS Roman (code page 10000, RTF `\mac`) code points for 0x80..=0xFF, with the euro sign at
+/// 0xDB (Mac OS 8.5 and later).
+const MAC_ROMAN: [u16; 128] = [
+    0x00C4, 0x00C5, 0x00C7, 0x00C9, 0x00D1, 0x00D6, 0x00DC, 0x00E1, 0x00E0, 0x00E2, 0x00E4, 0x00E3, 0x00E5, 0x00E7, 0x00E9, 0x00E8, 0x00EA, 0x00EB,
+    0x00ED, 0x00EC, 0x00EE, 0x00EF, 0x00F1, 0x00F3, 0x00F2, 0x00F4, 0x00F6, 0x00F5, 0x00FA, 0x00F9, 0x00FB, 0x00FC, 0x2020, 0x00B0, 0x00A2, 0x00A3,
+    0x00A7, 0x2022, 0x00B6, 0x00DF, 0x00AE, 0x00A9, 0x2122, 0x00B4, 0x00A8, 0x2260, 0x00C6, 0x00D8, 0x221E, 0x00B1, 0x2264, 0x2265, 0x00A5, 0x00B5,
+    0x2202, 0x2211, 0x220F, 0x03C0, 0x222B, 0x00AA, 0x00BA, 0x03A9, 0x00E6, 0x00F8, 0x00BF, 0x00A1, 0x00AC, 0x221A, 0x0192, 0x2248, 0x2206, 0x00AB,
+    0x00BB, 0x2026, 0x00A0, 0x00C0, 0x00C3, 0x00D5, 0x0152, 0x0153, 0x2013, 0x2014, 0x201C, 0x201D, 0x2018, 0x2019, 0x00F7, 0x25CA, 0x00FF, 0x0178,
+    0x2044, 0x20AC, 0x2039, 0x203A, 0xFB01, 0xFB02, 0x2021, 0x00B7, 0x201A, 0x201E, 0x2030, 0x00C2, 0x00CA, 0x00C1, 0x00CB, 0x00C8, 0x00CD, 0x00CE,
+    0x00CF, 0x00CC, 0x00D3, 0x00D4, 0xF8FF, 0x00D2, 0x00DA, 0x00DB, 0x00D9, 0x0131, 0x02C6, 0x02DC, 0x00AF, 0x02D8, 0x02D9, 0x02DA, 0x00B8, 0x02DD,
+    0x02DB, 0x02C7,
+];
 /// IBM PC (OEM) code page 437 code points for 0x80..=0xFF (the Unicode Consortium's CP437
 /// mapping file).
 const CP437: [u16; 128] = [
@@ -236,8 +249,11 @@ pub fn oem_byte(code_page: u16, b: u8) -> char {
 /// The single-byte Windows code pages [`windows_byte`] decodes (1252 included).
 pub const SINGLE_BYTE_CODE_PAGES: [u16; 10] = [874, 1250, 1251, 1252, 1253, 1254, 1255, 1256, 1257, 1258];
 
-/// One byte of a single-byte Windows code page as a char; a code page outside
-/// [`SINGLE_BYTE_CODE_PAGES`] reads as Windows-1252.
+/// Mac OS Roman, RTF's `\mac` character set.
+pub const MAC_ROMAN_CODE_PAGE: u16 = 10000;
+
+/// One byte of a single-byte code page as a char: a Windows one in [`SINGLE_BYTE_CODE_PAGES`] or
+/// Mac OS Roman ([`MAC_ROMAN_CODE_PAGE`]); any other code page reads as Windows-1252.
 pub fn windows_byte(code_page: u16, b: u8) -> char {
     let table: &[u16; 128] = match code_page {
         874 => &CP874,
@@ -249,6 +265,7 @@ pub fn windows_byte(code_page: u16, b: u8) -> char {
         1256 => &CP1256,
         1257 => &CP1257,
         1258 => &CP1258,
+        MAC_ROMAN_CODE_PAGE => &MAC_ROMAN,
         _ => return cp1252(b),
     };
     if b < 0x80 {
@@ -257,11 +274,25 @@ pub fn windows_byte(code_page: u16, b: u8) -> char {
     table.get(usize::from(b - 0x80)).and_then(|u| char::from_u32(u32::from(*u))).unwrap_or('\u{FFFD}')
 }
 
+/// Whether [`code_page_byte`] decodes `code_page`: a Windows one ([`SINGLE_BYTE_CODE_PAGES`]), an
+/// OEM (DOS) one ([`OEM_CODE_PAGES`]) or Mac OS Roman. Document formats (RTF) name all three.
+pub fn is_byte_code_page(code_page: u16) -> bool {
+    SINGLE_BYTE_CODE_PAGES.contains(&code_page) || OEM_CODE_PAGES.contains(&code_page) || code_page == MAC_ROMAN_CODE_PAGE
+}
+
+/// A byte of 8-bit document text in `code_page` (see [`is_byte_code_page`]) as a char. Below 0x80
+/// it is ASCII in every code page (text, so an OEM page's glyphs for control codes don't apply).
+pub fn code_page_byte(code_page: u16, b: u8) -> char {
+    if b >= 0x80 && OEM_CODE_PAGES.contains(&code_page) { oem_byte(code_page, b) } else { windows_byte(code_page, b) }
+}
+
 /// The code page of an RTF or Word font charset (`\fcharset`): 204 Russian → 1251, 238 Eastern
-/// European → 1250… `None` for the ANSI and default charsets (the document's code page applies),
-/// symbol fonts and the double-byte East Asian charsets.
+/// European → 1250, 77 Mac → 10000, 254 PC → 437… `None` for the ANSI and default charsets (the
+/// document's code page applies), symbol fonts and the double-byte East Asian charsets.
 pub fn charset_code_page(charset: i32) -> Option<u16> {
     Some(match charset {
+        77 => MAC_ROMAN_CODE_PAGE,
+        254 => 437,
         161 => 1253,
         162 => 1254,
         163 => 1258,
@@ -288,6 +319,10 @@ mod tests {
         assert_eq!(decode(1253, &[0xC1, 0xE2]), "Αβ");
         assert_eq!(decode(1252, &[0x80, 0xE9]), "€é");
         assert_eq!(decode(9999, &[0xE9]), "é");
+        // Mac OS Roman (#1653): accents, the euro sign at 0xDB, typographic quotes.
+        assert_eq!(decode(10000, &[0x80, 0x8E, 0xDB, 0xF1, 0xF2, 0xF3, 0xD2, 0xD3, 0x41]), "Äé€ÒÚÛ“”A");
+        assert_eq!(charset_code_page(77), Some(10000));
+        assert_eq!(charset_code_page(254), Some(437));
         assert_eq!(charset_code_page(204), Some(1251));
         assert_eq!(charset_code_page(0), None);
         for cp in SINGLE_BYTE_CODE_PAGES {
@@ -295,6 +330,20 @@ mod tests {
                 let _ = windows_byte(cp, b);
             }
         }
+    }
+
+    /// #1653: one decoder for document text in any code page RTF names: Windows, DOS or Mac.
+    #[test]
+    fn document_text_in_windows_dos_and_mac_code_pages() {
+        let decode = |cp: u16, bytes: &[u8]| bytes.iter().map(|&b| code_page_byte(cp, b)).collect::<String>();
+        assert_eq!(decode(437, &[0x82, 0xA0, 0x41, 0x01]), "éáA\u{1}", "DOS text; ASCII stays ASCII");
+        assert_eq!(decode(850, &[0x9D, 0xE9]), "ØÚ");
+        assert_eq!(decode(10000, &[0x8E]), "é");
+        assert_eq!(decode(1251, &[0xC4]), "Д");
+        for cp in [437, 850, 866, 1250, 1252, 10000] {
+            assert!(is_byte_code_page(cp), "{cp}");
+        }
+        assert!(!is_byte_code_page(932) && !is_byte_code_page(0) && !SINGLE_BYTE_CODE_PAGES.contains(&10000));
     }
 
     #[test]

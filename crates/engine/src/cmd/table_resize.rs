@@ -210,30 +210,20 @@ impl ResizeTarget {
         }
     }
 
-    /// When the selection runs across cells of this table (Word selects them whole) and the
-    /// column border grabbed at page y `y` is one of theirs, in one of their rows, the drag
-    /// moves it only in those rows (`only`), as Word does with selected cells' borders. Not the
-    /// table's left edge, which moves the whole table, nor a border of a cell merged down into
-    /// rows outside the selection. Text selected within one cell isn't a cell selection.
+    /// When cells of this table are selected whole (one cell too) or the selection runs across
+    /// cells of it (Word selects them whole), and the column border grabbed at page y `y` is one
+    /// of theirs, in one of their rows, the drag moves it only in those rows (`only`), as Word
+    /// does with selected cells' borders. Not the table's left edge, which moves the whole table,
+    /// nor a border of a cell merged down into rows outside the selection. Text selected within
+    /// one cell isn't a cell selection.
     pub fn limit_to_selection(&mut self, s: &Session, y: f32) {
         self.only.clear();
         let Edge::Column(line) = self.edge else { return };
-        let (a, b) = s.sel.ordered();
-        if line == 0 || s.sel.is_collapsed() || a.story != self.story || b.story != self.story {
+        if line == 0 {
             return;
         }
-        let (Some(t), Some((ra, ca)), Some((rb, cb))) =
-            (s.doc.table(self.story, &self.table), cell_in(&self.table, &a.path), cell_in(&self.table, &b.path))
-        else {
-            return;
-        };
-        if (ra, ca) == (rb, cb) {
-            return;
-        }
-        let span = |r: usize, c: usize| t.rows.get(r).and_then(|row| row.cells.get(c)).map_or(1, Cell::span);
-        let (ga, gb) = (t.grid_col(ra, ca), t.grid_col(rb, cb));
-        let (lo, hi) = (ga.min(gb), (ga + span(ra, ca)).max(gb + span(rb, cb)));
-        let (r0, r1) = (ra.min(rb), ra.max(rb));
+        let Some(t) = s.doc.table(self.story, &self.table) else { return };
+        let Some(((r0, r1), (lo, hi))) = self.selected_block(s, t) else { return };
         let here = self.rows.iter().find(|r| y >= r.top && y <= r.bottom).map(|r| r.row);
         if line < lo || line > hi || !here.is_some_and(|r| (r0..=r1).contains(&r)) {
             return;
@@ -257,6 +247,30 @@ impl ResizeTarget {
             only.push((r, lines));
         }
         self.only = only;
+    }
+
+    /// The selected cells of this table, as their rows (first, last) and the grid lines of
+    /// their outer borders (left, right): whole cells (`Session::cell_range`), or a selection
+    /// running from one of its cells into another. `None` for text within one cell.
+    fn selected_block(&self, s: &Session, t: &Table) -> Option<((usize, usize), (usize, usize))> {
+        let lines = |cells: &[(usize, usize)]| -> Option<(usize, usize)> {
+            let span = |r: usize, c: usize| t.rows.get(r).and_then(|row| row.cells.get(c)).map_or(1, Cell::span);
+            let lo = cells.iter().map(|&(r, c)| t.grid_col(r, c)).min()?;
+            let hi = cells.iter().map(|&(r, c)| t.grid_col(r, c).saturating_add(span(r, c))).max()?;
+            Some((lo, hi))
+        };
+        if let Some(range) = s.cell_range().filter(|c| c.story == self.story && c.table == self.table) {
+            return Some((range.rows, lines(&range.cells(t))?));
+        }
+        let (a, b) = s.sel.ordered();
+        if s.sel.is_collapsed() || a.story != self.story || b.story != self.story {
+            return None;
+        }
+        let ((ra, ca), (rb, cb)) = (cell_in(&self.table, &a.path)?, cell_in(&self.table, &b.path)?);
+        if (ra, ca) == (rb, cb) {
+            return None;
+        }
+        Some(((ra.min(rb), ra.max(rb)), lines(&[(ra, ca), (rb, cb)])?))
     }
 }
 
@@ -962,6 +976,27 @@ mod tests {
         s.run("edit.undo", &json!({})).unwrap();
         s.run("edit.undo", &json!({})).unwrap();
         assert_eq!(first_table(&s), start, "one undo step each");
+    }
+
+    /// One selected cell (Select Cell, unlike its text) is a cell selection too: its border
+    /// moves in its row only (#962).
+    #[test]
+    fn a_selected_cells_border_moves_only_in_its_row() {
+        let mut s = table_session(3, 3);
+        let (b, c) = (cell_rect(&mut s, 1, 1), cell_rect(&mut s, 1, 2));
+        let y = b.y + b.h / 2.0;
+        s.run("caret.set", &json!({"page": 0, "x": b.x + b.w / 2.0, "y": y})).unwrap();
+        s.run("table.selectCell", &json!({})).unwrap();
+        assert!(s.cell_range().is_some());
+        let start = first_table(&s);
+        s.run("table.resizeDrag", &json!({"page": 0, "x": b.right(), "y": y, "toX": b.right() + 30.0, "toY": y})).unwrap();
+        let (b1, c1) = (cell_rect(&mut s, 1, 1), cell_rect(&mut s, 1, 2));
+        assert!((b1.w - (b.w + 30.0)).abs() < 1.0 && (c1.w - (c.w - 30.0)).abs() < 1.0, "{b1:?} {c1:?}");
+        for r in [0, 2] {
+            assert!((cell_rect(&mut s, r, 1).right() - b.right()).abs() < 0.5, "row {r} keeps its border");
+        }
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(first_table(&s), start, "one undo step");
     }
 
     /// A cell merged down past the selection keeps one width: a border of it moves in the whole

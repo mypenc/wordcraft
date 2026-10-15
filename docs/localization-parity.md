@@ -1,6 +1,6 @@
 # Localization parity with Microsoft Word
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** trivial (Czech interface catalog completed, 2,447 entries; previously trivial: interface audit runs in CI again: size labels translated, 20 strings in every catalog, Read Aloud error race fixed, #1128; previously trivial: Review › Language reaches every language again — Set Proofing Language… and Set As Default, #860; previously minor: Italian proofing: it-IT spelling from the installed Hunspell dictionary, accent-first suggestions, conservative grammar with Italian messages; previously minor: Portuguese proofing; previously trivial: Turkish interface catalog completed, 2,325 entries, #774; previously minor: Hungarian interface added; previously trivial: sorting and table numbers follow the text's language, #836, #837; previously minor: Polish interface; Polish proofing — spelling, grammar, hyphenation — and a proofing language per run; previously minor: Turkish interface added; previously major: first version; catalogs measured from `crates/ui-egui/src/i18n`, Word's languages from its bundle listing) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-14 · **Change:** trivial (print-area strings translated in every catalog; previously trivial: Italian: the interface audit checks the Italian catalog, `Privacy Settings` wording; previously trivial: Italian grammar: `po'`, `qual è`, `È`, `un`/`un'` rules; more elisions and truncations in spelling; previously trivial: Czech interface catalog completed, 2,447 entries; previously trivial: interface audit runs in CI again: size labels translated, 20 strings in every catalog, Read Aloud error race fixed, #1128; previously trivial: Review › Language reaches every language again — Set Proofing Language… and Set As Default, #860; previously minor: Italian proofing: it-IT spelling from the installed Hunspell dictionary, accent-first suggestions, conservative grammar with Italian messages; previously minor: Portuguese proofing; previously trivial: Turkish interface catalog completed, 2,325 entries, #774; previously minor: Hungarian interface added; previously trivial: sorting and table numbers follow the text's language, #836, #837; previously minor: Polish interface; Polish proofing — spelling, grammar, hyphenation — and a proofing language per run; previously minor: Turkish interface added; previously major: first version; catalogs measured from `crates/ui-egui/src/i18n`, Word's languages from its bundle listing) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
 
 Interface languages, script support and proofing per language. How translation works (catalog
 format, adding a language, clean-room rule): `crates/ui-egui/src/i18n/mod.rs`.
@@ -19,9 +19,9 @@ native-speaker review (human).
 
 ## What WordCraft ships (measured)
 
-- **20 interface languages**: English plus `zh-hans`, `zh-hant`, `ja`, `uk`, `es`, `pt-br`,
-  Serbian `sr`/`sr-latn` (#250), Estonian `et`, Turkish `tr`, Russian `ru`, Italian `it` (#594), German `de` (#574), Polish `pl`, Czech `cs`, Hungarian `hu`, French `fr`, Bulgarian `bg` and Vietnamese `vi` (#1434). Catalogs have 2,057–2,454 entries
-  each; Polish has every key of every other catalog, including the built-in style names and the equation gallery, except the citation style names only Hungarian and Bulgarian translate so far (a test checks it). A test (`every_tab_and_command_is_translated`) enforces that every ribbon tab, command
+- **23 interface languages**: English plus `zh-hans`, `zh-hant`, `ja`, Korean `ko` (#1216), `uk`, `es`, `pt-br`,
+  Serbian `sr`/`sr-latn` (#250), Estonian `et`, Turkish `tr`, Russian `ru`, Italian `it` (#594), German `de` (#574), Polish `pl`, Czech `cs`, Hungarian `hu`, French `fr`, Bulgarian `bg`, Vietnamese `vi` (#1434), Swedish `sv` (#1219) and Croatian `hr` (#1271). Catalogs have 2,061–2,504 entries
+  each; Polish has every key of every other catalog, including the built-in style names and the equation gallery, except the citation style names only Hungarian, Bulgarian and Swedish translate so far (a test checks it). A test (`every_tab_and_command_is_translated`) enforces that every ribbon tab, command
   label and ribbon location is translated in every language.
   `pl`, `pl-PL` and `pl_PL.UTF-8` system locales pick Polish automatically.
 - Of the 675 English strings a scan extracts from `tl!(…)` calls and command labels/locations, each
@@ -29,7 +29,7 @@ native-speaker review (human).
   Read Aloud, Backstage greetings) aren't wrapped in `tl!` yet, so they show in English in every
   language: the true share of visible strings is **~93–95%** (estimated).
 - Pending PRs: Norwegian Bokmål (#208) and Nynorsk (#210), Hebrew with RTL (#20).
-- **Proofing: English, Polish, Portuguese, Italian and Russian**, chosen per run from its language (`w:lang`, resolved through
+- **Proofing: English, Polish, Portuguese, Italian, Russian and Czech**, chosen per run from its language (`w:lang`, resolved through
   the styles; Review › Language and the status bar set it: a short list, plus Set Proofing
   Language… for any of 29 languages and Set As Default for the document). Languages without proofing tools get
   the styles; Review › Language and the status bar set it). Languages without proofing tools get
@@ -56,11 +56,16 @@ shared items below.
 | Indonesian | id | 0 | ❌ | Latin ✅ | no | none | 3–4 |
 | Japanese | ja | ~930; 98% / ~95% | most | CJK ✅, IME ✅; no vertical text, ruby or document grid | no | partial | 3–5 |
 | German | de | 2,021 entries; same key set as zh-hans (#574); 98% of extracted, ~95% of visible | most | Latin ✅ | no | partial | 1–2 |
-| Korean | ko | 0 | ❌ | Hangul ✅; macOS Korean IME fixes pending (#163, #164) | no | none | 3–5 |
+| Korean | ko | 2,463 entries (all catalog keys and preview context) | most; newer panes English | Hangul ✅ (Korean-first embedded/system UI font fallback); macOS Korean IME fixes pending (#163, #164) | no | partial | 3–5 |
 | Vietnamese | vi | 2,448 entries; every key of the reference catalogs (#1434); 98% of extracted, ~95% of visible | most | Latin ✅ | no | partial | 0–1 (review) |
 
-Other shipped languages: **14** — Traditional Chinese (`zh-hant`), Ukrainian (`uk`), Serbian
-Cyrillic and Latin (`sr`, `sr-latn`, #250), Estonian (`et`), Turkish (`tr`), Russian (`ru`), Italian (`it`, #594), Polish (`pl`), Czech (`cs`), Hungarian (`hu`), French (`fr`), Bulgarian (`bg`) and Vietnamese (`vi`, #1434), all partial.
+Other shipped languages: **16** — Traditional Chinese (`zh-hant`), Ukrainian (`uk`), Serbian
+Cyrillic and Latin (`sr`, `sr-latn`, #250), Estonian (`et`), Turkish (`tr`), Russian (`ru`), Italian (`it`, #594), Polish (`pl`), Czech (`cs`), Hungarian (`hu`), French (`fr`), Bulgarian (`bg`), Vietnamese (`vi`, #1434), Swedish (`sv`, #1219) and Croatian (`hr`, #1271), all partial.
+Swedish (`sv-SE` and `sv-FI` system locales, `{"value":"sv"}`) has 2,504 entries. Counts use
+count-neutral wording (`{words} ord`: the noun is the same in the singular and the plural). The
+catalog is an AI-assisted draft whose terminology and running app were reviewed by a native
+speaker. Swedish proofing is not included; terminology: [`localization-sv.md`](localization-sv.md).
+Croatian (`hr-HR` system locales, `{"value":"hr"}`) has 2,507 entries: every key of the reference catalog, built-in style names and the equation gallery. Counts use count-neutral wording (`Riječi: 21`) because Croatian numerals take three noun forms. The catalog was written and checked by a native speaker; Croatian proofing is a separate change.
 Estonian uses the existing fonts, follows `et-EE` system locales, and is available in Options or
 through `ui.language` with `{"value":"et"}`. Its 1,307 entries cover the existing interface catalog.
 Estonian spelling, grammar, dates and document templates are not added by the interface catalog.
@@ -82,8 +87,8 @@ gallery, watermarks, paper sizes and preview tiles. The Czech coverage test
 enforces both reference catalogs and retains the Chinese catalog coverage; counts keep the existing
 count-neutral wording (`Počet slov: 21`). Czech proofing is not included.
 
-Polish is the only one besides English with proofing tools, and a Polish interface writes new
-documents in Polish (`pl-PL`).
+Polish, Portuguese and Czech interfaces write new documents and opened TXT/Markdown text
+in their proofing languages (`pl-PL`, `pt-BR`, `cs-CZ`).
 
 **Interface audit (runs in CI).** `untranslated_interface_text` lays the app out in a pseudo-language
 (every tab, File page, dialog, pane, the right-click menu, and a hover and a click on every ribbon
@@ -102,13 +107,14 @@ other than envelopes (Letter, Legal, A4, B5 (JIS)) stay as they are (#1128).
 | Russian (`ru`) | A Russian Hunspell dictionary installed on the system (`ru_RU` from the OS, a package manager, LibreOffice's `dict-ru` or the `WORDCRAFT_DICTIONARIES` folder; UTF-8, KOI8-R or Windows-1251; not bundled, so no Russian spelling marks without it), read by the same affix engine; `ё` optional (`елка`/`ёлка`, `еще`/`ещё`); hyphenated words whole, then by parts (`кто-то`, `по-русски`, `кое-где`, `северо-западный`, `ИИ-консультант`); solid compounds (`высокоэластичный`), `не` with adjectives, participles and verbal nouns (not verbs), productive prefixes (`ультра-`, `эко-`) and prefixed verbs; abbreviations with endings (`ГИПа`) and camel case left alone; our supplement of ~200 modern words with their declensions (`assets/spelling/ru-extra.txt`: `маркетплейс`, `промокод`, `интеграция`, `колеровать`) | `ё`/`е` first, then slips within letter groups (unstressed vowels, voiced and voiceless pairs, `ь`/`ъ`), the common confusions (`жы`, `чя`, `тся`/`ться`, doubled consonants, unpronounced consonants: `здраствуй` → `здравствуй`), a missing space (`незнаю` → `не знаю`; not a preposition before a verb), one typo, then a stem scan | Russian messages: repeated word, space before punctuation, double space, sentence capital (knows `т. е.`, `г.`, `руб.`, `ул.`, initials, numbers, dialogue dashes), possibly missing comma before `что`/`чтобы`/`если`/`хотя`/`поскольку`/`который` and before `потому что` (not after conjunctions and particles such as `и`, `только`, `даже`, `так`, `для того`; not after a preposition; not in `хотя бы`, `что-то`), doubled punctuation | The rules of Russian word division as code (no pattern file): a vowel on each side, two letters at least, `ь`/`ъ`/`й` kept with the letter before, a break after `ъ`, a consonant cluster divided after its first consonant |
 | Polish (`pl`) | The Hunspell `pl_PL` dictionary installed on the system (OS package, Homebrew, LibreOffice, the folder set in File › Options › Proofing › Dictionaries folder, or `WORDCRAFT_DICTIONARIES`; not bundled, so no Polish spelling marks without it; the same pane shows which file each language found), read at runtime by a Hunspell-style affix engine (`crates/proof/src/affix.rs`); names capitalized, compounds part by part, `Kennedy'ego` | missing diacritics first (`zolw` → `żółw`), the dictionary's confusion table (`żeka` → `rzeka`, `chuśtawka` → `huśtawka`), missing space (`napewno` → `na pewno`), one typo, then a stem scan within two typos | Polish messages: repeated word, space before punctuation, double space, sentence capital (knows `np.`, `r.`, initials, ordinals, dialogue dashes), missing comma before `że`/`który`/`ponieważ`/`gdyż`/`aby`/`żeby`/`jeśli`/`jeżeli`/`gdyby`/`lecz` (not after `mimo`, `chyba`, `tak`, prepositions…), `we`/`ze` (`we wtorek`, `ze szkoły`), doubled punctuation | TeX Polish patterns (Kołodziejska, Jackowski, Ryćko; MIT option) with their 20 exception words; a Polish syllable heuristic for letters outside the alphabet |
 | Portuguese (`pt`, any region) | The Hunspell `pt_BR` dictionary installed on the system — VERO and its derivatives (same places as Polish; not bundled, LGPL/MPL), read at runtime by the same affix engine, which reads its `FLAG UTF-8`, 106 flags, continuation classes and `FORBIDDENWORD` spellings; names capitalized, compounds part by part (`guarda-roupa`, `ex-marido`) | missing accents first (`coraçao` → `coração`, `saude` → `saúde`), the dictionary's confusion table (`seje` → `seja`, `excessão` → `exceção`), missing space (`nãoé` → `não é`), one typo, then an accent-folding stem scan | Portuguese messages: repeated word (the emphatic doubles are allowed), space before punctuation, double space, sentence capital (knows `etc.`, `pág.`, `Dr.`, initials, ordinals, dialogue dashes), doubled punctuation; no comma rule — `que` opens a clause only sometimes | TeX Portuguese patterns (Rezende, Almeida, Araujo, Benevides; BSD 3-clause) with their 2 exception words |
-| Italian (`it`, any region) | The Hunspell `it_IT` dictionary installed on the system (same places as Polish and Portuguese; not bundled — the upstream file is GPL-licensed), read at runtime by the same affix engine; elided forms check the word after the apostrophe (`l'amico`, `un'idea`, `c'è`), hyphenated compounds part by part | missing accents first (`caffe` → `caffè`, `perche` → `perché`), the dictionary's confusion table, missing space (`perme` → `per me`), one typo, then an accent-folding stem scan | Italian messages: repeated word (emphatic doubles like `piano piano` are allowed), space before punctuation, double space, sentence capital (knows `ecc.`, `dott.`, `prof.`, initials, ordinals), doubled punctuation; no comma rule | TeX Italian patterns (Beccari; MIT option), no exception words |
+| Czech (`cs`, `cs-CZ`, `ces`, `cze`) | The system Hunspell `cs_CZ` dictionary, read at runtime (Debian/Ubuntu: `hunspell-cs`; the same system, LibreOffice and `WORDCRAFT_DICTIONARIES` search paths as Polish). No dictionary data is bundled; without an installed dictionary spelling stays off | suggestions from the loaded dictionary's MAP/REP/TRY/KEY tables, missing spaces and a stem scan; short-word splits rank after deleting an extra letter; NOSUGGEST stems and their derived forms are accepted when typed but excluded from suggestions | Czech messages (including Czech quotation marks) for repeated words, space before punctuation and double spaces only; digit-space-colon-space-digit ratios keep their spaces; no Czech-specific grammar rules | existing English fallback, as for `Other`; no Czech patterns bundled (the TeX/LibreOffice Czech patterns are GPL-2) |
+| Italian (`it`, any region) | The Hunspell `it_IT` dictionary installed on the system (same places as Polish and Portuguese; not bundled — the upstream file is GPL-licensed), read at runtime by the same affix engine; elided forms check the word after the apostrophe (`l'amico`, `un'idea`, `c'è`, `dov'è`, `senz'altro`), truncations keep their apostrophe (`po'`, `mo'`), hyphenated compounds part by part | missing accents first (`caffe` → `caffè`, `perche` → `perché`), the dictionary's confusion table, missing space (`perme` → `per me`), one typo, then an accent-folding stem scan | Italian messages: repeated word (emphatic doubles like `piano piano` are allowed), space before punctuation, double space, sentence capital (knows `ecc.`, `dott.`, `prof.`, initials, ordinals), doubled punctuation, `un pò` → `un po'`, `qual'è` → `qual è`, `E'` → `È`, `un'altro` → `un altro` and `un altra` → `un'altra` (gender from the ending, masculine `-ista`/`-ma`/`-cida`… left alone); these work without a dictionary; no comma rule | TeX Italian patterns (Beccari; MIT option), no exception words |
 | Turkish (`tr`, any region) | The Hunspell `tr_TR` dictionary installed on the system (same places as Polish; not bundled), read at runtime; proper nouns capitalized, apostrophe suffixes (`Ankara'da`, `WordCraft'ta`) and hyphenated compounds | missing diacritics / ASCII restoration first (`turkce` → `Türkçe`, `isik` → `ışık`), common confusion table (`yalnış` → `yanlış`, `herşey` → `her şey`), detached suffixes (`bende` → `ben de`, `geldinmi` → `geldi mi`), one typo | Turkish messages: repeated word (idiomatic reduplications allowed: `yavaş yavaş`), space before punctuation, double space, sentence capital (knows `vb.`, `vs.`, `prof.`, `dr.`), no comma before/after conjunctions (`ve`, `veya`, `de`), doubled punctuation | Turkish syllable rules (TDK rules); no external pattern file or word list needed |
 | Any other | — (no marks) | — | — | the English patterns, as before |
 
 Measured with the SJP.PL dictionary: every one of the ~4.5 million forms an independent expansion of its affix file
 produces is accepted, and 200,000 one-edit mutations that aren't words are all rejected; a check
-takes ~1 µs, a suggestion list 1–35 ms (release build). Not yet: other languages' dictionaries,
+takes ~1 µs, a suggestion list 1–35 ms (release build). Not yet: Czech hyphenation patterns or Czech-specific grammar, other languages' dictionaries,
 a thesaurus for Polish, Word's style and clarity refinements, Polish-specific AutoCorrect.
 
 Measured with the LibreOffice `ru_RU` dictionary on a private corpus of 205 real-world Russian
@@ -121,7 +127,9 @@ Italian (`it`, #594) follows `it`, `it-IT` and `it-CH` system locales. Its catal
 the others plus 51 strings that are wrapped in `tl!` but were in no catalog yet (File › Info
 properties, the File › Home greeting, list levels, Equation tab gallery and tooltips). Ribbon tabs,
 groups and command names use the names Italian Word users know (feature names, as `AGENTS.md`
-allows); all other text is written from the meaning of the English. No Italian proofing yet.
+allows); all other text is written from the meaning of the English. The interface audit also
+checks the Italian catalog (2026-10-14). Italian proofing is in the proofing table above.
+allows); all other text is written from the meaning of the English. Italian proofing: see the table above.
 ## Sorting and numbers in the text's language
 
 Sorts follow the alphabet of the text's language (`w:lang`, else the document default):
@@ -178,12 +186,18 @@ WordCraft keeps 2,54 cm).
 | Mirrored (right-to-left) interface for Arabic and Hebrew | 15–25 | Ribbon, panes, dialogs, rulers |
 | Vertical text, ruby, document grid (Chinese, Japanese, Korean) | counted in [layout-parity.md](layout-parity.md) | |
 | Proofing dictionaries, grammar and hyphenation for the 11 non-English key languages | 20–40 | Open dictionaries only (licence check per dictionary); issues #25, #40, #100. Per-run languages, the Hunspell-style affix engine and the TeX pattern reader landed with Polish, so a language with an open Hunspell dictionary and hyphenation patterns is mostly data plus grammar rules |
-| Native-speaker review of every catalog | human | None reviewed yet |
+| Native-speaker review of every catalog | human | Swedish: terminology and the running app reviewed (2026-10-13); the others not yet |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | Czech proofing review: short-word splits rank after deletion, NOSUGGEST excludes suggestions while accepting typed forms, affix comments apply only to headers, ratios keep spaces and repeated-word messages use Czech quotes; synthetic engine end-to-end and latency checks |
+| 2026-10-12 | minor | Czech spelling from the installed Hunspell dictionary, runtime-table suggestions and generic checks; Czech interface writes cs-CZ documents; no Czech hyphenation patterns bundled; estimates unchanged |
+| 2026-10-13 | minor | Swedish interface catalog (2,504 entries), locale selection, saved preference, audit coverage and font checks (#1219) |
+| 2026-10-14 | trivial | Print area translated in all 18 interface catalogs (printer list, duplex, grayscale, discovery/submission feedback, print commands) — 18 strings that shipped English-only with the craft-print integration; written from the English meaning, pending native-speaker review like the rest of the catalogs |
+| 2026-10-14 | trivial | Italian: the interface audit's catalog check covers Italian too, as it does Russian, Hungarian, Turkish and Bulgarian; `Privacy Settings` no longer says "current" ("attuali"); a test pins the envelope size labels #1128 made translatable (Italian inches, the region's decimal comma) |
+| 2026-10-14 | minor | Italian grammar rules that work without a dictionary: `un pò`/`un po` → `un po'`, `qual'è` → `qual è`, `E'` → `È`, `un'` only before feminine words (`un'altro` → `un altro`, `un altra` → `un'altra`, also `nessun`/`ciascun`/`qualcun`/`alcun`); spelling accepts more elisions (`dov'è`, `anch'io`, `senz'altro`, `nessun'altra`) and truncations (`po'`, `mo'`) and leaves `pò`/`qual'è` to grammar so they aren't marked twice; more emphatic doubles allowed |
 | 2026-10-12 | minor | File › Options › Proofing › Dictionaries folder (#1063): a saved folder of Hunspell dictionaries searched first, so an app started from Finder or the Dock finds them without `WORDCRAFT_DICTIONARIES`; the pane lists the dictionary file each language found — Polish, Portuguese, Italian, Croatian, Turkish (`file.options` `dictionariesFolder`) |
 | 2026-10-12 | minor | Czech interface catalog completed: 386 entries added (2,447 total), including built-in style names, numbered families, equation gallery, watermarks, paper sizes and preview tiles; coverage test requires every Russian and Spanish key and retains Chinese coverage |
 | 2026-10-12 | minor | Italian proofing: it-IT spelling from the installed Hunspell dictionary (system `it_IT`, never bundled — upstream is GPL), accent-first suggestions, conservative grammar with Italian messages, TeX Italian hyphenation patterns (MIT option); Review › Language already offered Italian; an `it` interface writes it-IT documents |
@@ -205,6 +219,7 @@ WordCraft keeps 2,54 cm).
 | 2026-10-11 | minor | Chinese/Japanese interface fonts: a test checks every catalog character has a glyph; an installed CJK font follows the embedded faces whenever they miss one; macOS font asset folders searched for PingFang (#486) |
 | 2026-10-10 | minor | Russian interface (#300; 1,524 entries, built-in style names shown translated; covers everything the interface audit finds) |
 | 2026-10-12 | minor | Bulgarian interface catalog (2,419 entries), locale selection, saved preference, audit coverage and font checks |
+| 2026-10-13 | minor | Croatian interface catalog (2,507 entries, built-in style names shown translated), `hr-*` system locales, saved preference and font coverage checks; the template name "Letter" has its own `template` context so the paper size keeps its name; no Croatian proofing |
 | 2026-10-11 | minor | Hungarian interface catalog (2,419 entries, built-in style names shown translated; covers everything the interface audit finds), locale selection, saved preference and font coverage checks |
 | 2026-10-11 | minor | Turkish interface catalog (1,307 entries), locale selection, saved preference, Turkish casing in command search and font coverage checks; catalog sizes re-counted |
 | 2026-10-11 | trivial | English spelling (#520): our supplement `assets/spelling/en-extra.txt` adds ~220 common modern words the Moby list lacks ("desktop", "download", "email"…) |

@@ -5,7 +5,9 @@
 //!
 //! Reading unpacks the parts into an in-memory [`Package`] and hands it to the DOCX reader;
 //! writing runs the DOCX writer and lays its parts out in one file. Bounded like the zip reader:
-//! part count, part size, total size and base64 length are capped.
+//! every part counts against the part count, part size and total size limits whether it's kept
+//! or not (a repeated name), data is checked before it's copied, and nesting and elements are
+//! capped as the XML tree reader caps a part's.
 
 use std::collections::BTreeMap;
 
@@ -92,8 +94,24 @@ struct Part {
     data: Option<Data>,
 }
 
-/// Longest base64 text of one part (the size limit, encoded; whitespace isn't kept).
-const MAX_BASE64: u64 = (MAX_PART / 3 + 1) * 4;
+/// Deepest element nesting read: a part's inline XML starts below the package, part and data
+/// elements and may nest as deep as the XML tree reader takes ([`xml::MAX_DEPTH`] open elements
+/// and an empty one inside the deepest).
+const MAX_NESTING: usize = 3 + xml::MAX_DEPTH + 1;
+
+/// Most elements in one child of the package: a part, its data element and as many as the XML
+/// tree reader takes in a part ([`xml::MAX_ELEMENTS`]).
+const MAX_PART_ELEMENTS: usize = 2 + xml::MAX_ELEMENTS;
+
+/// Longest base64 text of a part that decodes to at most `bytes` (whitespace isn't kept).
+fn max_base64(bytes: u64) -> u64 {
+    (bytes / 3).saturating_add(1).saturating_mul(4)
+}
+
+/// Bytes the next part may have: its own size limit, or what's left of the package's.
+fn room(total: u64) -> u64 {
+    MAX_PART.min(MAX_TOTAL.saturating_sub(total))
+}
 
 /// Unpack a Flat OPC file into its parts, with a `[Content_Types].xml` made from the parts'
 /// content types (unless the file carries one).
@@ -103,6 +121,9 @@ pub(crate) fn unpack(bytes: &[u8]) -> Result<Package, DocxError> {
     let mut r = NsReader::from_reader(src);
     r.config_mut().check_end_names = true;
     let mut depth = 0usize;
+    // Children of the package (parts or anything else), and elements in the current one.
+    let mut entries = 0usize;
+    let mut elements = 0usize;
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let mut types: Vec<(String, String)> = Vec::new();
     let mut total: u64 = 0;
@@ -118,15 +139,26 @@ pub(crate) fn unpack(bytes: &[u8]) -> Result<Package, DocxError> {
             Event::Start(ref e) | Event::Empty(ref e) => {
                 let empty = matches!(ev, Event::Empty(_));
                 depth += 1;
+                if depth > MAX_NESTING {
+                    return Err(DocxError::Limit("XML nesting too deep".into()));
+                }
+                if depth == 2 {
+                    entries += 1;
+                    elements = 0;
+                    if entries > MAX_ENTRIES {
+                        return Err(DocxError::Limit(format!("more than {MAX_ENTRIES} parts")));
+                    }
+                }
+                elements += 1;
+                if elements > MAX_PART_ELEMENTS {
+                    return Err(DocxError::Limit("too many XML elements".into()));
+                }
                 let local = e.local_name().as_ref().to_vec();
                 match depth {
                     1 if !(in_pkg && local == b"package") => {
                         return Err(DocxError::NotWord("the root element isn't a Flat OPC pkg:package".into()));
                     }
                     2 if in_pkg && local == b"part" => {
-                        if files.len() + usize::from(part.is_some()) >= MAX_ENTRIES {
-                            return Err(DocxError::Limit(format!("more than {MAX_ENTRIES} parts")));
-                        }
                         let name = attr(e, b"name").unwrap_or_default();
                         let content_type = attr(e, b"contentType").unwrap_or_default();
                         part = Some(Part { name, content_type, data: None });
@@ -167,7 +199,12 @@ pub(crate) fn unpack(bytes: &[u8]) -> Result<Package, DocxError> {
                     && let Some(Data::Xml(start)) = p.data
                 {
                     p.data = None;
-                    let xml = with_scope(src.get(start..before).unwrap_or_default(), &scope);
+                    let frag = src.get(start..before).unwrap_or_default();
+                    // Refused before it's copied when it can't fit.
+                    if frag.len() as u64 > room(total) {
+                        return Err(DocxError::Limit(format!("part {} is larger than the size limit", p.name)));
+                    }
+                    let xml = with_scope(frag, &scope);
                     store(&p.name, &p.content_type, xml, &mut files, &mut types, &mut total)?;
                 }
                 if depth == 2
@@ -183,15 +220,18 @@ pub(crate) fn unpack(bytes: &[u8]) -> Result<Package, DocxError> {
                     break;
                 }
             }
-            Event::Text(ref t) if depth == 3 => {
-                if let Some(Part { data: Some(Data::Binary(b64)), .. }) = part.as_mut() {
-                    let s = std::str::from_utf8(t.as_ref()).map_err(|e| DocxError::Xml(e.to_string()))?;
-                    b64.extend(s.chars().filter(|c| !c.is_ascii_whitespace()));
-                    if b64.len() as u64 > MAX_BASE64 {
-                        return Err(DocxError::Limit("a binary part is larger than the size limit".into()));
+            Event::Text(ref t) if depth == 3 => add_base64(&mut part, t, total)?,
+            Event::CData(ref t) if depth == 3 => add_base64(&mut part, t, total)?,
+            Event::GeneralRef(ref g) if depth == 3 => match g.resolve_char_ref() {
+                // A character reference stands for its character (`&#65;` is an `A`).
+                Ok(Some(c)) => add_base64(&mut part, c.encode_utf8(&mut [0; 4]).as_bytes(), total)?,
+                // An entity isn't base64: binary data holding one is broken, not shorter.
+                _ => {
+                    if let Some(Part { name, data: Some(Data::Binary(_)), .. }) = &part {
+                        return Err(DocxError::Xml(format!("part {name} has invalid base64 data")));
                     }
                 }
-            }
+            },
             Event::Eof => break,
             _ => {}
         }
@@ -225,7 +265,21 @@ fn finish_part(p: Part, files: &mut BTreeMap<String, Vec<u8>>, types: &mut Vec<(
     }
 }
 
-/// Add a part, within the size limits; a repeated or empty name is ignored.
+/// Text (or CDATA) inside a part's `pkg:binaryData`: its base64 without whitespace, checked
+/// against the size limits before it's copied.
+fn add_base64(part: &mut Option<Part>, text: &[u8], total: u64) -> Result<(), DocxError> {
+    let Some(Part { data: Some(Data::Binary(b64)), .. }) = part else { return Ok(()) };
+    let s = std::str::from_utf8(text).map_err(|e| DocxError::Xml(e.to_string()))?;
+    let more = s.bytes().filter(|b| !b.is_ascii_whitespace()).count();
+    if b64.len().saturating_add(more) as u64 > max_base64(room(total)) {
+        return Err(DocxError::Limit("a binary part is larger than the size limit".into()));
+    }
+    b64.extend(s.chars().filter(|c| !c.is_ascii_whitespace()));
+    Ok(())
+}
+
+/// Add a part, within the size limits; a repeated or empty name isn't stored but counts against
+/// them all the same (as a repeated zip entry does).
 fn store(
     name: &str,
     content_type: &str,
@@ -235,9 +289,6 @@ fn store(
     total: &mut u64,
 ) -> Result<(), DocxError> {
     let name = name.trim_start_matches('/');
-    if name.is_empty() || files.contains_key(name) {
-        return Ok(());
-    }
     let len = bytes.len() as u64;
     if len > MAX_PART {
         return Err(DocxError::Limit(format!("part {name} is larger than the size limit")));
@@ -245,6 +296,9 @@ fn store(
     *total = total.saturating_add(len);
     if *total > MAX_TOTAL {
         return Err(DocxError::Limit("the package is larger than the size limit".into()));
+    }
+    if name.is_empty() || files.contains_key(name) {
+        return Ok(());
     }
     if !content_type.is_empty() && !content_type.contains(['\r', '\n']) {
         types.push((name.to_string(), content_type.to_string()));
@@ -407,5 +461,34 @@ mod tests {
         let own = b"<w:document xmlns:w=\"urn:own\"/>";
         assert_eq!(with_scope(own, &scope), own.to_vec());
         assert_eq!(with_scope(b"no element", &scope), b"no element".to_vec());
+    }
+
+    #[test]
+    fn nesting_is_capped_where_the_xml_tree_reader_stops() {
+        let inline = |levels: usize| format!("{}<b/>{}", "<a>".repeat(levels), "</a>".repeat(levels));
+        let package = |levels: usize| {
+            format!(
+                "<pkg:package xmlns:pkg=\"{PKG_NS}\"><pkg:part pkg:name=\"/a.xml\"><pkg:xmlData>{}</pkg:xmlData></pkg:part></pkg:package>",
+                inline(levels)
+            )
+        };
+        assert!(xml::parse(inline(xml::MAX_DEPTH).as_bytes()).is_ok());
+        assert!(unpack(package(xml::MAX_DEPTH).as_bytes()).is_ok());
+        assert!(matches!(xml::parse(inline(xml::MAX_DEPTH + 1).as_bytes()), Err(DocxError::Limit(_))));
+        assert!(matches!(unpack(package(xml::MAX_DEPTH + 1).as_bytes()), Err(DocxError::Limit(_))));
+    }
+
+    #[test]
+    fn repeated_and_nameless_parts_count_against_the_size_limits() {
+        let (mut files, mut types, mut total) = (BTreeMap::new(), Vec::new(), 0u64);
+        for name in ["/a.bin", "/a.bin", ""] {
+            store(name, "", vec![0; 10], &mut files, &mut types, &mut total).unwrap();
+        }
+        assert_eq!((files.len(), total), (1, 30));
+        // Near the package limit, what's left of it is all the next part may have.
+        total = MAX_TOTAL - 5;
+        assert_eq!(room(total), 5);
+        assert_eq!(max_base64(5), 8);
+        assert!(matches!(store("/b.bin", "", vec![0; 6], &mut files, &mut types, &mut total), Err(DocxError::Limit(_))));
     }
 }

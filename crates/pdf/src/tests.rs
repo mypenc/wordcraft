@@ -422,6 +422,7 @@ fn shapes_have_paths() {
         ShapeKind::Rectangle,
         ShapeKind::RoundedRectangle,
         ShapeKind::Ellipse,
+        ShapeKind::FlowchartOr,
         ShapeKind::Star,
         ShapeKind::Heart,
         ShapeKind::Arrow,
@@ -454,7 +455,14 @@ fn fields_put_their_shown_text_in_the_text_layer() {
     // characters, are what copying, search and screen readers get.
     let mut d = Document::new();
     let mut f = Paragraph::with_text("Page  of ", CharProps::default());
-    let field = |instr: &str| InlineObject::Field { instr: instr.into(), result: String::new(), locked: false, code: false };
+    let field = |instr: &str| InlineObject::Field {
+        instr: instr.into(),
+        result: String::new(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+    };
     f.insert_object(5, field("PAGE"), &CharProps::default()).unwrap();
     let n = f.len();
     f.insert_object(n, field("NUMPAGES"), &CharProps::default()).unwrap();
@@ -476,7 +484,14 @@ fn fields_put_their_shown_text_in_the_text_layer() {
 fn styleref_headers_show_each_page_s_chapter() {
     let mut d = Document::new();
     let mut h = Paragraph::new();
-    let field = InlineObject::Field { instr: r#"STYLEREF "Heading 1""#.into(), result: "Stale".into(), locked: false, code: false };
+    let field = InlineObject::Field {
+        instr: r#"STYLEREF "Heading 1""#.into(),
+        result: "Stale".into(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+    };
     h.insert_object(0, field, &CharProps::default()).unwrap();
     let id = d.add_part(wordcraft_doc::PartKind::Header, vec![para_block(h)]);
     d.last_section.headers.default = Some(id);
@@ -714,7 +729,14 @@ fn field_results_are_extractable_text() {
     let mut p = Paragraph::with_text("See  for details.", CharProps::default());
     p.insert_object(
         4,
-        InlineObject::Field { instr: " REF _RefTarget \\h ".into(), result: "Section 3.01".into(), locked: false, code: false },
+        InlineObject::Field {
+            instr: " REF _RefTarget \\h ".into(),
+            result: "Section 3.01".into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+        },
         &CharProps::default(),
     )
     .unwrap();
@@ -735,8 +757,19 @@ fn field_result_ligatures_extract_all_their_letters() {
     assert!(wordcraft_fonts::shape(&face, result, &[], |c| c).len() < result.chars().count(), "the result has ligatures");
     let mut d = Document::new();
     let mut p = Paragraph::with_text("See  here.", font.clone());
-    p.insert_object(4, InlineObject::Field { instr: " REF _RefTarget \\h ".into(), result: result.into(), locked: false, code: false }, &font)
-        .unwrap();
+    p.insert_object(
+        4,
+        InlineObject::Field {
+            instr: " REF _RefTarget \\h ".into(),
+            result: result.into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+        },
+        &font,
+    )
+    .unwrap();
     d.body = vec![para_block(p)];
     let text = extract_text(&export(&d, &PdfOptions::default()).unwrap()).concat();
     assert!(squash(&text).contains("See the first office here."), "{text:?}");
@@ -1103,9 +1136,8 @@ fn all_caps_and_small_caps_text_extracts_as_displayed() {
     ] {
         assert!(text.contains(line), "missing {line:?} in {text:?}");
     }
-    // An All Caps ß is drawn today as one S glyph, so it reads as that S: the text layer follows
-    // the glyph drawn. Drawing it as "SS", as Word does, is a separate display issue.
-    assert!(text.contains("STRASE"), "{text:?}");
+    // An All Caps ß is drawn as SS, as Word does (#1581), and reads as the SS drawn.
+    assert!(text.contains("STRASSE"), "{text:?}");
 }
 
 #[test]

@@ -168,6 +168,9 @@
 	Bold	Negrita
 	Bookmark	Marcador
 	Bookmark name:	Nombre del marcador:
+	Delete Bookmark	Eliminar marcador
+	Hidden bookmarks	Marcadores ocultos
+	Sort by:	Ordenar por:
 	Book Title	Título de libro
 	Border Painter	Pincel de bordes
 	Border\nPainter	Pincel de\nbordes
@@ -522,6 +525,8 @@
 	Labels	Etiquetas
 	Landscape	Horizontal
 	Language	Idioma
+	{language} (no dictionary)	{language} (sin diccionario)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	No hay un diccionario ortográfico instalado para {language}, así que no se revisa. WordCraft busca el diccionario Hunspell {name} en la carpeta WORDCRAFT_DICTIONARIES y en las ubicaciones habituales del sistema.
 	Lasso	Lazo
 	Last Column	Última columna
 	Last commit	Último commit
@@ -580,7 +585,7 @@
 	Multiple Pages	Varias páginas
 	Name (A–Z)	Nombre (A–Z)
 	Name:	Nombre:
-	Narrow  0.5" all	Estrecho  0,5" en todos
+	Narrow  {size} all	Estrecho  {size} en todos
 	Navigation	Navegación
 	Navigation Pane	Panel de navegación
 	New	Nuevo
@@ -609,7 +614,7 @@
 	Nonbreaking Hyphen	Guion no separable
 	Nonbreaking Space	Espacio de no separación
 	None	Ninguno
-	Normal  1" all	Normal  1" en todos
+	Normal  {size} all	Normal  {size} en todos
 	Normal Style	Estilo normal
 	Not available right now	No disponible por ahora
 	Not saved	Sin guardar
@@ -1596,6 +1601,11 @@
 	Add Font…	Agregar fuente…
 	Added Fonts	Fuentes agregadas
 	Remove Added Font	Quitar fuente agregada
+	Load System Installed Fonts…	Cargar fuentes del sistema instaladas…
+	All system fonts are already available.	Todas las fuentes del sistema ya están disponibles.
+	Local font access is not supported by your browser.	Su navegador no admite el acceso a fuentes locales.
+	Local font access was denied.	Se denegó el acceso a las fuentes locales.
+	Loaded {count} system fonts.	Se cargaron {count} fuentes del sistema.
 	Recent Colors	Colores recientes
 	More Colors…	Más colores…
 	Standard	Estándar
@@ -2447,6 +2457,16 @@ preview	Title	Título
 	Other Large Operators	Otros operadores grandes
 	Region:	Región:
 	Automatic ({region})	Automático ({region})
+	Odd Banded Rows	Filas impares con bandas
+	Even Banded Rows	Filas pares con bandas
+	Odd Banded Columns	Columnas impares con bandas
+	Even Banded Columns	Columnas pares con bandas
+	Top Left Cell	Celda superior izquierda
+	Top Right Cell	Celda superior derecha
+	Bottom Left Cell	Celda inferior izquierda
+	Bottom Right Cell	Celda inferior derecha
+	Inside Horizontal Border	Borde horizontal interior
+	Inside Vertical Border	Borde vertical interior
 	Text of the nearest paragraph with a given style (running headers)	Texto del párrafo más cercano con un estilo dado (encabezados variables)
 	Style name:	Nombre del estilo:
 # Mail merge: filter and sort recipients (#778)
@@ -2531,6 +2551,24 @@ preview	Title	Título
 	Suggested	Sugerencias
 	Set Proofing Language…	Establecer idioma de revisión…
 	Language Preferences…	Preferencias de idioma…
+	Printer	Impresora
+	Select a printer	Selecciona una impresora
+	Refresh printers	Actualizar impresoras
+	Two-sided printing	Impresión a doble cara
+	Printer default	Valor predeterminado de la impresora
+	One-sided	Una cara
+	Two-sided: long edge	Doble cara: borde largo
+	Two-sided: short edge	Doble cara: borde corto
+	Grayscale	Escala de grises
+	Finding printers…	Buscando impresoras…
+	No printers found. Configure a system printer or export a PDF.	No se encontraron impresoras. Configura una impresora en el sistema o exporta un PDF.
+	Printer discovery failed.	No se pudieron encontrar impresoras.
+	Submitting print job…	Enviando trabajo de impresión…
+	Print job submitted.	Trabajo de impresión enviado.
+	Print job submitted: {receipt}	Trabajo de impresión enviado: {receipt}
+	Print failed: the printing worker stopped.	La impresión falló: el proceso de impresión se detuvo.
+	Print settings	Configuración de impresión
+	Submit print job	Enviar trabajo de impresión
 
 # Dictionaries folder (#1063)
 	Dictionaries	Diccionarios
@@ -2542,3 +2580,22 @@ preview	Title	Título
 
 # Backstage › Recover (#586)
 	Recover	Recuperar
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Márgenes simétricos
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Archivo o página web existente
+	Link to:	Vincular a:
+	Place in This Document	Lugar de este documento
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Columna {n}
+	Header row	Fila de encabezado
+	No header row	Sin fila de encabezado
+	My list has	Mi lista tiene
+# Table Layout › Formula dialog (#1210)
+	Formula:	Fórmula:
+	Paste function:	Pegar función:
+# Reading Mode column widths (#1040)
+	Narrow	Estrecha
+	Medium	Media

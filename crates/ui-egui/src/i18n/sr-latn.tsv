@@ -242,6 +242,9 @@
 	Bold	Podebljano
 	Bookmark	Obeleživač
 	Bookmark name:	Naziv obeleživača:
+	Delete Bookmark	Obriši obeleživač
+	Hidden bookmarks	Skriveni obeleživači
+	Sort by:	Sortiraj po:
 	Border Painter	Kopiranje ivica
 	Border\nPainter	Kopiranje\nivica
 	Borders	Ivice
@@ -558,6 +561,8 @@
 	Labels	Nalepnice
 	Landscape	Položeno
 	Language	Jezik
+	{language} (no dictionary)	{language} (nema rečnika)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Pravopisni rečnik za {language} nije instaliran, pa se tekst ne proverava. WordCraft traži Hunspell rečnik {name} u fascikli WORDCRAFT_DICTIONARIES i na uobičajenim sistemskim lokacijama.
 	Lasso	Laso
 	Last Column	Zadnja kolona
 	Last commit	Zadnji commit
@@ -613,7 +618,7 @@
 	Multiple Pages	Više strana
 	Name (A–Z)	Naziv (A–Š)
 	Name:	Naziv:
-	Narrow  0.5" all	Uske  0,5" svuda
+	Narrow  {size} all	Uske  {size} svuda
 	Navigation	Navigacija
 	Navigation Pane	Okno za navigaciju
 	New	Novo
@@ -640,7 +645,7 @@
 	Nonbreaking Hyphen	Nedeljiva crtica
 	Nonbreaking Space	Nedeljivi razmak
 	None	Nijedno
-	Normal  1" all	Normalne  1" svuda
+	Normal  {size} all	Normalne  {size} svuda
 	Normal Style	Normalan stil
 	Not available right now	Trenutno nedostupno
 	Not saved	Nije sačuvano
@@ -1566,6 +1571,11 @@
 	Add Font…	Dodaj font…
 	Added Fonts	Dodati fontovi
 	Remove Added Font	Ukloni dodati font
+	Load System Installed Fonts…	Učitaj instalirane sistemske fontove…
+	All system fonts are already available.	Svi sistemski fontovi su već dostupni.
+	Local font access is not supported by your browser.	Vaš pregledač ne podržava pristup lokalnim fontovima.
+	Local font access was denied.	Pristup lokalnim fontovima je odbijen.
+	Loaded {count} system fonts.	Učitano sistemskih fontova: {count}.
 	Recent Colors	Nedavne boje
 	More Colors…	Još boja…
 	Standard	Standardne
@@ -2091,6 +2101,16 @@
 	AutoFit Column by Double-Clicking	Automatsko uklapanje kolone dvostrukim klikom
 	Region:	Region:
 	Automatic ({region})	Automatski ({region})
+	Odd Banded Rows	Neparni trakasti redovi
+	Even Banded Rows	Parni trakasti redovi
+	Odd Banded Columns	Neparne trakaste kolone
+	Even Banded Columns	Parne trakaste kolone
+	Top Left Cell	Gornja leva ćelija
+	Top Right Cell	Gornja desna ćelija
+	Bottom Left Cell	Donja leva ćelija
+	Bottom Right Cell	Donja desna ćelija
+	Inside Horizontal Border	Unutrašnja horizontalna ivica
+	Inside Vertical Border	Unutrašnja vertikalna ivica
 	Text of the nearest paragraph with a given style (running headers)	Tekst najbližeg pasusa sa zadatim stilom (tekuća zaglavlja)
 	Style name:	Naziv stila:
 # Mail merge: filter and sort recipients (#778)
@@ -2175,6 +2195,24 @@
 	Suggested	Predlozi
 	Set Proofing Language…	Postavi jezik provere…
 	Language Preferences…	Jezičke postavke…
+	Printer	Štampač
+	Select a printer	Izaberite štampač
+	Refresh printers	Osveži štampače
+	Two-sided printing	Dvostrano štampanje
+	Printer default	Podrazumevano štampača
+	One-sided	Jednostrano
+	Two-sided: long edge	Dvostrano: duža ivica
+	Two-sided: short edge	Dvostrano: kraća ivica
+	Grayscale	Sivi tonovi
+	Finding printers…	Pronalaženje štampača…
+	No printers found. Configure a system printer or export a PDF.	Nisu pronađeni štampači. Podesite sistemski štampač ili izvezite PDF.
+	Printer discovery failed.	Pronalaženje štampača nije uspelo.
+	Submitting print job…	Slanje zadatka za štampanje…
+	Print job submitted.	Zadatak za štampanje je poslat.
+	Print job submitted: {receipt}	Zadatak za štampanje je poslat: {receipt}
+	Print failed: the printing worker stopped.	Štampanje nije uspelo: proces štampanja je zaustavljen.
+	Print settings	Podešavanja štampanja
+	Submit print job	Pošalji zadatak za štampanje
 
 # Dictionaries folder (#1063)
 	Dictionaries	Rečnici
@@ -2186,3 +2224,22 @@
 
 # Backstage › Recover (#586)
 	Recover	Oporavi
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Preslikane margine
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Postojeća datoteka ili veb stranica
+	Link to:	Veza ka:
+	Place in This Document	Mesto u ovom dokumentu
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Kolona {n}
+	Header row	Red zaglavlja
+	No header row	Bez reda zaglavlja
+	My list has	Moja lista ima
+# Table Layout › Formula dialog (#1210)
+	Formula:	Formula:
+	Paste function:	Nalepi funkciju:
+# Reading Mode column widths (#1040)
+	Narrow	Uska
+	Medium	Srednja

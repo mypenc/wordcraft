@@ -4,12 +4,14 @@
 //!   [`crate::hunspell`]: `it_IT.aff`/`it_IT.dic` from the OS, a package manager or
 //!   LibreOffice; it isn't bundled — the upstream file is GPL-licensed). Without it Italian
 //!   text gets no spelling marks. Elided forms check the word after the apostrophe
-//!   (`l'amico`, `un'idea`, `c'è`); hyphenated compounds are checked part by part; the user
-//!   dictionary applies as in English.
+//!   (`l'amico`, `un'idea`, `c'è`, `dov'è`, `senz'altro`); truncations keep their apostrophe
+//!   (`po'`, `mo'`); hyphenated compounds are checked part by part; the user dictionary applies
+//!   as in English. Forms a grammar rule explains better (`pò`, `qual'è`) are left to it.
 //! - **Suggestions** tuned for Italian ([`suggest`]): missing accents first (`caffe` → `caffè`,
 //!   `perche` → `perché`), then the dictionary's `REP` confusions, a missing space, one-letter
 //!   typos, and a dictionary scan for anything further off.
-//! - **Grammar** ([`grammar`]): cheap, reliable rules with Italian messages.
+//! - **Grammar** ([`grammar`]): cheap, reliable rules with Italian messages, which work with
+//!   no dictionary installed.
 
 pub mod grammar;
 mod suggest;
@@ -84,11 +86,22 @@ fn is_latin_letter(c: char) -> bool {
 }
 
 /// Proclitics (and verb clippings) that elide before a vowel or `h`: the word after the
-/// apostrophe is what gets checked (`l'amico`, `un'idea`, `c'è`, `m'hai`).
+/// apostrophe is what gets checked (`l'amico`, `un'idea`, `c'è`, `m'hai`, `dov'è`, `anch'io`).
 const PROCLITICS: &[&str] = &[
-    "l", "un", "una", "uno", "all", "dall", "dell", "nell", "sull", "coll", "pell", "c", "m", "t", "s", "v", "d", "j", "quest", "quell", "bell",
-    "sant", "grand", "poc",
+    "l", "un", "una", "uno", "all", "dall", "dell", "nell", "sull", "coll", "pell", "c", "m", "t", "s", "v", "d", "j", "n", "ch", "gl", "quest",
+    "quell", "bell", "buon", "sant", "grand", "poc", "nessun", "ciascun", "qualcun", "alcun", "dov", "cos", "com", "quand", "anch", "senz", "tutt",
+    "nient", "mezz", "sott", "tant", "quant", "dev",
 ];
+
+/// Truncated words written with an apostrophe (`un po'`, `a mo' di`, `be'`): [`crate::words`]
+/// trims the apostrophe, so spelling sees the bare word; [`grammar`] checks the apostrophe.
+const TRUNCATIONS: &[&str] = &["po", "mo", "be"];
+
+/// Misspellings a grammar rule reports with a clearer message and fix (`pò` → `po'`, `qual'è`
+/// → `qual è`), so spelling leaves them alone rather than marking the word twice.
+fn left_to_grammar(lower: &str) -> bool {
+    lower == "pò" || grammar::qual_elided(lower).is_some()
+}
 
 /// Is `word` spelled correctly in Italian? Numbers, single letters, short words in capitals
 /// (acronyms: `RAI`, `TG`), words with digits and words in other scripts are accepted, and so
@@ -113,6 +126,10 @@ pub fn is_correct_with(d: &AffixDict, word: &str) -> bool {
     }
     if !w.chars().any(is_latin_letter) {
         return true; // other scripts: no dictionary
+    }
+    let lower = w.to_lowercase();
+    if TRUNCATIONS.contains(&lower.as_str()) || left_to_grammar(&lower) {
+        return true;
     }
     if w.contains('-') {
         return w.split('-').all(|p| p.chars().count() <= 1 || known(d, p));
@@ -179,10 +196,28 @@ mod tests {
     }
 
     #[test]
+    fn elisions_and_truncations_are_correct() {
+        test_dict::install();
+        for w in ["dov'è", "Com'è", "cos'è", "anch'io", "senz'acqua", "tutt'uno", "quand'è", "nessun'amica", "n'ha", "po'", "po", "mo'"] {
+            assert!(is_correct(w), "{w}");
+        }
+    }
+
+    #[test]
     fn misspellings_are_flagged() {
         test_dict::install();
-        for w in ["caffé", "perche", "lbiro", "parlre", "amicaa", "citta", "quelo"] {
+        for w in ["caffé", "perche", "lbiro", "parlre", "amicaa", "citta", "quelo", "dov'lbiro", "xyz'casa"] {
             assert!(!is_correct(w), "{w}");
+        }
+    }
+
+    #[test]
+    fn grammar_owned_forms_are_not_marked_twice() {
+        test_dict::install();
+        // `pò` and `qual'è` are reported by the grammar rules, with the fix; spelling stays quiet.
+        for w in ["pò", "Pò", "qual'è", "Qual’era"] {
+            assert!(is_correct(w), "{w}");
+            assert!(!grammar::check(w).is_empty(), "{w}: grammar reports it");
         }
     }
 

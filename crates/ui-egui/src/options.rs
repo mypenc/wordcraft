@@ -51,6 +51,9 @@ pub(crate) fn sync(app: &WordApp) {
 /// centimetre field).
 pub trait MeasureExt {
     fn measure(self, unit: Unit) -> Self;
+    /// The same field showing nothing, not even the unit, until a length is typed in: a value
+    /// the selected paragraphs differ in.
+    fn measure_blank(self, unit: Unit) -> Self;
 }
 
 impl MeasureExt for egui::DragValue<'_> {
@@ -61,11 +64,17 @@ impl MeasureExt for egui::DragValue<'_> {
                 let s = egui::emath::format_with_decimals_in_range(n, decimals);
                 if sep == '.' { s } else { s.replace('.', &sep.to_string()) }
             })
-            .custom_parser(move |text| {
-                let text: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-                wordcraft_geom::parse_measure(&text, unit).map(|pt| f64::from(pt / unit.pt_per_unit()))
-            })
+            .custom_parser(move |text| parse_length(text, unit))
     }
+    fn measure_blank(self, unit: Unit) -> Self {
+        self.custom_formatter(|_, _| String::new()).custom_parser(move |text| parse_length(text, unit))
+    }
+}
+
+/// A length typed in a field, in `unit`s.
+fn parse_length(text: &str, unit: Unit) -> Option<f64> {
+    let text: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    wordcraft_geom::parse_measure(&text, unit).map(|pt| f64::from(pt / unit.pt_per_unit()))
 }
 
 /// Regions offered in File › Options › Advanced › Region (any locale tag works through
@@ -116,7 +125,8 @@ pub fn page(app: &mut WordApp, ui: &mut Ui) {
                     ui.painter().rect_filled(r, 4.0, t.hover);
                 }
                 let font = if active { semibold(14.0) } else { crate::theme::regular(14.0) };
-                ui.painter().text(egui::pos2(r.min.x + 12.0, r.center().y), egui::Align2::LEFT_CENTER, label, font, t.text);
+                // Long translations stay inside the row; WidgetInfo above keeps the full name.
+                ui.painter().with_clip_rect(r).text(egui::pos2(r.min.x + 12.0, r.center().y), egui::Align2::LEFT_CENTER, label, font, t.text);
                 if resp.clicked() {
                     app.ui.options_pane = id.to_string();
                 }
@@ -334,6 +344,7 @@ fn language_name(lang: wordcraft_engine::proof::ProofLang) -> &'static str {
         ProofLang::Hr => tl!("Croatian"),
         ProofLang::Tr => tl!("Turkish"),
         ProofLang::Ru => tl!("Russian"),
+        ProofLang::Cs => tl!("Czech"),
         // English uses its bundled word list; Bulgarian has no dictionary yet.
         ProofLang::En | ProofLang::Bg | ProofLang::Other => "",
     }
@@ -711,7 +722,7 @@ fn numeral_picker(app: &mut WordApp, ui: &mut Ui) {
 
 #[cfg(test)]
 mod tests {
-    use egui_kittest::kittest::Queryable;
+    use egui_kittest::kittest::{NodeT, Queryable};
     use serde_json::json;
     use wordcraft_geom::Unit;
 
@@ -722,6 +733,115 @@ mod tests {
 
     fn app() -> WordApp {
         WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default())
+    }
+
+    fn nav_harness(language: &str, percent: u16) -> egui_kittest::Harness<'static, WordApp> {
+        let mut a = app();
+        a.run("ui.language", json!({"value": language})).unwrap();
+        a.run("ui.interfaceSize", json!({"percent": percent})).unwrap();
+        a.run("file.options", json!({"pane": "general"})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_pixels_per_point(2.0).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        h
+    }
+
+    /// #1266: check the actual painted text and renderer clip, including the bold selected
+    /// label. AccessKit must still expose the full name and the row must keep its fixed size.
+    #[test]
+    fn options_nav_labels_stay_inside_their_rows() {
+        for language in ["en", "ru"] {
+            for percent in [100, 125, 150] {
+                let mut h = nav_harness(language, percent);
+                // An interface size is absolute (#822): `percent` points per 100 screen pixels,
+                // whatever the display's own scale (2.0 here).
+                assert_eq!(h.ctx.pixels_per_point(), f32::from(percent) / 100.0);
+                for selected in ["general", "accessibility"] {
+                    h.state_mut().run("file.options", json!({"pane": selected})).unwrap();
+                    h.run_steps(4);
+                    for id in wordcraft_engine::cmd::options::PANES {
+                        let label = crate::i18n::tr(crate::i18n::Lang::from_pref(language), super::pane_label(id));
+                        let node =
+                            h.query_all_by_label(label).find(|n| n.accesskit_node().toggled().is_some()).expect("pane has its full accessible name");
+                        assert_eq!(
+                            node.accesskit_node().toggled(),
+                            Some(if id == selected { egui::accesskit::Toggled::True } else { egui::accesskit::Toggled::False })
+                        );
+                        let row = node.rect();
+                        assert_eq!(row.size(), egui::vec2(170.0, 30.0));
+                        let (clip, text) = h
+                            .output()
+                            .shapes
+                            .iter()
+                            .find_map(|s| match &s.shape {
+                                egui::Shape::Text(text) if text.galley.text() == label && row.contains(text.pos) => Some((s.clip_rect, text)),
+                                _ => None,
+                            })
+                            .expect("navigation label is painted");
+                        let bounds = text.visual_bounding_rect();
+                        assert!(row.contains_rect(bounds.intersect(clip)), "{language} {percent}% {selected}: {label} paints outside {row:?}");
+                        if language == "ru" && id == "accessibility" {
+                            assert_eq!(label, "Специальные возможности");
+                            assert!(bounds.right() > row.right(), "exercise a label wider than the row");
+                        }
+                        if language == "en" && ["general", "display", "save"].contains(&id) {
+                            assert!(clip.contains_rect(bounds), "short labels must remain fully visible");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Clipping only the painter must leave the entire row clickable, its hover/selection
+    /// backgrounds intact, and the selected pane's settings visible at every interface size.
+    #[test]
+    fn options_nav_rows_keep_hover_and_selection() {
+        for language in ["en", "ru"] {
+            for percent in [100, 125, 150] {
+                let mut h = nav_harness(language, percent);
+                for (id, setting) in
+                    [("display", "Spaces"), ("save", "Save documents"), ("accessibility", "Visual effects"), ("general", "Interface")]
+                {
+                    let lang = crate::i18n::Lang::from_pref(language);
+                    let row = h
+                        .query_all_by_label(crate::i18n::tr(lang, super::pane_label(id)))
+                        .find(|n| n.accesskit_node().toggled().is_some())
+                        .expect("pane has its full accessible name")
+                        .rect();
+                    // Both ends of the row, including its empty left inset, stay clickable.
+                    for x in [row.left() + 2.0, row.right() - 2.0] {
+                        h.state_mut().run("file.options", json!({"pane": "agents"})).unwrap();
+                        h.hover_at(egui::pos2(x, row.center().y));
+                        h.run_steps(4);
+                        let t = crate::theme::Tokens::get(&h.ctx);
+                        let background = |h: &egui_kittest::Harness<'_, WordApp>, color| {
+                            h.output().shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == row && r.fill == color))
+                        };
+                        assert!(background(&h, t.hover), "{language} {percent}%: hover covers the row");
+                        for pressed in [true, false] {
+                            h.input_mut().events.push(egui::Event::PointerButton {
+                                pos: egui::pos2(x, row.center().y),
+                                button: egui::PointerButton::Primary,
+                                pressed,
+                                modifiers: Default::default(),
+                            });
+                            h.run_steps(1);
+                        }
+                        h.run_steps(4);
+                        assert_eq!(h.state().ui.options_pane, id);
+                        assert!(background(&h, t.checked), "{language} {percent}%: selection covers the row");
+                        assert!(h.query_by_label(crate::i18n::tr(lang, setting)).is_some(), "{id} settings are shown");
+                    }
+                }
+            }
+        }
     }
 
     /// File › Options settings come back after a restart, and a `ui.json` with a wrong value in

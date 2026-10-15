@@ -268,6 +268,9 @@ pub struct Tokens {
     /// Alignment guides while moving a picture or shape: drawn on the page, so legible on white
     /// paper in both themes.
     pub guide: Color32,
+    /// Crop mode: the crop handles, and the dim over the cropped-away part of a picture.
+    pub crop_handle: Color32,
+    pub crop_dim: Color32,
     pub menu: Color32,
     pub blue: Color32,
     pub red: Color32,
@@ -309,6 +312,8 @@ impl Tokens {
             handle: Color32::WHITE,
             handle_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x28),
             guide: Color32::from_rgb(0xC0, 0x28, 0x8C),
+            crop_handle: Color32::BLACK,
+            crop_dim: Color32::from_rgba_unmultiplied(0x30, 0x30, 0x30, 0xE0),
             menu: Color32::WHITE,
             blue: Color32::from_rgb(0x2F, 0x6F, 0xD0),
             red: Color32::from_rgb(0xD1, 0x3B, 0x3B),
@@ -351,6 +356,8 @@ impl Tokens {
             handle: Color32::from_rgb(0xF2, 0xF2, 0xF2),
             handle_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x5A),
             guide: Color32::from_rgb(0xE0, 0x4C, 0xB0),
+            crop_handle: Color32::BLACK,
+            crop_dim: Color32::from_rgba_unmultiplied(0x30, 0x30, 0x30, 0xE0),
             menu: Color32::from_rgb(0x2B, 0x2B, 0x2B),
             blue: Color32::from_rgb(0x6C, 0x9B, 0xEA),
             red: Color32::from_rgb(0xEE, 0x6A, 0x6A),
@@ -369,10 +376,15 @@ pub fn install_fonts(ctx: &egui::Context) {
     install_fonts_for(ctx, false);
 }
 
-/// [`install_fonts`] with the CJK fallback order for the interface language: the Chinese face
-/// first for Chinese (#8), the Japanese one otherwise. The new fonts apply from the next frame.
+/// [`install_fonts`] with the Chinese or Japanese CJK fallback order. The new fonts apply from the
+/// next frame.
 pub fn install_fonts_for(ctx: &egui::Context, prefer_hans: bool) {
     install_fonts_with(ctx, prefer_hans, false);
+}
+
+/// [`install_fonts_for`] with the CJK fallback order for a Korean interface.
+pub fn install_fonts_language(ctx: &egui::Context, prefer_hans: bool, prefer_korean: bool) {
+    install_fonts_language_with(ctx, prefer_hans, prefer_korean, false);
 }
 
 /// [`install_fonts_for`], also adding an installed CJK font after the embedded faces when
@@ -383,11 +395,27 @@ pub fn install_fonts_with(ctx: &egui::Context, prefer_hans: bool, system_cjk: bo
     install_fonts_extra(ctx, prefer_hans, system_cjk, &[]);
 }
 
+/// [`install_fonts_with`] with the CJK font order selected for the interface language.
+pub fn install_fonts_language_with(ctx: &egui::Context, prefer_hans: bool, prefer_korean: bool, system_cjk: bool) {
+    install_fonts_language_extra(ctx, prefer_hans, prefer_korean, system_cjk, &[]);
+}
+
 /// [`install_fonts_with`], also adding document-font `faces` as last-resort fallbacks (#565): the
 /// faces that cover text the interface fonts cannot draw (an input method's composition, or a
 /// file name in the window caption).
 pub fn install_fonts_extra(ctx: &egui::Context, prefer_hans: bool, system_cjk: bool, faces: &[Arc<wordcraft_fonts::FontFace>]) {
-    let mut fonts = font_definitions(prefer_hans, system_cjk);
+    install_fonts_language_extra(ctx, prefer_hans, false, system_cjk, faces);
+}
+
+/// [`install_fonts_extra`] with the CJK font order selected for the interface language.
+pub fn install_fonts_language_extra(
+    ctx: &egui::Context,
+    prefer_hans: bool,
+    prefer_korean: bool,
+    system_cjk: bool,
+    faces: &[Arc<wordcraft_fonts::FontFace>],
+) {
+    let mut fonts = font_definitions_language(prefer_hans, prefer_korean, system_cjk);
     add_fallback_faces(&mut fonts, faces);
     ctx.set_fonts(fonts);
 }
@@ -438,6 +466,11 @@ pub fn faces_for_preedit(
 
 /// The interface fonts; see [`install_fonts_with`].
 pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions {
+    font_definitions_language(prefer_hans, false, system_cjk)
+}
+
+/// The interface fonts, ordered for the preferred CJK writing system.
+pub fn font_definitions_language(prefer_hans: bool, prefer_korean: bool, system_cjk: bool) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let add = |fonts: &mut FontDefinitions, name: &str, bytes: &'static [u8]| {
         fonts.font_data.insert(name.into(), Arc::new(FontData::from_static(bytes)));
@@ -464,7 +497,7 @@ pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions 
             }
         }
     };
-    let cjk = wordcraft_fonts::ui_cjk_fonts(prefer_hans);
+    let cjk = wordcraft_fonts::ui_cjk_fonts_for(prefer_hans, prefer_korean);
     for f in &cjk {
         // The same static bytes the document fonts use: one copy in the binary.
         add_cjk(&mut fonts, format!("{} {}", f.family, f.style), FontData::from_static(f.bytes));
@@ -473,7 +506,7 @@ pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions 
     // without its Chinese face, #241, or with faces lacking catalog characters, #486): an
     // installed CJK font after them, so the menus don't show boxes or `?`.
     #[cfg(not(target_arch = "wasm32"))]
-    if system_cjk && let Some(f) = system_cjk_font(prefer_hans) {
+    if system_cjk && let Some(f) = system_cjk_font(prefer_hans, prefer_korean) {
         let mut data = FontData::from_static(&f.bytes);
         data.index = f.index;
         add_cjk(&mut fonts, format!("system {}", f.family), data);
@@ -489,24 +522,31 @@ pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions 
 /// ([`cjk_font_text`](crate::i18n::Lang::cjk_font_text)). The font is picked for the catalogs'
 /// missing characters, or for the language names when only those are missing.
 #[cfg(not(target_arch = "wasm32"))]
-fn system_cjk_font(hans: bool) -> Option<&'static wordcraft_fonts::SystemUiFont> {
+fn system_cjk_font(hans: bool, korean: bool) -> Option<&'static wordcraft_fonts::SystemUiFont> {
     static ZH: std::sync::OnceLock<Option<wordcraft_fonts::SystemUiFont>> = std::sync::OnceLock::new();
     static OTHER: std::sync::OnceLock<Option<wordcraft_fonts::SystemUiFont>> = std::sync::OnceLock::new();
-    (if hans { &ZH } else { &OTHER })
-        .get_or_init(|| {
-            let embedded = wordcraft_fonts::ui_cjk_fonts(hans);
-            let (catalogs, names) = crate::i18n::Lang::cjk_font_text(hans);
-            let mut needed = wordcraft_fonts::ui_uncovered_cjk(&catalogs, &embedded);
+    static KO: std::sync::OnceLock<Option<wordcraft_fonts::SystemUiFont>> = std::sync::OnceLock::new();
+    (if hans {
+        &ZH
+    } else if korean {
+        &KO
+    } else {
+        &OTHER
+    })
+    .get_or_init(|| {
+        let embedded = wordcraft_fonts::ui_cjk_fonts_for(hans, korean);
+        let (catalogs, names) = crate::i18n::Lang::cjk_font_text_for(hans, korean);
+        let mut needed = wordcraft_fonts::ui_uncovered_cjk(&catalogs, &embedded);
+        if needed.is_empty() {
+            needed = wordcraft_fonts::ui_uncovered_cjk(&[&names], &embedded);
             if needed.is_empty() {
-                needed = wordcraft_fonts::ui_uncovered_cjk(&[&names], &embedded);
-                if needed.is_empty() {
-                    return None;
-                }
+                return None;
             }
-            log::debug!("interface: {} CJK characters lack an embedded glyph", needed.len());
-            wordcraft_fonts::system_cjk_ui_font(hans, &needed)
-        })
-        .as_ref()
+        }
+        log::debug!("interface: {} CJK characters lack an embedded glyph", needed.len());
+        wordcraft_fonts::system_cjk_ui_font_for(hans, korean, &needed)
+    })
+    .as_ref()
 }
 
 pub fn medium(size: f32) -> FontId {

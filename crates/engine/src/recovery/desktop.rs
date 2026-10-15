@@ -14,6 +14,8 @@ const MAX_BYTES: u64 = 256 << 20;
 const MAX_RECORDS: usize = 128;
 const MAX_FILES: usize = 16;
 const DISK_BUDGET: u64 = 2 << 30;
+/// Times a record lock held for a moment (by a process being started) is tried again.
+const LOCK_RETRIES: u32 = 10;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,11 +129,21 @@ impl Store {
         paths.sort_by_key(|p| std::cmp::Reverse(generation(p)));
         Ok(paths)
     }
+    /// Locks a record's `owner.lock`, retrying [`LOCK_RETRIES`] times 10 ms apart.
     fn lock(&self, id: &str) -> Result<File, String> {
         if !id_ok(id) {
             return Err("invalid recovery id".into());
         }
         let file = private_file(&self.root.join(id).join("owner.lock"), false).map_err(|e| e.to_string())?;
+        // A process another part of the app (or a test) is starting holds the lock for a moment
+        // (a forked child shares it until it execs): wait that out, but not a live owner.
+        for _ in 0..LOCK_RETRIES {
+            match file.try_lock() {
+                Ok(()) => return Ok(file),
+                Err(std::fs::TryLockError::WouldBlock) => std::thread::sleep(Duration::from_millis(10)),
+                Err(e) => return Err(format!("recovery copy is in use or cannot be locked: {e}")),
+            }
+        }
         file.try_lock().map_err(|e| format!("recovery copy is in use or cannot be locked: {e}"))?;
         Ok(file)
     }
@@ -558,6 +570,33 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
+    /// A store reopened on `root` whose scan reports an unreadable record. The record's lock can be
+    /// briefly held by a process another test is starting (a forked child holds the descriptor
+    /// until it execs), and a record that can't be locked is skipped, not reported: so try again
+    /// for up to a second rather than read a skipped record as a clean scan.
+    fn reopen_reporting_unreadable(root: &std::path::Path) -> Store {
+        for _ in 0..50 {
+            let mut store = Store::new(root.to_path_buf()).unwrap();
+            if store.scan().is_err() {
+                return store;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("the scan never reported the unreadable record");
+    }
+    /// `store.load(id)`, tried again for up to a second while the record can't be locked: a process
+    /// another test is starting holds the lock for a moment (see [`reopen_reporting_unreadable`]).
+    fn load_retrying(store: &mut Store, id: &str) -> Snapshot {
+        let mut last = String::new();
+        for _ in 0..50 {
+            match store.load(id) {
+                Ok(snapshot) => return snapshot,
+                Err(e) => last = e,
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("the record never loaded: {last}");
+    }
     fn snapshot(id: &str, text: &str) -> Snapshot {
         Snapshot {
             version: 1,
@@ -641,9 +680,8 @@ mod tests {
         let second = store.entries[&id].path.clone();
         fs::write(second, b"{truncated").unwrap();
         drop(store);
-        let mut reopened = Store::new(t.0.clone()).unwrap();
-        assert!(reopened.scan().is_err());
-        assert_eq!(reopened.load(&id).unwrap().document.plain_text(StoryRef::Body), "First valid copy");
+        let mut reopened = reopen_reporting_unreadable(&t.0);
+        assert_eq!(load_retrying(&mut reopened, &id).document.plain_text(StoryRef::Body), "First valid copy");
         // Never reuse the corrupt generation's name or prune the valid fallback.
         reopened.save(snapshot(&id, "Third valid copy")).unwrap();
         assert_eq!(fs::read(first).unwrap(), bytes);
@@ -683,21 +721,8 @@ mod tests {
         assert!(store.save(snapshot(&id, "New copy")).is_err());
         assert_eq!(fs::read(first).unwrap(), bytes);
         drop(store);
-        // The record's lock can be briefly held by a process another test is starting (a forked
-        // child holds the descriptor until it execs), and a record that can't be locked is
-        // skipped, not reported: try again rather than read that as success.
-        let mut reopened = Store::new(t.0.clone()).unwrap();
-        let mut scanned = reopened.scan();
-        for _ in 0..50 {
-            if scanned.is_err() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            reopened = Store::new(t.0.clone()).unwrap();
-            scanned = reopened.scan();
-        }
-        assert!(scanned.is_err());
-        assert_eq!(reopened.load(&id).unwrap().document.plain_text(StoryRef::Body), "Last valid copy");
+        let mut reopened = reopen_reporting_unreadable(&t.0);
+        assert_eq!(load_retrying(&mut reopened, &id).document.plain_text(StoryRef::Body), "Last valid copy");
     }
 
     #[test]
@@ -724,7 +749,7 @@ mod tests {
         let mut reopened = Store::new(t.0.clone()).unwrap();
         reopened.scan().unwrap();
         assert!(!dir.exists());
-        assert_eq!(reopened.load(&id).unwrap().document.plain_text(StoryRef::Body), "Valid synthetic draft");
+        assert_eq!(load_retrying(&mut reopened, &id).document.plain_text(StoryRef::Body), "Valid synthetic draft");
     }
 
     #[test]

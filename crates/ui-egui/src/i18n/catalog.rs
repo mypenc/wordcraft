@@ -20,7 +20,10 @@ pub struct Entry {
 /// The contexts a catalog entry may name, and where each applies.
 /// - `preview`: sample text inside a rendered preview (the Design tab's style-set tiles), which
 ///   has to fit a small tile; it falls back to the plain entry.
-pub const CONTEXTS: &[&str] = &["preview"];
+/// - `template`: the name of a built-in document template (Home and New), which may need other
+///   wording than the same English word elsewhere (the "Letter" template and the "Letter" paper
+///   size); it falls back to the plain entry.
+pub const CONTEXTS: &[&str] = &["preview", "template"];
 
 /// A parsed catalog. Values are owned for the life of the process (catalogs are built once).
 #[derive(Debug, Default)]

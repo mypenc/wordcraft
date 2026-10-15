@@ -712,7 +712,8 @@ fn enforced_ui(app: &mut WordApp, ui: &mut Ui, st: &mut RestrictPane, mode: &str
     };
     ui.label(egui::RichText::new(tl!(what)).small());
     let regions = app.session.doc.perm_ranges().iter().filter(|r| r.everyone() || r.editor.eq_ignore_ascii_case(&app.session.author)).count();
-    if regions > 0 {
+    let fields = app.session.doc.fillable_controls() as u64;
+    if regions > 0 || fields > 0 {
         ui.add_space(6.0);
         if ui.button(tl!("Find Next Editable Region")).clicked() {
             let from = app.session.sel.ordered().1;

@@ -1200,6 +1200,21 @@ mod tests {
     }
 
     #[test]
+    fn build_up_keeps_a_multi_letter_subscript() {
+        // #1609: `dd` typed in a subscript box split into V_d and d on the next space.
+        let mut eq: Arg = Vec::new();
+        let p = insert_nodes(&mut eq, &MathPos::default(), parse_linear("⬚_⬚"));
+        let p = insert_text(&mut eq, &p, "V", TypeStyle::default());
+        let p = move_right(&eq, &p).unwrap();
+        let p = insert_text(&mut eq, &p, "dd", TypeStyle::default());
+        let p = move_right(&eq, &p).unwrap();
+        assert_eq!(p, MathPos::new(vec![], 1));
+        let built = eq.clone();
+        assert_eq!(build_up(&mut eq, &p, false), None);
+        assert_eq!(eq, built, "{}", lin(&eq));
+    }
+
+    #[test]
     fn backspace_dissolves_and_removes() {
         let mut eq = parse_linear("√x");
         // At the start of the radicand: the radical goes, x stays.

@@ -1,9 +1,10 @@
 //! Layout, Review and Mailings dialogs (#407): Line Numbers (Layout › Line Numbers › Line
 //! Numbering Options…), Hyphenation (Hyphenation Options… and Manual…), Language (Review ›
-//! Language), and Envelopes and Labels (Mailings › Create). Each ends by running a command
-//! (`layout.lineNumbers`, `layout.hyphenation`, `layout.manualHyphenation` with `caret.set` and
-//! `text.optionalHyphen`, `review.language`, `mailings.envelopes`, `mailings.labels`), so scripts
-//! and agents get the same result without the dialog. Shown through
+//! Language), Envelopes and Labels (Mailings › Create), Formula (Table Layout › Data, #1201)
+//! and Sort (Table Layout › Data, #1200). Each ends by running a command (`layout.lineNumbers`,
+//! `layout.hyphenation`, `layout.manualHyphenation` with `caret.set` and `text.optionalHyphen`,
+//! `review.language`, `mailings.envelopes`, `mailings.labels`, `table.formula`, `table.sort`), so
+//! scripts and agents get the same result without the dialog. Shown through
 //! [`crate::dialogs::Dialog::Layout`].
 
 use egui::{Ui, vec2};
@@ -26,6 +27,8 @@ pub enum LayoutDialog {
     Language(LanguageForm),
     Envelopes(EnvelopeForm),
     Labels(LabelsForm),
+    Formula(FormulaForm),
+    Sort(SortForm),
 }
 
 impl LayoutDialog {
@@ -37,6 +40,8 @@ impl LayoutDialog {
             LayoutDialog::Language(_) => "language",
             LayoutDialog::Envelopes(_) => "envelopes",
             LayoutDialog::Labels(_) => "labels",
+            LayoutDialog::Formula(_) => "tableFormula",
+            LayoutDialog::Sort(_) => "tableSort",
         }
     }
 
@@ -49,6 +54,8 @@ impl LayoutDialog {
             LayoutDialog::Language(_) => "Language",
             LayoutDialog::Envelopes(_) => "Envelopes",
             LayoutDialog::Labels(_) => "Labels",
+            LayoutDialog::Formula(_) => "Formula",
+            LayoutDialog::Sort(_) => "Sort",
         }
     }
 }
@@ -62,6 +69,8 @@ pub fn open(name: &str, app: &mut WordApp) -> Option<LayoutDialog> {
         "language" => LayoutDialog::Language(LanguageForm::read(app)),
         "envelopes" => LayoutDialog::Envelopes(EnvelopeForm::read(app)),
         "labels" => LayoutDialog::Labels(LabelsForm::read(app)),
+        "tableFormula" => LayoutDialog::Formula(FormulaForm::read(app)?),
+        "tableSort" => LayoutDialog::Sort(SortForm::read(app)?),
         _ => return None,
     })
 }
@@ -75,6 +84,8 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut LayoutDialog) -> bool {
         LayoutDialog::Language(f) => language_ui(app, ui, f),
         LayoutDialog::Envelopes(f) => envelopes_ui(app, ui, f),
         LayoutDialog::Labels(f) => labels_ui(app, ui, f),
+        LayoutDialog::Formula(f) => formula_ui(app, ui, f),
+        LayoutDialog::Sort(f) => sort_ui(app, ui, f),
     }
 }
 
@@ -649,6 +660,149 @@ fn labels_ui(app: &mut WordApp, ui: &mut Ui, f: &mut LabelsForm) -> bool {
     cancel
 }
 
+// ---------------------------------------------------------------------------------------------
+// Formula
+
+/// The functions `table.formula` works out, offered by Paste function.
+pub const FORMULA_FUNCTIONS: [&str; 6] = ["AVERAGE", "COUNT", "MAX", "MIN", "PRODUCT", "SUM"];
+
+/// The table Formula dialog's field: the formula, suggested as Word does from the numbers next
+/// to the caret's cell (`=SUM(ABOVE)`, else `=SUM(LEFT)`, else a bare `=`).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormulaForm {
+    pub formula: String,
+}
+
+impl FormulaForm {
+    /// The caret's cell; none outside a table.
+    pub fn read(app: &WordApp) -> Option<FormulaForm> {
+        let s = &app.session;
+        let (tp, r, c) = s.sel.focus.path.cell()?;
+        let t = s.doc.table(s.sel.focus.story, &tp)?;
+        let lang = wordcraft_engine::cmd::default_lang(s);
+        let number = |row: Option<usize>, col: Option<usize>| {
+            let cell = t.rows.get(row?)?.cells.get(col?)?;
+            let text = cell.blocks.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect::<Vec<_>>().join(" ");
+            wordcraft_doc::locale_number::parse_number(text.trim(), lang.as_deref())
+        };
+        let formula = if number(r.checked_sub(1), Some(c)).is_some() {
+            "=SUM(ABOVE)"
+        } else if number(Some(r), c.checked_sub(1)).is_some() {
+            "=SUM(LEFT)"
+        } else {
+            "="
+        };
+        Some(FormulaForm { formula: formula.into() })
+    }
+
+    /// Paste function: `NAME()` at the end of the formula.
+    pub fn paste(&mut self, name: &str) {
+        self.formula.push_str(name);
+        self.formula.push_str("()");
+    }
+
+    /// `table.formula` parameters for OK.
+    pub fn params(&self) -> Value {
+        json!({"formula": self.formula.trim()})
+    }
+}
+
+fn formula_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FormulaForm) -> bool {
+    ui.label(tl!("Formula:"));
+    ui.add(egui::TextEdit::singleline(&mut f.formula).desired_width(300.0));
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.label(tl!("Paste function:"));
+        let mut picked = None;
+        egui::ComboBox::from_id_salt("formula_paste").selected_text("").width(140.0).show_ui(ui, |ui| {
+            for name in FORMULA_FUNCTIONS {
+                if ui.selectable_label(false, name).clicked() {
+                    picked = Some(name);
+                }
+            }
+        });
+        if let Some(name) = picked {
+            f.paste(name);
+        }
+    });
+    let ready = f.formula.trim().starts_with('=') && f.formula.trim().len() > 1;
+    let (ok, cancel) = buttons(ui, "OK", ready);
+    if ok {
+        return run(app, "table.formula", f.params());
+    }
+    cancel
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sort
+
+/// The table Sort dialog's fields: the column to sort by, the order and whether the first row is
+/// a header (kept in place). `headers` is the first row's text, which names the columns when it
+/// is a header.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SortForm {
+    pub column: usize,
+    pub descending: bool,
+    pub header: bool,
+    pub headers: Vec<String>,
+}
+
+impl SortForm {
+    /// The caret's table; none outside a table.
+    pub fn read(app: &WordApp) -> Option<SortForm> {
+        let s = &app.session;
+        let (tp, _, _) = s.sel.focus.path.cell()?;
+        let first = s.doc.table(s.sel.focus.story, &tp)?.rows.first()?;
+        let headers = first
+            .cells
+            .iter()
+            .map(|c| c.blocks.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect::<Vec<_>>().join(" ").trim().to_string())
+            .collect();
+        Some(SortForm { column: 0, descending: false, header: first.props.header, headers })
+    }
+
+    /// A column's name in Sort by: its header text, or `Column n`.
+    pub fn column_label(&self, i: usize) -> String {
+        match self.headers.get(i).filter(|h| self.header && !h.is_empty()) {
+            Some(h) => h.clone(),
+            None => crate::i18n::fmt(tl!("Column {n}"), &[("n", &(i + 1).to_string())]),
+        }
+    }
+
+    /// `table.sort` parameters for OK.
+    pub fn params(&self) -> Value {
+        json!({"column": self.column, "descending": self.descending, "header": self.header})
+    }
+}
+
+fn sort_ui(app: &mut WordApp, ui: &mut Ui, f: &mut SortForm) -> bool {
+    heading(ui, "Sort by");
+    ui.horizontal(|ui| {
+        egui::ComboBox::from_id_salt("sort_column").selected_text(f.column_label(f.column)).width(180.0).show_ui(ui, |ui| {
+            for i in 0..f.headers.len() {
+                let label = f.column_label(i);
+                ui.selectable_value(&mut f.column, i, label);
+            }
+        });
+        ui.vertical(|ui| {
+            ui.radio_value(&mut f.descending, false, tl!("Ascending"));
+            ui.radio_value(&mut f.descending, true, tl!("Descending"));
+        });
+    });
+    heading(ui, "My list has");
+    ui.horizontal(|ui| {
+        ui.radio_value(&mut f.header, true, tl!("Header row"));
+        ui.radio_value(&mut f.header, false, tl!("No header row"));
+    });
+    let (ok, cancel) = buttons(ui, "OK", true);
+    if ok {
+        return run(app, "table.sort", f.params());
+    }
+    cancel
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -759,6 +913,102 @@ mod tests {
         assert_eq!(secs.len(), 2);
         assert!((secs[0].1.page_w - 623.6).abs() < 0.1);
         assert!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body).contains("Thanks."));
+    }
+
+    /// A table `cols` wide, typed cell by cell (empty cells are skipped over); the caret ends in
+    /// the last cell.
+    fn table_app(cols: usize, cells: &[&str]) -> WordApp {
+        let mut a = app();
+        a.run("insert.table", json!({"rows": cells.len() / cols, "cols": cols})).unwrap();
+        for (k, c) in cells.iter().enumerate() {
+            if k > 0 {
+                a.run("text.tab", json!({})).unwrap();
+            }
+            if !c.is_empty() {
+                a.run("text.insert", json!({"text": c})).unwrap();
+            }
+        }
+        a
+    }
+
+    fn fields(a: &WordApp) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        a.session.doc.objects_in_reading_order(&mut |o| {
+            if let wordcraft_doc::InlineObject::Field { instr, result, .. } = o {
+                out.push((instr.clone(), result.clone()));
+            }
+        });
+        out
+    }
+
+    /// #1201: Table Layout › Formula opens its dialog instead of inserting `=SUM(ABOVE)` at once.
+    /// The formula is suggested from the numbers next to the cell (above, else to the left), Paste
+    /// function adds a function to it, and OK inserts the field of the formula as edited.
+    #[test]
+    fn table_formula_opens_its_dialog() {
+        let mut a = table_app(2, &["Item", "Cost", "Tea", "3", "Jam", "4", "Total", ""]);
+        assert_eq!(a.run("table.formula", json!({})).unwrap(), json!({"pending": "tableFormula"}));
+        assert!(fields(&a).is_empty(), "nothing inserted yet");
+        let LayoutDialog::Formula(mut f) = form(&mut a) else { panic!("formula") };
+        assert_eq!(f.formula, "=SUM(ABOVE)");
+        f.formula = "=".into();
+        f.paste("MAX");
+        assert_eq!(f.formula, "=MAX()");
+        f.formula = "=MAX(ABOVE)".into();
+        a.run("table.formula", f.params()).unwrap();
+        assert_eq!(fields(&a), [("=MAX(ABOVE)".to_string(), "4".to_string())]);
+        assert!(a.dialog.is_none());
+
+        let mut a = table_app(3, &["Tea", "3", "", "Jam", "4", ""]);
+        a.run("table.formula", json!({})).unwrap();
+        let LayoutDialog::Formula(f) = form(&mut a) else { panic!("formula") };
+        assert_eq!(f.formula, "=SUM(LEFT)", "nothing above, numbers to the left");
+
+        let mut a = app();
+        a.run("ui.dialog", json!({"name": "tableFormula"})).unwrap();
+        assert!(a.dialog.is_none(), "no dialog outside a table");
+    }
+
+    fn first_column(a: &WordApp) -> Vec<String> {
+        let t = a.session.doc.body.iter().find_map(|b| b.as_table()).unwrap();
+        t.rows.iter().map(|r| r.cells[0].blocks.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect()).collect()
+    }
+
+    /// #1200: Table Layout › Sort opens its dialog instead of sorting by the first column at once;
+    /// with a header row the columns are named by it, and OK sorts the rows under it by the
+    /// chosen column (as numbers here: 2, 7, 10).
+    #[test]
+    fn table_sort_opens_its_dialog() {
+        let mut a = table_app(2, &["Name", "Score", "Bea", "10", "Al", "2", "Cy", "7"]);
+        assert_eq!(a.run("table.sort", json!({})).unwrap(), json!({"pending": "tableSort"}));
+        assert_eq!(first_column(&a), ["Name", "Bea", "Al", "Cy"], "nothing sorted yet");
+        let LayoutDialog::Sort(mut f) = form(&mut a) else { panic!("sort") };
+        assert!(!f.header && f.column == 0 && !f.descending);
+        assert_eq!(f.column_label(1), "Column 2");
+        f.header = true;
+        assert_eq!(f.column_label(1), "Score");
+        f.column = 1;
+        a.run("table.sort", f.params()).unwrap();
+        assert_eq!(first_column(&a), ["Name", "Al", "Cy", "Bea"]);
+        assert!(a.dialog.is_none());
+    }
+
+    /// The envelope sizes are in the interface language with the region's decimal separator
+    /// (#1128; the untranslated-text audit found `#10   4.13 × 9.5 in` drawn in English).
+    #[test]
+    fn envelope_sizes_follow_the_interface_language_and_region() {
+        let size = |name: &str| ENVELOPE_SIZES.iter().find(|s| s.0 == name).map(|(n, w, h)| envelope_label(n, *w, *h)).unwrap();
+        assert_eq!(size("Envelope #10"), "#10   4.13 × 9.5 in");
+        assert_eq!(size("Envelope DL"), "DL   110 × 220 mm");
+        let mut a = app();
+        a.run("file.options", json!({"region": "it-IT"})).unwrap();
+        crate::options::sync(&a);
+        crate::i18n::set_current(crate::i18n::Lang::from_code("it").unwrap());
+        assert_eq!(size("Envelope #10"), "#10   4,13 × 9,5 pollici");
+        assert_eq!(size("Envelope DL"), "DL   110 × 220 mm");
+        crate::i18n::set_current(crate::i18n::Lang::EN);
+        a.run("file.options", json!({"region": "en-US"})).unwrap();
+        crate::options::sync(&a);
     }
 
     /// #407: Labels builds a new document of the chosen sheet, or a single label.

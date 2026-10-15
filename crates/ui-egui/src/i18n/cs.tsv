@@ -140,6 +140,9 @@
 	Book Title	Název knihy
 	Bookmark	Záložka
 	Bookmark name:	Název záložky:
+	Delete Bookmark	Odstranit záložku
+	Hidden bookmarks	Skryté záložky
+	Sort by:	Seřadit podle:
 	Border Painter	Štětec ohraničení
 	Border\nPainter	Štětec\nohraničení
 	Borders	Ohraničení
@@ -616,6 +619,8 @@
 	Labels	Štítky
 	Landscape	Na šířku
 	Language	Jazyk
+	{language} (no dictionary)	{language} (bez slovníku)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Pro jazyk {language} není nainstalován žádný pravopisný slovník, proto se nekontroluje. WordCraft hledá slovník Hunspell {name} ve složce WORDCRAFT_DICTIONARIES a na obvyklých místech v systému.
 	Large\nOperator	Velký\noperátor
 	Lasso	Laso
 	Last Column	Poslední sloupec
@@ -710,7 +715,7 @@
 	Name (A–Z)	Jméno (A–Z)
 	Name of the file this document is saved as	Název souboru dokumentu
 	Name:	Název:
-	Narrow  0.5" all	Úzké  0,5" všude
+	Narrow  {size} all	Úzké  {size} všude
 	Navigation	Navigace
 	Navigation Pane	Navigační podokno
 	New	Nový
@@ -752,7 +757,7 @@
 	Nonbreaking Space	Nezlomitelná mezera
 	None	Žádné
 	Normal	Normální
-	Normal  1" all	Normální  1" všude
+	Normal  {size} all	Normální  {size} všude
 	Normal Indent	Normální s odsazením
 	Normal speed	Normální rychlost
 	Normal Style	Normální styl
@@ -2266,6 +2271,11 @@ preview	Title	Ukázka
 	Add Font…	Přidat písmo…
 	Added Fonts	Přidaná písma
 	Remove Added Font	Odebrat přidané písmo
+	Load System Installed Fonts…	Načíst nainstalovaná systémová písma…
+	All system fonts are already available.	Všechna systémová písma jsou již k dispozici.
+	Local font access is not supported by your browser.	Váš prohlížeč nepodporuje přístup k místním písmům.
+	Local font access was denied.	Přístup k místním písmům byl odepřen.
+	Loaded {count} system fonts.	Načteno systémových písem: {count}.
 	Recent Colors	Poslední barvy
 	More Colors…	Další barvy…
 	Standard	Standardní
@@ -2457,6 +2467,16 @@ preview	Title	Ukázka
 	Hindi	Hindské
 	Context	Podle kontextu
 	System	Systémové
+	Odd Banded Rows	Liché pruhované řádky
+	Even Banded Rows	Sudé pruhované řádky
+	Odd Banded Columns	Liché pruhované sloupce
+	Even Banded Columns	Sudé pruhované sloupce
+	Top Left Cell	Levá horní buňka
+	Top Right Cell	Pravá horní buňka
+	Bottom Left Cell	Levá dolní buňka
+	Bottom Right Cell	Pravá dolní buňka
+	Inside Horizontal Border	Vnitřní vodorovné ohraničení
+	Inside Vertical Border	Vnitřní svislé ohraničení
 # Mail merge: filter and sort recipients (#778)
 	Filter Recipients	Filtrovat příjemce
 	Sort Recipients	Seřadit příjemce
@@ -2549,6 +2569,24 @@ preview	Title	Ukázka
 	Suggested	Navrhované
 	Set Proofing Language…	Nastavit jazyk kontroly pravopisu…
 	Language Preferences…	Předvolby jazyka…
+	Printer	Tiskárna
+	Select a printer	Vyberte tiskárnu
+	Refresh printers	Obnovit tiskárny
+	Two-sided printing	Oboustranný tisk
+	Printer default	Výchozí tiskárny
+	One-sided	Jednostranný
+	Two-sided: long edge	Oboustranný: dlouhý okraj
+	Two-sided: short edge	Oboustranný: krátký okraj
+	Grayscale	Stupně šedi
+	Finding printers…	Hledání tiskáren…
+	No printers found. Configure a system printer or export a PDF.	Nebyly nalezeny žádné tiskárny. Nastavte systémovou tiskárnu nebo exportujte PDF.
+	Printer discovery failed.	Hledání tiskáren se nezdařilo.
+	Submitting print job…	Odesílání tiskové úlohy…
+	Print job submitted.	Tisková úloha odeslána.
+	Print job submitted: {receipt}	Tisková úloha odeslána: {receipt}
+	Print failed: the printing worker stopped.	Tisk se nezdařil: proces tisku se zastavil.
+	Print settings	Nastavení tisku
+	Submit print job	Odeslat tiskovou úlohu
 
 # Cross-reference dialog (#1003)
 	For which item:	Pro kterou položku:
@@ -2567,3 +2605,22 @@ preview	Title	Ukázka
 
 # Backstage › Recover (#586)
 	Recover	Obnovit
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Zrcadlové okraje
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Existující soubor nebo webová stránka
+	Link to:	Odkaz na:
+	Place in This Document	Místo v tomto dokumentu
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Sloupec {n}
+	Header row	Řádek záhlaví
+	No header row	Bez řádku záhlaví
+	My list has	Můj seznam má
+# Table Layout › Formula dialog (#1210)
+	Formula:	Vzorec:
+	Paste function:	Vložit funkci:
+# Reading Mode column widths (#1040)
+	Narrow	Úzká
+	Medium	Střední

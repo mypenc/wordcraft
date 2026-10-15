@@ -37,7 +37,8 @@ pub fn specs() -> Vec<CommandSpec> {
             .key("Mod+Alt+F")
             .params(r#"{"text"?: string, "mark"?: string (a custom mark instead of the number)}"#),
         CommandSpec::new("references.endnote", "Insert Endnote", "References › Footnotes", |s, v| note(s, v, NoteKind::Endnote))
-            .key("Mod+Alt+D")
+            // macOS takes ⌘⌥D to show and hide the Dock; Word for Mac uses ⌘⌥E.
+            .key(super::mac_or("Mod+Alt+E", "Mod+Alt+D"))
             .params(r#"{"text"?: string, "mark"?: string (a custom mark instead of the number)}"#),
         CommandSpec::new("references.convertNotes", "Convert Notes", "References › Footnotes", |s, v| {
             let (foot, end) = match p::req_str(v, "to")? {
@@ -58,6 +59,7 @@ pub fn specs() -> Vec<CommandSpec> {
             }
             sel_result(s)
         })
+        .key(super::non_mac("Alt+Shift+> / Alt+Shift+."))
         .pure(),
         CommandSpec::new("references.notes", "Show Notes", "References › Footnotes", |s, _| {
             let mut out = Vec::new();
@@ -225,6 +227,13 @@ struct TocEntry {
     lead: usize,
 }
 
+/// The headings of the body, in document order, as (body block, level 1–9, text, leading page
+/// breaks): what Insert › Link › Place in This Document lists.
+pub(crate) fn headings(s: &Session) -> Vec<(usize, u8, String, usize)> {
+    let f = FieldCode::parse("TOC \\o \"1-9\" \\u");
+    toc_entries(s, &f).into_iter().map(|e| (e.path.last(), e.level.saturating_add(1), e.text, e.lead)).collect()
+}
+
 /// The heading level (1–9) of a built-in heading style.
 fn heading_style_level(p: &Paragraph) -> Option<u8> {
     p.props.style.as_deref()?.strip_prefix("Heading")?.trim().parse::<u8>().ok().filter(|l| (1..=9).contains(l))
@@ -327,6 +336,13 @@ fn toc_range(s: &Session) -> Option<(usize, usize)> {
     Some((start, end))
 }
 
+/// The caret is in the table of contents (its heading or an entry), where Word's context menu
+/// offers Update Field for the whole table.
+pub fn caret_in_toc(s: &Session) -> bool {
+    let at = &s.sel.focus;
+    at.story == StoryRef::Body && at.path.depth() == 0 && toc_range(s).is_some_and(|(start, end)| (start..=end).contains(&at.path.last()))
+}
+
 /// A TOC imported as a range field (`FieldStart`…`FieldEnd`: one without a TOC heading, or with
 /// content around it the engine's TOC can't reproduce) becomes the engine's TOC before an update,
 /// so Update Table refreshes it rather than adding a second one: an empty `TOC` field where the
@@ -352,8 +368,29 @@ fn range_toc_to_field(s: &mut Session) -> Result<(), CmdError> {
     let Some(after_end) = r.end.off.checked_add(OBJ.len_utf8()) else { return Ok(()) };
     let end = Pos { off: after_end, ..r.end.clone() };
     let props = s.doc.para_at(&r.start).map(|p| p.props_of_char(r.start.off).clone()).unwrap_or_default();
-    let at = s.doc.delete_range(&r.start, &end)?;
-    let field = InlineObject::Field { instr: r.instr.trim().to_string(), result: String::new(), locked: false, code: false };
+    let mut at = s.doc.delete_range(&r.start, &end)?;
+    // A range that filled its own paragraphs right under a TOC heading (as Word and other writers
+    // lay it out) leaves an empty paragraph behind, which would show as a blank line above the
+    // entries. The field goes at the end of the heading instead, as `insert_toc` places it.
+    let i = at.path.last();
+    if at.path.depth() == 0
+        && i > 0
+        && s.doc.para_at(&at).is_some_and(|p| p.is_empty())
+        && s.doc.body.get(i - 1).and_then(|b| b.as_para()).is_some_and(|p| p.props.style.as_deref() == Some("TOCHeading"))
+    {
+        s.doc.remove_block(StoryRef::Body, &at.path)?;
+        let heading = Path::top(i - 1);
+        let len = s.doc.para(StoryRef::Body, &heading).map_or(0, |p| p.len());
+        at = Pos { story: StoryRef::Body, path: heading, off: len };
+    }
+    let field = InlineObject::Field {
+        instr: r.instr.trim().to_string(),
+        result: String::new(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+    };
     let after = s.doc.insert_object(&at, field, &props)?;
     if s.doc.para_at(&after).is_some_and(|p| after.off < p.len()) {
         s.doc.split_paragraph(&after)?;
@@ -403,7 +440,7 @@ fn insert_toc(s: &mut Session, v: &Value) -> CmdResult {
     let mut head = Paragraph::with_text(&title, CharProps::default()).styled("TOCHeading");
     head.insert_object(
         head.len(),
-        InlineObject::Field { instr: toc_instr(v), result: String::new(), locked: false, code: false },
+        InlineObject::Field { instr: toc_instr(v), result: String::new(), locked: false, dirty: false, code: false, form: String::new() },
         &CharProps::default(),
     )?;
     let i = if s.doc.para_at(&at).is_some_and(|p| p.is_empty()) {
@@ -423,7 +460,7 @@ fn insert_toc(s: &mut Session, v: &Value) -> CmdResult {
 
 /// A hidden `_Toc` bookmark around the heading at body block `i` (after its leading page breaks),
 /// reusing one already there; its name.
-fn toc_bookmark(s: &mut Session, i: usize, lead: usize) -> Result<String, CmdError> {
+pub(crate) fn toc_bookmark(s: &mut Session, i: usize, lead: usize) -> Result<String, CmdError> {
     const MARK: usize = wordcraft_doc::para::OBJ.len_utf8();
     let para = s.doc.para(StoryRef::Body, &Path::top(i)).ok_or_else(|| CmdError::Failed("heading is gone".into()))?;
     if let Some(InlineObject::BookmarkStart { name }) = para.object_at(lead)
@@ -465,6 +502,19 @@ fn regenerate_toc(s: &mut Session, leader: Option<TabLeader>) -> Result<(), CmdE
     range_toc_to_field(s)?;
     let Some((start, end)) = toc_range(s) else { return Ok(()) };
     let Some(instr) = s.doc.body.get(start).and_then(|b| b.as_para()).and_then(toc_field) else { return Ok(()) };
+    // A TOC field imported with an inline placeholder/cached result must have its result cleared so
+    // that the engine's TOC shape matches `toc_span` and the DOCX writer spans the field across entries.
+    if let Ok(p) = s.doc.para_mut(StoryRef::Body, &Path::top(start)) {
+        for o in &mut p.objects {
+            if let InlineObject::Field { instr, result, .. } = o {
+                let f = FieldCode::parse(instr);
+                if f.name == "TOC" && !f.has('c') {
+                    result.clear();
+                }
+            }
+        }
+        p.touch();
+    }
     let f = FieldCode::parse(&instr);
     let leader = leader.unwrap_or_else(|| {
         s.doc
@@ -478,7 +528,10 @@ fn regenerate_toc(s: &mut Session, leader: Option<TabLeader>) -> Result<(), CmdE
     for i in (start + 1..=end).rev() {
         s.doc.remove_block(StoryRef::Body, &Path::top(i))?;
     }
-    let width = super::page::sect(s).text_width();
+    // The text width of the TOC's own section, not the caret's: after Select All the caret sits
+    // at the end of the document, possibly in a wider (landscape) section.
+    let section = s.doc.section_index_of(start);
+    let width = s.doc.sections().get(section).map_or_else(|| super::page::sect(s).text_width(), |(_, x)| x.text_width());
     let entries = toc_entries(s, &f);
     let links: Vec<Option<String>> = if f.has('h') {
         let mut v = Vec::new();
@@ -515,13 +568,33 @@ fn regenerate_toc(s: &mut Session, leader: Option<TabLeader>) -> Result<(), CmdE
             let mut para = Paragraph::with_text(&text, props).styled(&format!("TOC{}", e.level + 1));
             para.mark = CharProps::default();
             if show_page && sep.contains('\t') {
-                para.props.tabs = Some(vec![TabStop { pos: width - 0.5, align: TabAlign::Right, leader }]);
+                let right = TabStop { pos: width - 0.5, align: TabAlign::Right, leader };
+                para.props.tabs = Some(entry_tabs(s, &para.props, &e.text, right));
             }
             s.doc.insert_block(StoryRef::Body, &Path::top(start + 1 + k), Block::Para(para))?;
         }
     }
     s.touch();
     Ok(())
+}
+
+/// The tab stops of a TOC entry: the right-aligned stop for its page number, and, when the
+/// entry text itself has no tab, Clear stops for the left, centre and decimal stops its style
+/// sets before that. Those stops are for a number set off by a tab (`1.1<tab>Title`); with the
+/// number set off by a space, or no number, a short entry's page tab would stop at one of them
+/// (without the leader), and so would the tab on the last line of an entry that wraps.
+fn entry_tabs(s: &Session, props: &wordcraft_doc::ParaProps, text: &str, right: TabStop) -> Vec<TabStop> {
+    let mut tabs = Vec::new();
+    if !text.contains('\t') {
+        let style = s.doc.styles.resolve_para(&wordcraft_doc::ParaProps { style: props.style.clone(), ..Default::default() });
+        for t in style.tabs {
+            if t.pos < right.pos - 0.5 && !matches!(t.align, TabAlign::Right | TabAlign::Bar) {
+                tabs.push(TabStop { pos: t.pos, align: TabAlign::Clear, leader: TabLeader::None });
+            }
+        }
+    }
+    tabs.push(right);
+    tabs
 }
 
 fn note(s: &mut Session, v: &Value, kind: NoteKind) -> CmdResult {
@@ -533,7 +606,7 @@ fn note(s: &mut Session, v: &Value, kind: NoteKind) -> CmdResult {
         NoteKind::Endnote => (PartKind::Endnote, "EndnoteText", "EndnoteReference"),
     };
     let mut para = Paragraph::new().styled(style);
-    let id = s.doc.add_part(pk, Vec::new());
+    let id = s.doc.try_add_part(pk, Vec::new())?;
     para.insert_object(
         0,
         InlineObject::NoteRef { kind, id, custom: custom.clone() },
@@ -687,7 +760,7 @@ fn caption(s: &mut Session, v: &Value) -> CmdResult {
     let chapter = p::u64(v, "chapter").filter(|l| (1..=9).contains(l));
     let sep = p::str(v, "separator").and_then(|x| CHAPTER_SEPARATORS.iter().find(|s| **s == x)).copied().unwrap_or("-");
     let mut para = Paragraph::new().styled("Caption");
-    let field = |instr: String| InlineObject::Field { instr, result: String::new(), locked: false, code: false };
+    let field = |instr: String| InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
     if !p::bool(v, "excludeLabel").unwrap_or(false) {
         para.insert_text(0, &format!("{label} "), &CharProps::default())?;
     }
@@ -767,8 +840,10 @@ pub fn update_seq(s: &mut Session) -> Result<(), CmdError> {
         }
         let para = s.doc.para_mut(StoryRef::Body, &path)?;
         for (k, r) in updates {
-            if let Some(InlineObject::Field { result, .. }) = para.objects.get_mut(k) {
+            if let Some(InlineObject::Field { result, dirty, .. }) = para.objects.get_mut(k) {
+                // A computed result is no longer stale: Word's F9 clears `w:dirty` too.
                 *result = r;
+                *dirty = false;
             }
         }
         para.touch();
@@ -793,6 +868,20 @@ pub fn update_fields(s: &mut Session) -> Result<(), CmdError> {
         let mut updates: Vec<(usize, String)> = Vec::new();
         for (k, o) in p.objects.iter().enumerate() {
             let InlineObject::Field { instr, locked: false, .. } = o else { continue };
+            // A table formula reads the cells around its own cell again.
+            if instr.trim_start().starts_with('=') {
+                if let Some((tp, r, c)) = path.cell()
+                    && let Some(t) = s.doc.table(StoryRef::Body, &tp)
+                {
+                    let default_lang = super::default_lang(s);
+                    let text = match super::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr) {
+                        Ok(text) => text,
+                        Err(e) => format!("!{e}"),
+                    };
+                    updates.push((k, text));
+                }
+                continue;
+            }
             let name = wordcraft_layout::fields::field_name(instr);
             match name.as_str() {
                 "DATE" | "TIME" | "CREATEDATE" | "SAVEDATE" | "PRINTDATE" => {
@@ -817,14 +906,54 @@ pub fn update_fields(s: &mut Session) -> Result<(), CmdError> {
         }
         let para = s.doc.para_mut(StoryRef::Body, &path)?;
         for (k, r) in updates {
-            if let Some(InlineObject::Field { result, .. }) = para.objects.get_mut(k) {
+            if let Some(InlineObject::Field { result, dirty, .. }) = para.objects.get_mut(k) {
+                // A computed result is no longer stale: Word's F9 clears `w:dirty` too.
                 *result = r;
+                *dirty = false;
             }
         }
         para.touch();
     }
     super::citations::update_citations(s)?;
     update_toc(s)
+}
+
+/// Refresh every unlocked `DATE` and `TIME` field to now, as Word does whenever it shows,
+/// prints or exports a document: a letter written from a template carries today's date, not the
+/// date the template was last saved (#1672).
+///
+/// Only those two. `CREATEDATE`, `SAVEDATE` and `PRINTDATE` record when something happened and
+/// are not "now"; `REF`, `PAGEREF`, `TOC` and citations are refreshed on an explicit update
+/// (`fields.updateAll`) and not on open, again as Word does. A field carrying `w:fldLock` keeps
+/// its stored result, which is what the lock is for.
+pub fn refresh_date_fields(doc: &mut wordcraft_doc::Document) {
+    let stories: Vec<StoryRef> = std::iter::once(StoryRef::Body).chain(doc.parts.keys().copied().map(StoryRef::Part)).collect();
+    for story in stories {
+        for path in doc.para_paths(story) {
+            let Some(p) = doc.para(story, &path) else { continue };
+            let mut updates: Vec<(usize, String)> = Vec::new();
+            for (k, o) in p.objects.iter().enumerate() {
+                let InlineObject::Field { instr, locked: false, .. } = o else { continue };
+                let name = wordcraft_layout::fields::field_name(instr);
+                if !matches!(name.as_str(), "DATE" | "TIME") {
+                    continue;
+                }
+                // Word's default picture when the code carries no `\@` switch.
+                let pic = date_picture(instr).unwrap_or_else(|| if name == "TIME" { "h:mm am/pm".into() } else { "M/d/yyyy".into() });
+                updates.push((k, super::insert::format_date(&pic)));
+            }
+            if updates.is_empty() {
+                continue;
+            }
+            let Ok(para) = doc.para_mut(story, &path) else { continue };
+            for (k, r) in updates {
+                if let Some(InlineObject::Field { result, .. }) = para.objects.get_mut(k) {
+                    *result = r;
+                }
+            }
+            para.touch();
+        }
+    }
 }
 
 /// A field's `\@` date picture: the quoted text after it (switches may follow), or one word.

@@ -83,6 +83,9 @@
 	Bold	Pogrubienie
 	Bookmark	Zakładka
 	Bookmark name:	Nazwa zakładki:
+	Delete Bookmark	Usuń zakładkę
+	Hidden bookmarks	Ukryte zakładki
+	Sort by:	Sortuj według:
 	Border Painter	Pędzel krawędzi
 	Border\nPainter	Pędzel\nkrawędzi
 	Borders	Krawędzie
@@ -373,6 +376,8 @@
 	Labels	Etykiety
 	Landscape	Pozioma
 	Language	Język
+	{language} (no dictionary)	{language} (brak słownika)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Nie zainstalowano słownika pisowni dla języka: {language}, więc tekst nie jest sprawdzany. WordCraft szuka słownika Hunspell {name} w folderze WORDCRAFT_DICTIONARIES i w typowych lokalizacjach systemowych.
 	Lasso	Lasso
 	Last Column	Ostatnia kolumna
 	Last commit	Ostatni commit
@@ -429,7 +434,7 @@
 	Multiple Pages	Wiele stron
 	Name (A–Z)	Nazwa (A–Z)
 	Name:	Nazwa:
-	Narrow  0.5" all	Wąskie  wszystkie 0,5"
+	Narrow  {size} all	Wąskie  wszystkie {size}
 	Navigation	Nawigacja
 	Navigation Pane	Okienko nawigacji
 	New	Nowy
@@ -458,7 +463,7 @@
 	Nonbreaking Hyphen	Łącznik nierozdzielający
 	Nonbreaking Space	Spacja nierozdzielająca
 	None	Brak
-	Normal  1" all	Normalne  wszystkie 1"
+	Normal  {size} all	Normalne  wszystkie {size}
 	Normal Style	Styl Normalny
 	Not available right now	W tej chwili niedostępne
 	Not saved	Niezapisany
@@ -1944,6 +1949,11 @@
 	Regular expressions	Wyrażenia regularne
 	Relationship	Relacja
 	Remove Added Font	Usuń dodaną czcionkę
+	Load System Installed Fonts…	Wczytaj zainstalowane czcionki systemowe…
+	All system fonts are already available.	Wszystkie czcionki systemowe są już dostępne.
+	Local font access is not supported by your browser.	Twoja przeglądarka nie obsługuje dostępu do czcionek lokalnych.
+	Local font access was denied.	Odmówiono dostępu do czcionek lokalnych.
+	Loaded {count} system fonts.	Wczytano {count} czcionek systemowych.
 	Remove Content Control	Usuń formant zawartości
 	Remove row	Usuń wiersz
 	Remove series	Usuń serię
@@ -2090,6 +2100,16 @@
 	Hindi	Hindi
 	Context	Kontekstowe
 	System	Systemowe
+	Odd Banded Rows	Nieparzyste wiersze naprzemienne
+	Even Banded Rows	Parzyste wiersze naprzemienne
+	Odd Banded Columns	Nieparzyste kolumny naprzemienne
+	Even Banded Columns	Parzyste kolumny naprzemienne
+	Top Left Cell	Lewa górna komórka
+	Top Right Cell	Prawa górna komórka
+	Bottom Left Cell	Lewa dolna komórka
+	Bottom Right Cell	Prawa dolna komórka
+	Inside Horizontal Border	Wewnętrzna krawędź pozioma
+	Inside Vertical Border	Wewnętrzna krawędź pionowa
 # Mail merge: filter and sort recipients (#778)
 	Filter Recipients	Filtruj adresatów
 	Sort Recipients	Sortuj adresatów
@@ -2549,6 +2569,24 @@ preview	Title	Tytuł
 	Suggested	Sugerowane
 	Set Proofing Language…	Ustaw język sprawdzania…
 	Language Preferences…	Preferencje językowe…
+	Printer	Drukarka
+	Select a printer	Wybierz drukarkę
+	Refresh printers	Odśwież drukarki
+	Two-sided printing	Drukowanie dwustronne
+	Printer default	Domyślne drukarki
+	One-sided	Jednostronne
+	Two-sided: long edge	Dwustronne: długa krawędź
+	Two-sided: short edge	Dwustronne: krótka krawędź
+	Grayscale	Odcienie szarości
+	Finding printers…	Wyszukiwanie drukarek…
+	No printers found. Configure a system printer or export a PDF.	Nie znaleziono drukarek. Skonfiguruj drukarkę systemową lub wyeksportuj PDF.
+	Printer discovery failed.	Nie udało się znaleźć drukarek.
+	Submitting print job…	Wysyłanie zadania drukowania…
+	Print job submitted.	Zadanie drukowania wysłane.
+	Print job submitted: {receipt}	Zadanie drukowania wysłane: {receipt}
+	Print failed: the printing worker stopped.	Drukowanie nie powiodło się: proces drukowania został zatrzymany.
+	Print settings	Ustawienia drukowania
+	Submit print job	Wyślij zadanie drukowania
 
 # Cross-reference dialog (#1003)
 	For which item:	Dla którego elementu:
@@ -2565,3 +2603,22 @@ preview	Title	Tytuł
 
 # Backstage › Recover (#586)
 	Recover	Odzyskaj
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Marginesy lustrzane
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Istniejący plik lub strona sieci Web
+	Link to:	Połącz z:
+	Place in This Document	Miejsce w tym dokumencie
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Kolumna {n}
+	Header row	Wiersz nagłówka
+	No header row	Bez wiersza nagłówka
+	My list has	Moja lista ma
+# Table Layout › Formula dialog (#1210)
+	Formula:	Formuła:
+	Paste function:	Wklej funkcję:
+# Reading Mode column widths (#1040)
+	Narrow	Wąska
+	Medium	Średnia

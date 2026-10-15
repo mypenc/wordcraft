@@ -893,11 +893,13 @@ fn style_italic(style: &str) -> bool {
 impl FontDb {
     /// A database holding the bundled fonts, then the craft-fonts Japanese faces (Mincho first,
     /// so they are the fallback for Japanese text after the requested and bundled fonts), then the
-    /// craft-fonts Simplified Chinese faces, for the ideographs the Japanese fonts lack (both empty
-    /// without `CRAFT_FONTS_DIR`), whose system font scan reads `font_dirs`.
+    /// other craft-fonts faces: Simplified Chinese, for the ideographs the Japanese fonts lack, and
+    /// Arabic, so Arabic and Persian text draws without system fonts (#1652) (all empty without
+    /// `CRAFT_FONTS_DIR`), whose system font scan reads `font_dirs`.
     pub fn with_font_dirs(font_dirs: Vec<std::path::PathBuf>) -> Self {
         let mut faces = Vec::new();
-        let craft = crate::japanese_document_fonts().into_iter().chain(crate::chinese_fonts()).map(|f| f.bytes);
+        let others = crate::CRAFT_FONTS.iter().filter(|f| !f.scripts.contains(&"Jpan"));
+        let craft = crate::japanese_document_fonts().into_iter().chain(others).map(|f| f.bytes);
         for data in BUNDLED.iter().copied().chain(craft) {
             for f in enumerate_faces(data) {
                 if let Some(mut face) = make_face(FontBytes::Static(data), f.index, f.family, f.style, f.legacy, f.coords) {
@@ -1532,6 +1534,7 @@ impl FontDb {
     }
 
     fn search_east_asian(&self, chars: &[char], exclude: u32, bold: bool, italic: bool) -> Option<Arc<FontFace>> {
+        #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
         let mut base = self.loaded_covering(chars, exclude);
         #[cfg(not(target_arch = "wasm32"))]
         if base.is_none() {

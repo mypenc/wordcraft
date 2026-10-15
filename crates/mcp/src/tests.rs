@@ -119,3 +119,36 @@ fn headless_sessions_keep_the_dictionary_in_memory() {
     h.session.run("review.addToDictionary", &json!({"word": "zxqmcpword2"})).expect("added");
     assert!(h.session.user_dict_path.is_none());
 }
+
+/// A backend whose paragraph break is refused while text insertion would succeed.
+struct RefusesParagraph {
+    calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl crate::backend::Backend for RefusesParagraph {
+    fn call(&mut self, _method: &str, params: Value) -> Result<Value, String> {
+        let command = params["command"].as_str().unwrap_or("").to_string();
+        self.calls.lock().unwrap().push(command.clone());
+        match command.as_str() {
+            "text.newParagraph" => Err("paragraph break refused".into()),
+            _ => Ok(json!({"ok": true})),
+        }
+    }
+    fn has_ui(&self) -> bool {
+        false
+    }
+    fn describe(&self) -> String {
+        "refuses paragraphs".into()
+    }
+}
+
+/// #1356: a refused paragraph break is reported and the next line is not typed after it.
+#[test]
+fn type_text_stops_at_a_refused_paragraph_break() {
+    let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut s = Server::new(Box::new(RefusesParagraph { calls: calls.clone() }));
+    let r = call(&mut s, 11, "tools/call", json!({"name": "type_text", "arguments": {"text": "one\ntwo", "paragraphs": true}}));
+    assert_eq!(r["result"]["isError"], true, "{r}");
+    assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("paragraph break refused"), "{r}");
+    assert_eq!(*calls.lock().unwrap(), vec!["text.insert", "text.newParagraph"]);
+}

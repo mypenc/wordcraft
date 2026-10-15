@@ -99,6 +99,7 @@ pub fn enabled(app: &WordApp, id: &str) -> bool {
         // Zotero: one command at a time, and only in the desktop app.
         None if id.starts_with("ui.zotero.") => app.zotero.busy.is_none() && !cfg!(target_arch = "wasm32"),
         None if id == "ui.linkTextBox" => enabled(app, "shape.link"),
+        None if id == "ui.crop" => crate::crop::can_toggle(app),
         None => id.starts_with("ui."),
     }
 }
@@ -498,6 +499,10 @@ pub fn combo(
 /// caller runs `font.add`, which shows a file picker. Not a family name anyone can type.
 pub const ADD_FONT: &str = "\u{1}font.add";
 
+/// What [`font_combo`] returns when "Load System Installed Fonts…" is chosen on web: the
+/// caller runs `font.loadSystem`.
+pub const LOAD_SYSTEM_FONTS: &str = "\u{1}font.loadSystem";
+
 /// The font box: a [`combo`] where typing lists the matching families under the field (#359).
 /// Its list ends with Add Font… ([`ADD_FONT`]).
 /// Up/Down move the highlight, Enter or a click applies the highlighted family ("arial" applies
@@ -663,6 +668,11 @@ fn combo_impl(
                 ui.separator();
                 if ui.button(tl!("Add Font…")).clicked() {
                     out = Some(ADD_FONT.to_string());
+                    ui.close();
+                }
+                #[cfg(target_arch = "wasm32")]
+                if ui.button(tl!("Load System Installed Fonts…")).clicked() {
+                    out = Some(LOAD_SYSTEM_FONTS.to_string());
                     ui.close();
                 }
             }

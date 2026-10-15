@@ -499,6 +499,21 @@ fn lin_operand(a: &[MNode], s: &mut String, depth: usize) {
     }
 }
 
+/// A script or limit operand. The parser reads a script as one letter or a number (`x_10`), so a
+/// longer run is grouped: `V_(dd)`, not `V_dd` (which reads back as V_d then d).
+fn lin_script(a: &[MNode], s: &mut String, depth: usize) {
+    if let [MNode::Run(r)] = a
+        && r.text.chars().nth(1).is_some()
+        && !(r.text.starts_with(|c: char| c.is_ascii_digit()) && r.text.chars().all(|c| c.is_ascii_digit() || c == '.'))
+    {
+        s.push('(');
+        s.push_str(&r.text);
+        s.push(')');
+    } else {
+        lin_operand(a, s, depth);
+    }
+}
+
 fn lin_node(n: &MNode, s: &mut String, depth: usize) {
     match n {
         MNode::Run(r) => s.push_str(&r.text),
@@ -515,9 +530,9 @@ fn lin_node(n: &MNode, s: &mut String, depth: usize) {
         MNode::Script { kind, base, sub, sup } => {
             if *kind == ScriptKind::Pre {
                 s.push('_');
-                lin_operand(sub, s, depth);
+                lin_script(sub, s, depth);
                 s.push('^');
-                lin_operand(sup, s, depth);
+                lin_script(sup, s, depth);
                 s.push('▒');
                 lin_operand(base, s, depth);
                 return;
@@ -525,11 +540,11 @@ fn lin_node(n: &MNode, s: &mut String, depth: usize) {
             lin_operand(base, s, depth);
             if matches!(kind, ScriptKind::Sub | ScriptKind::SubSup) {
                 s.push('_');
-                lin_operand(sub, s, depth);
+                lin_script(sub, s, depth);
             }
             if matches!(kind, ScriptKind::Sup | ScriptKind::SubSup) {
                 s.push('^');
-                lin_operand(sup, s, depth);
+                lin_script(sup, s, depth);
             }
         }
         MNode::Rad { deg, deg_hide, e } => {
@@ -548,11 +563,11 @@ fn lin_node(n: &MNode, s: &mut String, depth: usize) {
             s.push(*chr);
             if !sub_hide && !sub.is_empty() {
                 s.push('_');
-                lin_operand(sub, s, depth);
+                lin_script(sub, s, depth);
             }
             if !sup_hide && !sup.is_empty() {
                 s.push('^');
-                lin_operand(sup, s, depth);
+                lin_script(sup, s, depth);
             }
             s.push('▒');
             lin_operand(e, s, depth);
@@ -592,7 +607,7 @@ fn lin_node(n: &MNode, s: &mut String, depth: usize) {
         MNode::Lim { upper, e, lim } => {
             lin_operand(e, s, depth);
             s.push(if *upper { '┴' } else { '┬' });
-            lin_operand(lim, s, depth);
+            lin_script(lim, s, depth);
         }
         MNode::Acc { chr, e } => {
             lin_operand(e, s, depth);
@@ -943,6 +958,33 @@ mod tests {
         assert!(matches!(&n[0], MNode::Acc { e, .. } if runs(e) == 1), "{n:#?}");
         assert!(matches!(&n[1], MNode::GroupChr { e, .. } if runs(e) == 1), "{n:#?}");
         assert!(matches!(&n[2], MNode::Lim { e, lim, .. } if runs(e) == 1 && runs(lim) == 1), "{n:#?}");
+    }
+
+    #[test]
+    fn multi_letter_scripts_round_trip() {
+        // A script reads one letter or a number, so `V_dd` is V_d then d: longer scripts are grouped.
+        let script = |kind, sub: &str, sup: &str| MNode::Script { kind, base: vec![run("V")], sub: parse_linear(sub), sup: parse_linear(sup) };
+        for n in [
+            vec![script(ScriptKind::Sub, "dd", "")],
+            vec![script(ScriptKind::Sup, "", "ab")],
+            vec![script(ScriptKind::SubSup, "in", "2")],
+            vec![MNode::Nary {
+                chr: '∑',
+                lim_loc: None,
+                grow: false,
+                sub_hide: false,
+                sup_hide: false,
+                sub: vec![run("ij")],
+                sup: vec![run("n")],
+                e: vec![run("x")],
+            }],
+            vec![MNode::Lim { upper: false, e: vec![run("⟶")], lim: vec![run("yields")] }],
+        ] {
+            assert_eq!(parse_linear(&to_linear(&n)), n, "{}", to_linear(&n));
+        }
+        // Numbers and single letters stay bare.
+        assert_eq!(to_linear(&[script(ScriptKind::SubSup, "10", "2.5")]), "V_10^2.5");
+        assert_eq!(to_linear(&[script(ScriptKind::Sub, "d", "")]), "V_d");
     }
 
     #[test]

@@ -30,7 +30,7 @@ PFX R 0 ri .
 ";
 
 /// Stems (the count line first, as in Hunspell files).
-pub const DIC: &str = "96
+pub const DIC: &str = "97
 città
 caffè
 perché
@@ -127,6 +127,7 @@ a
 per
 me
 quello
+io
 ";
 
 /// Make [`AFF`]/[`DIC`] the Italian dictionary (every test that needs one calls this; they all

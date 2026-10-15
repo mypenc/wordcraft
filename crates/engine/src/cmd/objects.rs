@@ -83,16 +83,11 @@ fn has_shape(s: &Session) -> Option<&'static str> {
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("picture.size", "Size", "Picture Format › Size", size).params(r#"{"width"?: pt, "height"?: pt, "lockAspect"?: bool, "scale"?: percent}"#).when(has_sizable),
-        CommandSpec::new("picture.crop", "Crop", "Picture Format › Size", |s, v| {
-            let c = [p::f32(v, "left"), p::f32(v, "top"), p::f32(v, "right"), p::f32(v, "bottom")].map(|x| x.unwrap_or(0.0).clamp(0.0, 0.45));
-            with_obj(s, |o| {
-                if let InlineObject::Image { crop, .. } = o {
-                    *crop = c;
-                }
-            })
-        })
-        .params(r#"{"left"?, "top"?, "right"?, "bottom"? (fractions 0–0.45)}"#)
-        .when(has_picture),
+        CommandSpec::new("picture.crop", "Crop", "Picture Format › Size", crop)
+            .params(
+                r#"{"left"?, "top"?, "right"?, "bottom"? (fractions of the source 0–0.45; a side left out is uncropped), "width"?: pt, "height"?: pt (the new display size, in the same undo step; a floating picture also moves by what a left/top crop trims, so the visible part stays put)}"#,
+            )
+            .when(has_picture),
         // Kept for scripts written before every object had alt text: `object.altText` on a picture.
         CommandSpec::new("picture.altText", "Alt Text", "Picture Format › Accessibility", |s, v| {
             p::req_str(v, "text")?;
@@ -225,7 +220,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 return Err(CmdError::Params("`path` or `data` required".into()));
             };
             wordcraft_render::image_size(&bytes).ok_or_else(|| CmdError::Failed("not a supported image".into()))?;
-            let key = s.doc.add_media(bytes, "png");
+            let key = s.doc.add_media(bytes.clone(), super::insert::image_ext(&bytes));
             with_obj(s, |o| {
                 if let InlineObject::Image { media, .. } = o {
                     *media = key.clone();
@@ -959,6 +954,37 @@ fn with_float(s: &mut Session, f: impl Fn(&mut Float)) -> CmdResult {
     })
 }
 
+/// `picture.crop`: the crop, and optionally the new display size, as one edit. With a size, a
+/// floating picture positioned by offsets moves by what the crop on its left/top side on the page
+/// trims (or restores) — for a flipped picture that's the source's right/bottom — so what stays
+/// visible keeps its place on the page: a crop handle drop is one command.
+fn crop(s: &mut Session, v: &Value) -> CmdResult {
+    let c = [p::f32(v, "left"), p::f32(v, "top"), p::f32(v, "right"), p::f32(v, "bottom")].map(|x| x.unwrap_or(0.0).clamp(0.0, 0.45));
+    let size = |k: &str| p::f32(v, k).map(|x| x.clamp(1.0, 4000.0));
+    let (nw, nh) = (size("width"), size("height"));
+    with_obj(s, |o| {
+        if let InlineObject::Image { crop, w, h, float, .. } = o {
+            // The source's full size at the new display size (the visible part is 1-lo-hi of it).
+            let full = |len: f32, lo: f32, hi: f32| len / (1.0 - lo - hi).max(0.1);
+            // Flipped, the source's right (bottom) edge is the one on the page's left (top).
+            let (left, top) = (if float.flip_h { 2 } else { 0 }, if float.flip_v { 3 } else { 1 });
+            if let Some(nw) = nw {
+                if float.wrap != Wrap::Inline && float.h_align.is_none() {
+                    float.x += (c[left] - crop[left]) * full(nw, c[0], c[2]);
+                }
+                *w = nw;
+            }
+            if let Some(nh) = nh {
+                if float.wrap != Wrap::Inline && float.v_align.is_none() {
+                    float.y += (c[top] - crop[top]) * full(nh, c[1], c[3]);
+                }
+                *h = nh;
+            }
+            *crop = c;
+        }
+    })
+}
+
 fn size(s: &mut Session, v: &Value) -> CmdResult {
     let (_, o) = selected(s).ok_or_else(|| CmdError::Disabled("no object".into()))?;
     let (w0, h0) = obj_size(&o);
@@ -1527,6 +1553,47 @@ mod tests {
         click_resize_and_drag("insert.picture", json!({"data": data, "width": 100}));
     }
 
+    /// #965: a picture or icon inserted by a command leaves the caret after it, so a script's next
+    /// Enter or typing keeps it (and the saved file has it); Picture Format commands still reach it.
+    #[test]
+    fn typing_after_an_inserted_picture_keeps_it() {
+        let data = super::super::insert::base64_encode(&png(20, 10));
+        for (id, params) in [("insert.picture", json!({"data": data, "width": 100})), ("insert.icon", json!({"id": "sun"}))] {
+            let mut s = Session::new(wordcraft_doc::Document::new());
+            s.run("text.insert", &json!({"text": "x"})).unwrap();
+            s.run("text.newParagraph", &json!({})).unwrap();
+            s.run(id, &params).unwrap();
+            assert!(s.sel.is_collapsed(), "{id}: caret, not a selection");
+            assert!(selected(&s).is_some(), "{id}: still the object Picture Format acts on");
+            s.run("text.newParagraph", &json!({})).unwrap();
+            s.run("text.insert", &json!({"text": "cap"})).unwrap();
+            assert_eq!(s.run("arrange.selectionPane", &json!({})).unwrap().as_array().map(Vec::len), Some(1), "{id}");
+            let paras: Vec<String> = s
+                .doc
+                .body
+                .iter()
+                .filter_map(|b| match &**b {
+                    wordcraft_doc::Block::Para(p) => Some(p.text.replace(wordcraft_doc::para::OBJ, "#")),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(paras, ["X", "#", "cap"], "{id}");
+            let docx = crate::io::save_bytes("p.docx", &s.doc).unwrap();
+            assert!(docx.windows(11).any(|w| w == b"word/media/"), "{id}: the saved file keeps the picture");
+        }
+    }
+
+    /// #965: two pictures inserted by commands in a row are both kept; the second doesn't
+    /// replace the first.
+    #[test]
+    fn two_inserted_pictures_in_a_row_are_both_kept() {
+        let data = super::super::insert::base64_encode(&png(20, 10));
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        assert_eq!(s.run("arrange.selectionPane", &json!({})).unwrap().as_array().map(Vec::len), Some(2));
+    }
+
     #[test]
     fn picture_pipeline() {
         let mut s = Session::new(wordcraft_doc::Document::new());
@@ -1856,6 +1923,72 @@ mod tests {
         let InlineObject::Image { alt, crop, .. } = o else { panic!("expected image") };
         assert_eq!(alt, "A red box");
         assert_eq!(crop, [0.1, 0.2, 0.05, 0.0]);
+    }
+
+    /// A crop handle drop: `picture.crop` with the new size is one edit, one undo step.
+    #[test]
+    fn picture_crop_with_size_is_one_undo_step() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        let data = super::super::insert::base64_encode(&png(20, 10));
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        s.run("picture.size", &json!({"width": 200.0, "height": 100.0, "lockAspect": false})).unwrap();
+        let image = |s: &Session| match selected(s) {
+            Some((_, InlineObject::Image { w, h, crop, .. })) => (w, h, crop),
+            other => panic!("expected image, got {other:?}"),
+        };
+        s.run("picture.crop", &json!({"left": 0.25, "top": 0.0, "right": 0.0, "bottom": 0.1, "width": 150.0, "height": 90.0})).unwrap();
+        assert_eq!(image(&s), (150.0, 90.0, [0.25, 0.0, 0.0, 0.1]));
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(image(&s), (200.0, 100.0, [0.0; 4]));
+        // Clamps: each side at most 0.45; hostile sizes are ignored or clamped, never applied raw.
+        s.run("picture.crop", &json!({"left": 9.0, "right": -3.0, "width": "x", "height": -5.0})).unwrap();
+        let (w, h, crop) = image(&s);
+        assert_eq!(crop, [0.45, 0.0, 0.0, 0.0]);
+        assert_eq!(w, 200.0);
+        assert!(h >= 1.0, "{h}");
+    }
+
+    /// Cropping a floating picture's left or top with its new size keeps the visible part where
+    /// it is on the page: the frame moves by the trimmed amount, in the same undo step.
+    #[test]
+    fn cropping_a_floating_picture_keeps_the_visible_part_in_place() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        let data = super::super::insert::base64_encode(&png(20, 10));
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        s.run("picture.size", &json!({"width": 200.0, "height": 100.0, "lockAspect": false})).unwrap();
+        s.run("arrange.wrap", &json!({"wrap": "square"})).unwrap();
+        let at = |s: &Session| match selected(s) {
+            Some((_, InlineObject::Image { float, .. })) => (float.x, float.y),
+            other => panic!("expected image, got {other:?}"),
+        };
+        let (x0, y0) = at(&s);
+        s.run("picture.crop", &json!({"left": 0.25, "top": 0.1, "width": 150.0, "height": 90.0})).unwrap();
+        let (x1, y1) = at(&s);
+        assert!((x1 - (x0 + 50.0)).abs() < 1e-3 && (y1 - (y0 + 10.0)).abs() < 1e-3, "{x0},{y0} -> {x1},{y1}");
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(at(&s), (x0, y0));
+    }
+
+    /// Flipped left to right, the source's right edge is on the page's left: cropping it moves
+    /// the frame; cropping the source's left (now on the right) doesn't.
+    #[test]
+    fn cropping_a_flipped_floating_picture_moves_it_by_the_side_on_its_left() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        let data = super::super::insert::base64_encode(&png(20, 10));
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        s.run("picture.size", &json!({"width": 200.0, "height": 100.0, "lockAspect": false})).unwrap();
+        s.run("arrange.wrap", &json!({"wrap": "square"})).unwrap();
+        s.run("arrange.rotation", &json!({"degrees": 0.0, "flipH": true, "flipV": true})).unwrap();
+        let at = |s: &Session| match selected(s) {
+            Some((_, InlineObject::Image { float, .. })) => (float.x, float.y),
+            other => panic!("expected image, got {other:?}"),
+        };
+        let (x0, y0) = at(&s);
+        s.run("picture.crop", &json!({"right": 0.25, "bottom": 0.1, "width": 150.0, "height": 90.0})).unwrap();
+        let (x1, y1) = at(&s);
+        assert!((x1 - (x0 + 50.0)).abs() < 1e-3 && (y1 - (y0 + 10.0)).abs() < 1e-3, "{x0},{y0} -> {x1},{y1}");
+        s.run("picture.crop", &json!({"left": 0.25, "right": 0.25, "bottom": 0.1, "width": 100.0, "height": 90.0})).unwrap();
+        assert!((at(&s).0 - x1).abs() < 1e-3, "the source's left is on the right: no move");
     }
 
     /// A header picture resizes and drags like a body one: the move stays in the header story

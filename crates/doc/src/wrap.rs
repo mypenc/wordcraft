@@ -73,7 +73,9 @@ pub fn shape_outline(kind: ShapeKind, w: f32, h: f32, corner: Option<u32>) -> Op
         | ShapeKind::StraightConnector
         | ShapeKind::ElbowConnector
         | ShapeKind::CurvedConnector => return None,
-        ShapeKind::Ellipse => (0..48).map(|i| (i as f32) * TAU / 48.0).map(|a| (0.5 + 0.5 * a.cos(), 0.5 + 0.5 * a.sin())).collect(),
+        ShapeKind::Ellipse | ShapeKind::FlowchartOr => {
+            (0..48).map(|i| (i as f32) * TAU / 48.0).map(|a| (0.5 + 0.5 * a.cos(), 0.5 + 0.5 * a.sin())).collect()
+        }
         ShapeKind::RoundedRectangle => {
             // Corner radius as drawn.
             let r = crate::connector::corner_radius(corner, w, h);
@@ -88,6 +90,7 @@ pub fn shape_outline(kind: ShapeKind, w: f32, h: f32, corner: Option<u32>) -> Op
             pts
         }
         ShapeKind::Triangle => vec![(0.5, 0.0), (1.0, 1.0), (0.0, 1.0)],
+        ShapeKind::RightTriangle => vec![(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
         ShapeKind::Diamond => vec![(0.5, 0.0), (1.0, 0.5), (0.5, 1.0), (0.0, 0.5)],
         ShapeKind::Arrow => {
             // As drawn: the head is half the height long, the shaft 40% of the height thick.
@@ -217,6 +220,7 @@ mod tests {
             ShapeKind::Ellipse,
             ShapeKind::RoundedRectangle,
             ShapeKind::Triangle,
+            ShapeKind::RightTriangle,
             ShapeKind::Diamond,
             ShapeKind::Arrow,
             ShapeKind::Star,

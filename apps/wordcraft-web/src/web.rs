@@ -1,7 +1,7 @@
 //! The browser shell: web `Services`, drag-and-drop, the unsaved-changes guard and the eframe
 //! web runner.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use wasm_bindgen::JsCast as _;
@@ -60,7 +60,8 @@ pub fn start() {
                     let doc = if sample { wordcraft_engine::sample::sample_document() } else { wordcraft_engine::blank_document(&region) };
                     let mut session = Session::new(doc);
                     session.system_region = region;
-                    let mut app = WordApp::new(session, services(inbox.clone(), cc.egui_ctx.clone(), dirty, saves.clone()));
+                    let messages = Rc::new(RefCell::new(Vec::new()));
+                    let mut app = WordApp::new(session, services(inbox.clone(), cc.egui_ctx.clone(), dirty, saves.clone(), messages.clone()));
                     // Pasted pictures wait apart from dropped files: the app inserts one only when the page is the edit target (#1349).
                     app.services.pasted = Some(pasted);
                     app.autosave = false;
@@ -68,7 +69,7 @@ pub fn start() {
                     if !sample {
                         app.start_screen();
                     }
-                    Ok(Box::new(WebShell { app, inbox }))
+                    Ok(Box::new(WebShell { app, inbox, messages }))
                 }),
             )
             .await;
@@ -90,6 +91,7 @@ fn query() -> String {
 struct WebShell {
     app: WordApp,
     inbox: Inbox,
+    messages: Rc<RefCell<Vec<String>>>,
 }
 
 impl eframe::App for WebShell {
@@ -108,6 +110,10 @@ impl eframe::App for WebShell {
                     Err(e) => log::error!("couldn't read dropped file {name}: {e}"),
                 }
             });
+        }
+        let msgs = std::mem::take(&mut *self.messages.borrow_mut());
+        for msg in msgs {
+            self.app.status(msg);
         }
         self.app.logic(ctx);
     }
@@ -169,9 +175,11 @@ fn listen_for_pasted_pictures(inbox: Inbox, ctx: egui::Context) -> Result<(), St
 }
 
 /// `dirty` is the flag the `beforeunload` guard reads ([`guard_unload`]).
-fn services(inbox: Inbox, ctx: egui::Context, dirty: Rc<Cell<bool>>, saves: AsyncSaves) -> Services {
+fn services(inbox: Inbox, ctx: egui::Context, dirty: Rc<Cell<bool>>, saves: AsyncSaves, messages: Rc<RefCell<Vec<String>>>) -> Services {
     let open_inbox = inbox.clone();
     let save_ctx = ctx.clone();
+    let font_ctx = ctx.clone();
+    let font_messages = messages.clone();
     Services {
         open_async: Some(Box::new(move |purpose: &str| {
             let inbox = open_inbox.clone();
@@ -204,8 +212,110 @@ fn services(inbox: Inbox, ctx: egui::Context, dirty: Rc<Cell<bool>>, saves: Asyn
         animations_enabled: Some(animations_enabled()),
         store_font: Some(Box::new(font_store::store)),
         forget_font: Some(Box::new(font_store::forget)),
+        load_system_fonts: Some(Box::new(move || {
+            load_system_fonts(font_ctx.clone(), font_messages.clone());
+        })),
         ..Default::default()
     }
+}
+
+/// Most local fonts one Load System Installed Fonts installs (a designer's machine has thousands).
+const MAX_SYSTEM_FONTS: usize = 500;
+/// Most font bytes one Load System Installed Fonts reads into memory (wasm memory is small).
+const MAX_SYSTEM_FONT_BYTES: usize = 256 << 20;
+/// Most local fonts looked at, installed or not (already available, unreadable, too big).
+const MAX_SYSTEM_FONTS_TRIED: u32 = 4000;
+
+/// Query the browser's Local Font Access API (`window.queryLocalFonts()`) and install the faces
+/// into the global font database, up to [`MAX_SYSTEM_FONTS`] faces and [`MAX_SYSTEM_FONT_BYTES`].
+fn load_system_fonts(ctx: egui::Context, messages: Rc<RefCell<Vec<String>>>) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let query_fn = match js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("queryLocalFonts")) {
+            Ok(val) if val.is_function() => js_sys::Function::from(val),
+            _ => {
+                messages.borrow_mut().push(wordcraft_ui_egui::i18n::t("Local font access is not supported by your browser.").to_string());
+                ctx.request_repaint();
+                return;
+            }
+        };
+        let fonts_promise = match query_fn.call0(&window) {
+            Ok(p) => js_sys::Promise::from(p),
+            Err(e) => {
+                log::warn!("queryLocalFonts call failed: {e:?}");
+                messages.borrow_mut().push(wordcraft_ui_egui::i18n::t("Local font access was denied.").to_string());
+                ctx.request_repaint();
+                return;
+            }
+        };
+        let fonts_val = match wasm_bindgen_futures::JsFuture::from(fonts_promise).await {
+            Ok(val) => val,
+            Err(e) => {
+                log::warn!("queryLocalFonts promise rejected: {e:?}");
+                messages.borrow_mut().push(wordcraft_ui_egui::i18n::t("Local font access was denied.").to_string());
+                ctx.request_repaint();
+                return;
+            }
+        };
+        let font_list = js_sys::Array::from(&fonts_val);
+        let len = font_list.length();
+        let mut loaded = 0usize;
+        let mut total_bytes = 0usize;
+        for i in 0..len.min(MAX_SYSTEM_FONTS_TRIED) {
+            if loaded >= MAX_SYSTEM_FONTS || total_bytes >= MAX_SYSTEM_FONT_BYTES {
+                log::warn!("local fonts: stopped after {loaded} fonts ({total_bytes} bytes)");
+                break;
+            }
+            let font_data = font_list.get(i);
+            let Ok(blob_fn) = js_sys::Reflect::get(&font_data, &wasm_bindgen::JsValue::from_str("blob")) else {
+                continue;
+            };
+            if !blob_fn.is_function() {
+                continue;
+            }
+            let Ok(blob_val) = js_sys::Function::from(blob_fn).call0(&font_data) else {
+                continue;
+            };
+            let Ok(blob_js) = wasm_bindgen_futures::JsFuture::from(js_sys::Promise::from(blob_val)).await else {
+                continue;
+            };
+            let Ok(blob) = blob_js.dyn_into::<web_sys::Blob>() else {
+                continue;
+            };
+            // Skip a face too big on its own or for what is left of the budget, before reading it.
+            let size = blob.size().clamp(0.0, usize::MAX as f64) as usize;
+            if size > wordcraft_fonts::MAX_FONT_FILE_BYTES || total_bytes.saturating_add(size) > MAX_SYSTEM_FONT_BYTES {
+                continue;
+            }
+            let Ok(array_buffer) = wasm_bindgen_futures::JsFuture::from(blob.array_buffer()).await else {
+                continue;
+            };
+            let bytes = js_sys::Uint8Array::new(&array_buffer).to_vec();
+            if bytes.len() > wordcraft_fonts::MAX_FONT_FILE_BYTES {
+                continue;
+            }
+            total_bytes = total_bytes.saturating_add(bytes.len());
+            let ps_name = js_sys::Reflect::get(&font_data, &wasm_bindgen::JsValue::from_str("postscriptName"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_else(|| format!("local-font-{i}"));
+            let name = format!("{ps_name}.ttf");
+            match wordcraft_fonts::FontDb::global().install_font(&name, &bytes) {
+                Ok(_) => loaded += 1,
+                Err(wordcraft_fonts::UserFontError::AlreadyAvailable(_)) => {}
+                Err(e) => log::warn!("local font {name} skipped: {e}"),
+            }
+        }
+        if loaded > 0 {
+            let msg = wordcraft_ui_egui::i18n::fmt(wordcraft_ui_egui::i18n::t("Loaded {count} system fonts."), &[("count", &loaded.to_string())]);
+            messages.borrow_mut().push(msg);
+        } else {
+            messages.borrow_mut().push(wordcraft_ui_egui::i18n::t("All system fonts are already available.").to_string());
+        }
+        ctx.request_repaint();
+    });
 }
 
 /// Whether the system has animation effects on, as the browser passes it on: off while the

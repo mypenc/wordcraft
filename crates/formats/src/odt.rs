@@ -8,7 +8,7 @@
 //! Quotations, Preformatted Text, page layout) and `meta.xml`.
 //!
 //! Import reads the same subset back from `content.xml` / `styles.xml` (style inheritance
-//! resolved, both automatic and common styles), skipping notes, annotations and text boxes.
+//! resolved, both automatic and common styles), skipping notes, annotations, text boxes and drawing shapes.
 //!
 //! Tracked changes (ODF 1.3 Part 3 §5.5) go both ways: `text:tracked-changes` holds one
 //! `text:changed-region` per change; an insertion is the body text between
@@ -357,7 +357,9 @@ impl Writer {
                         flush(&mut body, &mut spaces, prev_space);
                         prev_space = true;
                     }
-                    let link = f.link.as_ref();
+                    // A script, `file:`, UNC or other non-web target is written as plain text, as
+                    // the HTML and Markdown exporters do (LibreOffice follows `file:`/UNC hrefs).
+                    let link = f.link.as_deref().filter(|l| wordcraft_doc::link::is_safe_href(l));
                     if let Some(l) = link {
                         out.push_str(&format!("<text:a xlink:type=\"simple\" xlink:href=\"{}\">", x(l)));
                     }
@@ -1640,6 +1642,14 @@ impl Body<'_> {
             | "table-of-content-source" => {
                 self.skip = 1;
             }
+            // Drawing shapes (ODF 1.3 §10.3), with their text, until shapes are read (#1654).
+            // Groups are walked, so the pictures in them still are.
+            "rect" | "line" | "polyline" | "polygon" | "regular-polygon" | "path" | "circle" | "ellipse" | "connector" | "caption" | "measure"
+            | "custom-shape"
+                if q.starts_with("draw:") =>
+            {
+                self.skip = 1;
+            }
             "p" | "h" if !self.in_desc => {
                 let h = if local(q) == "h" { Some(get(a, "text:outline-level").and_then(|v| v.parse::<u8>().ok()).unwrap_or(1)) } else { None };
                 self.start_para(get(a, "text:style-name"), h);
@@ -2477,6 +2487,24 @@ mod tests {
             let f = fmt(p);
             assert!(f.bold && f.color == Some(Rgb(255, 0, 0)) && f.size == Some(24.0), "{}: {f:?}", p.text());
         }
+    }
+
+    #[test]
+    fn text_after_a_drawing_shape_stays_in_its_paragraph() {
+        // #1654: a shape's own text:p closed the paragraph it is anchored in, and the text after
+        // the shape was dropped. Shapes are skipped like text boxes; the paragraph keeps its text.
+        let draw =
+            r#"xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0""#;
+        let content = format!(
+            r#"<office:document-content {NS_T} {draw}><office:body><office:text><text:p text:style-name="Heading"><draw:custom-shape svg:width="20mm" svg:height="20mm"><text:p>In the shape</text:p><draw:enhanced-geometry draw:type="rectangle"/></draw:custom-shape>Before <draw:rect><text:p/></draw:rect>middle <draw:g><draw:ellipse><text:p>In the group</text:p></draw:ellipse></draw:g>after</text:p><text:p>Next</text:p></office:text></office:body></office:document-content>"#
+        );
+        let styles = format!(
+            r#"<office:document-styles {NS_T}><office:styles><style:style style:name="Heading" style:family="paragraph"><style:text-properties fo:font-weight="bold"/></style:style></office:styles></office:document-styles>"#
+        );
+        let f = parse(&package(&content, Some(&styles))).unwrap();
+        let ps = paras(&f);
+        assert_eq!(ps.iter().map(|p| p.text()).collect::<Vec<_>>(), ["Before middle after", "Next"]);
+        assert!(ps[0].inlines.iter().all(|i| !matches!(i, Inline::Text(_, f) if !f.bold)), "{:?}", ps[0].inlines);
     }
 
     #[test]

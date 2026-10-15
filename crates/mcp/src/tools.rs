@@ -113,7 +113,7 @@ pub fn tool_definitions() -> Value {
             obj(json!({"text": s("Text to find"), "occurrence": n("1-based")}), &["text"]),
             false
         ),
-        tool("get_text", "Document text", "Plain text of the document body.", obj(json!({}), &[]), true),
+        tool("get_text", "Document text", "Body text with tracked deletions omitted.", obj(json!({}), &[]), true),
         tool(
             "inspect_document",
             "Inspect document",
@@ -233,6 +233,9 @@ pub fn call_tool(b: &mut dyn Backend, name: &str, a: &Value) -> ToolResult {
                 for (i, line) in t.split('\n').enumerate() {
                     if i > 0 {
                         last = exec(b, "text.newParagraph", json!({}));
+                        if last.is_err() {
+                            break;
+                        }
                     }
                     if !line.is_empty() {
                         last = exec(b, "text.insert", json!({"text": line, "raw": true}));

@@ -85,6 +85,9 @@
 	Book Title	Название книги
 	Bookmark	Закладка
 	Bookmark name:	Имя закладки:
+	Delete Bookmark	Удалить закладку
+	Hidden bookmarks	Скрытые закладки
+	Sort by:	Сортировать по:
 	Border Painter	Кисть границ
 	Border\nPainter	Кисть\nграниц
 	Borders	Границы
@@ -384,6 +387,8 @@
 	Labels	Наклейки
 	Landscape	Альбомная
 	Language	Язык
+	{language} (no dictionary)	{language} (нет словаря)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Орфографический словарь для языка «{language}» не установлен, поэтому текст не проверяется. WordCraft ищет словарь Hunspell {name} в папке WORDCRAFT_DICTIONARIES и в обычных системных расположениях.
 	Lasso	Лассо
 	Last Column	Последний столбец
 	Last commit	Последний коммит
@@ -440,7 +445,7 @@
 	Multiple Pages	Несколько страниц
 	Name (A–Z)	Имя (А–Я)
 	Name:	Имя:
-	Narrow  0.5" all	Узкие  0,5" со всех сторон
+	Narrow  {size} all	Узкие  {size} со всех сторон
 	Navigation	Навигация
 	Navigation Pane	Область навигации
 	New	Создать
@@ -469,7 +474,7 @@
 	Nonbreaking Space	Неразрывный пробел
 	None	Нет
 	Normal	Обычный
-	Normal  1" all	Обычные  1" со всех сторон
+	Normal  {size} all	Обычные  {size} со всех сторон
 	Normal Indent	Обычный отступ
 	Normal Style	Обычный стиль
 	Normal Table	Обычная таблица
@@ -1804,6 +1809,11 @@ preview	Title	Пример
 	Add Font…	Добавить шрифт…
 	Added Fonts	Добавленные шрифты
 	Remove Added Font	Удалить добавленный шрифт
+	Load System Installed Fonts…	Загрузить установленные системные шрифты…
+	All system fonts are already available.	Все системные шрифты уже доступны.
+	Local font access is not supported by your browser.	Ваш браузер не поддерживает доступ к локальным шрифтам.
+	Local font access was denied.	Доступ к локальным шрифтам отклонен.
+	Loaded {count} system fonts.	Загружено системных шрифтов: {count}.
 	Print Markup	Печатать исправления и примечания
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Примечания рядом с каждой страницей и отслеживаемые изменения в PDF, при печати и в изображениях; список примечаний в конце веб-страниц, Markdown и текста.
 	Recent Colors	Последние цвета
@@ -2464,6 +2474,16 @@ preview	Title	Пример
 	AutoFit Column by Double-Clicking	Автоподбор ширины столбца двойным щелчком
 	Region:	Регион:
 	Automatic ({region})	Автоматически ({region})
+	Odd Banded Rows	Нечётные чередующиеся строки
+	Even Banded Rows	Чётные чередующиеся строки
+	Odd Banded Columns	Нечётные чередующиеся столбцы
+	Even Banded Columns	Чётные чередующиеся столбцы
+	Top Left Cell	Левая верхняя ячейка
+	Top Right Cell	Правая верхняя ячейка
+	Bottom Left Cell	Левая нижняя ячейка
+	Bottom Right Cell	Правая нижняя ячейка
+	Inside Horizontal Border	Внутренняя горизонтальная граница
+	Inside Vertical Border	Внутренняя вертикальная граница
 	Text of the nearest paragraph with a given style (running headers)	Текст ближайшего абзаца с заданным стилем (живые колонтитулы)
 	Style name:	Имя стиля:
 # Mail merge: filter and sort recipients (#778)
@@ -2555,6 +2575,24 @@ preview	Title	Пример
 	Suggested	Предлагаемые
 	Set Proofing Language…	Выбрать язык проверки правописания…
 	Language Preferences…	Языковые параметры…
+	Printer	Принтер
+	Select a printer	Выберите принтер
+	Refresh printers	Обновить принтеры
+	Two-sided printing	Двусторонняя печать
+	Printer default	По умолчанию принтера
+	One-sided	Односторонняя
+	Two-sided: long edge	Двусторонняя: длинный край
+	Two-sided: short edge	Двусторонняя: короткий край
+	Grayscale	Оттенки серого
+	Finding printers…	Поиск принтеров…
+	No printers found. Configure a system printer or export a PDF.	Принтеры не найдены. Настройте системный принтер или экспортируйте PDF.
+	Printer discovery failed.	Не удалось найти принтеры.
+	Submitting print job…	Отправка задания на печать…
+	Print job submitted.	Задание на печать отправлено.
+	Print job submitted: {receipt}	Задание на печать отправлено: {receipt}
+	Print failed: the printing worker stopped.	Печать не удалась: процесс печати остановлен.
+	Print settings	Параметры печати
+	Submit print job	Отправить задание на печать
 
 # Cross-reference dialog (#1003)
 	For which item:	Для какого элемента:
@@ -2573,3 +2611,22 @@ preview	Title	Пример
 
 # Backstage › Recover (#586)
 	Recover	Восстановить
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Зеркальные поля
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Файл или веб-страница
+	Link to:	Связать с:
+	Place in This Document	Место в документе
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Столбец {n}
+	Header row	Строка заголовка
+	No header row	Без строки заголовка
+	My list has	Мой список содержит
+# Table Layout › Formula dialog (#1210)
+	Formula:	Формула:
+	Paste function:	Вставить функцию:
+# Reading Mode column widths (#1040)
+	Narrow	Узкая
+	Medium	Средняя

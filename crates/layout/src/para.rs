@@ -108,7 +108,7 @@ pub struct Cluster {
     pub adv: f32,
     pub kind: ClKind,
     /// Index into `ParaLayout::styles`.
-    pub style: u16,
+    pub style: u32,
     /// Glyph range in `ParaLayout::glyphs`.
     pub g0: u32,
     pub g1: u32,
@@ -155,7 +155,7 @@ pub struct Line {
     pub left: f32,
     pub right: f32,
     /// The line ends at a hyphenation point: (style, glyph, advance) of the hyphen drawn there.
-    pub hyphen: Option<(u16, u32, f32)>,
+    pub hyphen: Option<(u32, u32, f32)>,
     /// The text continues the previous line's row on the far side of a floating object (same top
     /// and height): one row, two lines. Row counts (line numbers, keeping rows on one page) skip it.
     pub beside: bool,
@@ -192,6 +192,10 @@ impl VisCl {
     }
 }
 
+/// Width of a paragraph mark's box, points: what a selection running past the paragraph's end
+/// highlights, and how much room the mark takes for assistive technology.
+pub const PARA_MARK_WIDTH: f32 = 5.0;
+
 impl Line {
     /// Left edge of cluster `k` (a paragraph cluster index on this line).
     pub fn cl_left(&self, k: usize) -> Option<f32> {
@@ -223,6 +227,13 @@ impl Line {
     pub fn visual_end_x(&self) -> f32 {
         let end = self.end_x();
         if self.rtl { self.vis.iter().map(|v| v.x).fold(end, f32::min) } else { self.vis.iter().map(|v| v.x + v.w).fold(end, f32::max) }
+    }
+    /// The box of the mark ending the line (its paragraph mark or line break) as its left edge and
+    /// width: [`PARA_MARK_WIDTH`] at the line's visual end, past the text in a left-to-right
+    /// paragraph and before it in a right-to-left one.
+    pub fn mark_box(&self) -> (f32, f32) {
+        let x = self.visual_end_x();
+        (if self.rtl { x - PARA_MARK_WIDTH } else { x }, PARA_MARK_WIDTH)
     }
     /// x where the hyphen of a hyphenated line (advance `adv`) is drawn.
     pub fn hyphen_x(&self, adv: f32) -> f32 {
@@ -266,7 +277,7 @@ pub struct Label {
     /// Maximum line ascent of every shaped font in the label, including its leading.
     pub ascent: f32,
     /// Style of the label's last run (the suffix space and the bidi tests measure with it).
-    pub style: u16,
+    pub style: u32,
     pub glyphs: Vec<Glyph>,
     /// Font runs over `glyphs`, in drawing order: font fallback can split a label ("1、" takes
     /// the digit from the Latin face and the comma from a CJK one), and each glyph id only means
@@ -283,7 +294,7 @@ pub struct RubyLayout {
     pub cluster: usize,
     /// Glyphs with their style (index into `ParaLayout::styles`); `dx` is from the cluster's left
     /// edge.
-    pub glyphs: Vec<(u16, Glyph)>,
+    pub glyphs: Vec<(u32, Glyph)>,
     /// The ruby text and each glyph's byte range in it.
     pub text: String,
     pub ranges: Vec<std::ops::Range<usize>>,
@@ -295,7 +306,7 @@ pub struct RubyLayout {
 #[derive(Clone, Debug)]
 pub struct LabelRun {
     /// Index into `ParaLayout::styles`.
-    pub style: u16,
+    pub style: u32,
     /// Glyph range in `Label::glyphs`.
     pub glyphs: std::ops::Range<usize>,
     /// The run's characters (for the PDF text layer).
@@ -490,7 +501,7 @@ struct Builder<'a> {
     env: &'a ParaEnv<'a>,
     styles: Vec<StyleRun>,
     /// Hash of a style's format → (index in `styles`, small caps), see `style`.
-    style_index: std::collections::HashMap<u64, Vec<(u16, bool)>>,
+    style_index: std::collections::HashMap<u64, Vec<(u32, bool)>>,
     glyphs: Vec<Glyph>,
     clusters: Vec<Cluster>,
     /// Bidi level per byte of the paragraph text (empty: all left to right).
@@ -516,7 +527,8 @@ impl SegKey {
     }
 }
 
-/// The capital All Caps and Small Caps draw for `c`: one character in, one out (ß draws as S).
+/// The first character of `c`'s capital (ß → S): the shaper's one-to-one mapping, and the
+/// text read back for labels and field results, whose byte ranges can't grow.
 fn upper_char(c: char) -> char {
     c.to_uppercase().next().unwrap_or(c)
 }
@@ -526,6 +538,18 @@ fn upper_char(c: char) -> char {
 /// the text read back is the text shown (#1473).
 pub(crate) fn caps_char(rc: &ResolvedChar, c: char) -> char {
     if rc.caps || (rc.small_caps && c.is_lowercase()) { upper_char(c) } else { c }
+}
+
+/// Appends the text drawn for `c` in a run formatted `rc`: like [`caps_char`], but with a
+/// letter's full capital (ß → SS), as body text draws it (#1581).
+pub(crate) fn push_caps(rc: &ResolvedChar, c: char, out: &mut String) {
+    if rc.caps || (rc.small_caps && c.is_lowercase()) { out.extend(c.to_uppercase()) } else { out.push(c) }
+}
+
+/// Whether `c`'s capital is more than one character (ß → SS), so All Caps draws more
+/// characters than the document holds.
+fn caps_expands(c: char) -> bool {
+    c.to_uppercase().nth(1).is_some()
 }
 
 /// Combining marks and joiners (bidi classes NSM, BN: harakat, ZWNJ, ZWJ) belong to the
@@ -642,6 +666,17 @@ fn east_asian(c: char) -> bool {
     crate::kinsoku::is_east_asian(c) || matches!(u32::from(c), 0x1100..=0x11FF | 0x3130..=0x318F | 0xAC00..=0xD7AF)
 }
 
+/// Word draws a font that isn't installed in Cambria when the document's font table classes it
+/// as roman (measured in Word; Calibri otherwise, which our own substitutes already match).
+const MISSING_ROMAN_FONT: &str = "Cambria";
+
+/// The family to look `font` up as: [`MISSING_ROMAN_FONT`] for a missing roman font, else `font`.
+fn lookup_family<'f>(doc: &Document, font: &'f str) -> &'f str {
+    let db = wordcraft_fonts::FontDb::global();
+    let roman = doc.settings.roman_fonts.iter().any(|f| f.eq_ignore_ascii_case(font));
+    if roman && !db.has_family(font) && !db.has_family(wordcraft_fonts::word::charset_base_family(font)) { MISSING_ROMAN_FONT } else { font }
+}
+
 impl<'a> Builder<'a> {
     /// Displayed form of `c` at run-relative byte `at` (Word › Numeral): one char in, one
     /// char out. `rtl` is the shaping direction; in Context mode `context` (from
@@ -653,8 +688,8 @@ impl<'a> Builder<'a> {
     }
 
     /// Style index for a resolved char in `face` (caps-scaled `size` override for small caps).
-    fn style(&mut self, rc: &Arc<ResolvedChar>, face_override: Option<FaceRef>, small: bool) -> u16 {
-        let r = wordcraft_fonts::word::resolve(&rc.font, rc.bold, rc.italic);
+    fn style(&mut self, rc: &Arc<ResolvedChar>, face_override: Option<FaceRef>, small: bool) -> u32 {
+        let r = wordcraft_fonts::word::resolve(lookup_family(self.env.doc, &rc.font), rc.bold, rc.italic);
         let face = face_override.unwrap_or(r.face);
         // The display list reads every run's format (link target, strike kind, underline colour,
         // baseline shift…) from its StyleRun, so runs share one only when their formats are equal.
@@ -698,7 +733,9 @@ impl<'a> Builder<'a> {
             descent: (d * k) as f32,
             shift: rc.baseline_shift(),
         };
-        let i = self.styles.len().min(u16::MAX as usize) as u16;
+        // A `u32` index (like the glyph ranges) counts more distinct formats than a paragraph can
+        // hold in memory, so every format keeps its own style.
+        let i = u32::try_from(self.styles.len()).unwrap_or(u32::MAX);
         self.styles.push(st);
         self.style_index.entry(key).or_default().push((i, small));
         i
@@ -718,12 +755,12 @@ impl<'a> Builder<'a> {
         // Complex-script characters (Persian, Arabic…) use the run's complex-script font, size,
         // bold and italic.
         let rc_cs: Option<Arc<ResolvedChar>> = text.chars().any(|c| rc.uses_complex(c)).then(|| Arc::new(rc.complex()));
-        let resolved = wordcraft_fonts::word::resolve(&rc.font, rc.bold, rc.italic);
+        let resolved = wordcraft_fonts::word::resolve(lookup_family(self.env.doc, &rc.font), rc.bold, rc.italic);
         let primary = resolved.face;
         // Symbol-font characters are laid out as their Unicode equivalents.
         let sym = SymbolRun::of(&rc.font, &resolved);
         let show = |c: char| sym.map_or(c, |m| m.show(c));
-        let primary_cs = rc_cs.as_ref().map(|r| wordcraft_fonts::word::resolve(&r.font, r.bold, r.italic).face);
+        let primary_cs = rc_cs.as_ref().map(|r| wordcraft_fonts::word::resolve(lookup_family(self.env.doc, &r.font), r.bold, r.italic).face);
         // Chinese, Japanese and Korean characters use the run's East Asian font (`w:eastAsia`) when
         // it is installed and has them.
         let primary_ea = rc
@@ -809,19 +846,28 @@ impl<'a> Builder<'a> {
             let si = self.style(rc, key.face, small);
             let Some(st) = self.styles.get(si as usize).cloned() else { continue };
             let upper = rc.caps || small;
-            // Displayed text: numeral substitution is 1 char → 1 char, so codepoints stay
-            // aligned with the document and only byte offsets shift; `orig_of` maps each
-            // displayed char back to its original byte offset (+ a `sub.len()` sentinel).
-            let substituted = sub.char_indices().any(|(i, c)| self.numeral_char(&context, a + i, c, key.rtl) != c);
+            // All Caps and Small Caps draw a letter's full capital, which can be several
+            // characters (ß → SS, ﬀ → FF, ŉ → ʼN), as Word does (#1581). A symbol-font run
+            // draws its codes as symbols, never as expanded capitals.
+            let expands = sym.is_none() && upper && sub.chars().any(caps_expands);
+            // Displayed text: numeral substitution is 1 char → 1 char and a capital may be
+            // several; `map_starts` holds where each document char's displayed form starts and
+            // `orig_of` maps it back to the char's original byte offset (+ a `sub.len()` sentinel).
+            let substituted = expands || sub.char_indices().any(|(i, c)| self.numeral_char(&context, a + i, c, key.rtl) != c);
             let mut mapped = String::new();
             let mut map_starts: Vec<usize> = Vec::new();
             let mut orig_of: Vec<usize> = Vec::new();
             if substituted {
-                mapped = String::with_capacity(sub.len());
+                mapped = String::with_capacity(sub.len().saturating_add(8));
                 for (i, c) in sub.char_indices() {
                     map_starts.push(mapped.len());
                     orig_of.push(i);
-                    mapped.push(self.numeral_char(&context, a + i, c, key.rtl));
+                    let d = self.numeral_char(&context, a + i, c, key.rtl);
+                    if expands {
+                        mapped.extend(d.to_uppercase());
+                    } else {
+                        mapped.push(d);
+                    }
                 }
                 orig_of.push(sub.len());
             }
@@ -848,7 +894,12 @@ impl<'a> Builder<'a> {
             // Group glyphs by cluster byte offset; graphemes may span several shaper clusters.
             // Complex-script syllables the graphemes split (Myanmar vowel signs, stacked
             // consonants) stay one cluster: the caret never stops inside them.
-            let bounds: Vec<usize> = wordcraft_doc::cluster::cluster_starts(shape_text);
+            let mut bounds: Vec<usize> = wordcraft_doc::cluster::cluster_starts(shape_text);
+            if expands {
+                // The capitals drawn for one character (the two S of ß) are one cluster: the
+                // caret, selection and line breaking never stop inside the character.
+                bounds.retain(|b| map_starts.binary_search(b).is_ok());
+            }
             let mut gi = 0usize;
             for (bi, &gs) in bounds.iter().enumerate() {
                 let ge = bounds.get(bi + 1).copied().unwrap_or(shape_text.len());
@@ -1453,8 +1504,11 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         c.break_after = opps.contains(&c.end) || matches!(c.kind, ClKind::Object(_) | ClKind::Tab);
     }
 
-    // List label.
-    let label = env.label.as_ref().map(|(text, lvl)| {
+    // Word hides a list label on a paragraph containing only a page break. The list counter
+    // has already advanced, so the following item keeps its number.
+    let break_only =
+        b.clusters.iter().any(|c| c.kind == ClKind::PageBreak) && b.clusters.iter().all(|c| matches!(c.kind, ClKind::PageBreak | ClKind::Marker));
+    let label = env.label.as_ref().filter(|_| !break_only).map(|(text, lvl)| {
         let lc = p.mark.clone().overlaid(&lvl.chr);
         let rc = resolve(&lc);
         // A Symbol/Wingdings bullet (U+F0B7…) is drawn as its Unicode equivalent when the font
@@ -1548,12 +1602,17 @@ fn next_tab(x: f32, tabs: &[TabStop], default_tab: f32, hanging_at: Option<f32>)
     }
     best.unwrap_or_else(|| {
         let d = if default_tab > 1.0 { default_tab } else { 36.0 };
-        let n = ((x + 0.01) / d).floor() + 1.0;
+        // Left of the margin Word's arithmetic truncates toward zero: the next default stop is
+        // the first multiple of the interval *at or after* `x`, so a tab that already sits on
+        // one (a second tab in a row, or a line starting at -72 pt) stays put. Measured on Word
+        // 2016+: a line starting at -72 pt with a leading tab stays at -72, at -60 goes to -36;
+        // "a\t\tX" at -60 puts X at -36, not 0. Letterheads with negative indents rely on it.
+        let n = if x < -0.01 { ((x - 0.01) / d).ceil() } else { ((x + 0.01) / d).floor() + 1.0 };
         TabStop { pos: (n * d).min(1e6), align: TabAlign::Left, leader: TabLeader::None }
     })
 }
 
-fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Option<&Level>) {
+fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u32, level: Option<&Level>) {
     let suffix = level.map(|l| l.suffix);
     let rp = pl.rp.clone();
     let width = env.width.max(12.0);
@@ -1599,7 +1658,7 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
         env.exclusions
     };
     let mut first_x0: Option<f32> = None;
-    let mut hcache: Vec<(u16, u32, f32)> = Vec::new();
+    let mut hcache: Vec<(u32, u32, f32)> = Vec::new();
     let mut lines: Vec<Line> = Vec::new();
     let mut i = 0usize;
     let mut top = 0.0f32;
@@ -1613,8 +1672,14 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
     // The rest of the current row: spans on the far side of floating objects, left to right.
     let mut row_rest: VecDeque<(f32, f32)> = VecDeque::new();
     let mut row_first = 0usize;
+    // Spans skipped in a row because the next word didn't fit (see `skip`).
+    let mut skipped = 0;
     loop {
-        let beside = !row_rest.is_empty();
+        // A line already sits on this row (a span before this one may have been skipped).
+        let beside = !row_rest.is_empty() && lines.len() > row_first;
+        // The span is narrowed by a floating object.
+        let mut narrowed = !row_rest.is_empty();
+        let row_lo = if first { first_left } else { rp.indent_left };
         let (left, right_edge) = if let Some(span) = row_rest.pop_front() {
             span
         } else {
@@ -1629,6 +1694,7 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
                 }
                 match row_spans(exclusions, top, est_h, lo, base_right).map(|mut spans| (spans.pop_front(), spans)) {
                     Ok((Some((a, b)), rest)) => {
+                        narrowed = !rest.is_empty() || a > lo || b < base_right;
                         row_rest = rest;
                         row_first = lines.len();
                         break (a, b.max(a + 12.0));
@@ -1669,6 +1735,8 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
         }
         let line_start_x = x;
         let c0 = i;
+        // The first word doesn't fit a span narrowed by a floating object: it moves on whole.
+        let mut skip = false;
         let mut xs: Vec<f32> = Vec::new();
         let mut leaders = Vec::new();
         let mut last_break: Option<usize> = None; // cluster index after which we may break
@@ -1770,7 +1838,21 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
                     // Recompute x for the kept clusters.
                     x = xs.last().copied().unwrap_or(line_start_x) + pl.clusters.get(bk).map(|c| c.adv).unwrap_or(0.0);
                 } else {
-                    // No opportunity: break here (a long word).
+                    // No opportunity: break here (a long word), unless the span is beside a
+                    // floating object and the word fits the full line; then it tries the row's
+                    // next span, or the next row. The word runs to the next break that isn't a
+                    // hyphenation point.
+                    let word: f32 = (c0..n)
+                        .filter_map(|k| pl.clusters.get(k).map(|c| (k, c)))
+                        .scan(false, |done, (k, c)| {
+                            let end = c.break_after && pl.hyph_after.binary_search(&(k as u32)).is_err();
+                            (!std::mem::replace(done, end)).then_some(c)
+                        })
+                        .filter(|c| c.kind != ClKind::Space)
+                        .map(|c| c.adv)
+                        .sum();
+                    let full = base_right - row_lo;
+                    skip = narrowed && skipped < 50 && word <= full + 0.01;
                 }
                 break;
             }
@@ -1839,6 +1921,23 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
                 }
             }
             j += 1;
+        }
+        if skip {
+            skipped += 1;
+            if row_rest.is_empty() {
+                top = if lines.len() > row_first {
+                    top + even_row(lines.get_mut(row_first..).unwrap_or_default())
+                } else {
+                    // Nothing on this row: go below the first object that ends, as when no span is wide enough.
+                    exclusions
+                        .iter()
+                        .filter(|e| e.bottom > top && e.top < top + est_h && e.right > row_lo && e.left < base_right)
+                        .map(|e| e.bottom)
+                        .reduce(f32::min)
+                        .unwrap_or(top + est_h)
+                };
+            }
+            continue;
         }
         if end == LineEnd::Para || end == LineEnd::Wrap {
             let xc = x;
@@ -2047,20 +2146,14 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
         }
         lines.push(line);
         first = false;
+        skipped = 0;
         i = j;
         // Text that wrapped continues on the row's far side; anything else ends the row.
         if end != LineEnd::Wrap || i >= n {
             row_rest.clear();
         }
         if row_rest.is_empty() {
-            // The row is as tall as its tallest line.
-            let row = lines.get_mut(row_first..).unwrap_or_default();
-            let h = row.iter().map(|l| l.height).fold(0.0f32, f32::max);
-            for l in row {
-                l.baseline += h - l.height;
-                l.height = h;
-            }
-            top += h;
+            top += even_row(lines.get_mut(row_first..).unwrap_or_default());
         }
         if i >= n {
             // A paragraph ending with a line break gets an empty last line.
@@ -2126,6 +2219,16 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u16, level: Optio
     }
     pl.height = top;
     pl.lines = lines;
+}
+
+/// Make a row's lines as tall as its tallest, and return that height.
+fn even_row(row: &mut [Line]) -> f32 {
+    let h = row.iter().map(|l| l.height).fold(0.0f32, f32::max);
+    for l in row {
+        l.baseline += h - l.height;
+        l.height = h;
+    }
+    h
 }
 
 /// Finish a broken line of a bidirectional paragraph: resolve each cluster's level for the line
@@ -2295,7 +2398,7 @@ fn shrink_line_spaces(pl: &ParaLayout, xs: &mut [f32], c0: usize, c1: usize, con
 }
 
 /// The hyphen glyph and advance in a style (cached per paragraph).
-fn hyphen_glyph(pl: &ParaLayout, style: u16, cache: &mut Vec<(u16, u32, f32)>) -> (u16, u32, f32) {
+fn hyphen_glyph(pl: &ParaLayout, style: u32, cache: &mut Vec<(u32, u32, f32)>) -> (u32, u32, f32) {
     if let Some(h) = cache.iter().find(|h| h.0 == style) {
         return *h;
     }
@@ -2319,7 +2422,9 @@ fn hyphen_glyph(pl: &ParaLayout, style: u16, cache: &mut Vec<(u16, u32, f32)>) -
 /// paragraph's text.
 fn hyphenation_points(text: &str, to_para: impl Fn(usize) -> Option<usize>, pl: &ParaLayout, auto: bool, caps: bool, runs: &[ProofRun]) -> Vec<u32> {
     let mut bytes: Vec<usize> = text.char_indices().filter(|(_, c)| *c == SOFT_HYPHEN).map(|(i, c)| i + c.len_utf8()).collect();
-    if auto {
+    // Vietnamese words are single syllables and never take a hyphen: no automatic hyphenation in
+    // a Vietnamese paragraph, nor in a word written with a Vietnamese-only letter (`Nguyễn`).
+    if auto && !wordcraft_proof::vi::looks_vietnamese(text) {
         let lim = wordcraft_proof::hyphen::Limits::default();
         let mut start: Option<usize> = None;
         for (i, c) in text.char_indices().chain(std::iter::once((text.len(), ' '))) {
@@ -2333,6 +2438,7 @@ fn hyphenation_points(text: &str, to_para: impl Fn(usize) -> Option<usize>, pl: 
                     if let Some(w) = text.get(a..i)
                         && w.chars().count() >= lim.min_word
                         && !w.chars().any(wordcraft_fonts::is_rtl)
+                        && !wordcraft_proof::vi::is_vietnamese_word(w)
                         && (caps || !all_caps(w))
                     {
                         // The word's language: its first letter's run, found by its place in `p.text`.
@@ -2395,6 +2501,16 @@ fn resolve_tab(pl: &mut ParaLayout, pending: &mut Option<(usize, TabStop, f32)>,
 }
 
 impl ParaLayout {
+    /// The line the list label is drawn on: the first, unless the paragraph opens with a page
+    /// break, when Word draws it with the text on the next page.
+    pub fn label_line(&self) -> usize {
+        let opens_with_break = self.lines.len() > 1
+            && self.lines.first().is_some_and(|l| {
+                l.end == LineEnd::PageBreak
+                    && self.clusters.get(l.c0..l.c1).is_some_and(|cs| cs.iter().all(|c| matches!(c.kind, ClKind::PageBreak | ClKind::Marker)))
+            });
+        usize::from(opens_with_break)
+    }
     /// x of byte offset `off` within line `li` (clamped to the line).
     pub fn x_of(&self, li: usize, off: usize) -> Option<f32> {
         let l = self.lines.get(li)?;

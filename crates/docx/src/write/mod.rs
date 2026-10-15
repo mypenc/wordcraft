@@ -7,12 +7,15 @@ mod math;
 mod props;
 mod sdt;
 mod story;
+mod watermark;
 mod wordart;
 
 use std::collections::{BTreeMap, HashMap};
 
+use wordcraft_doc::ParaProps;
 use wordcraft_doc::numbering::{Level, LevelSuffix};
-use wordcraft_doc::styles::{Style, StyleKind};
+use wordcraft_doc::props::VAlign;
+use wordcraft_doc::styles::{Style, StyleKind, TablePart};
 use wordcraft_doc::{Blocks, Document, PartKind};
 
 use crate::package::{MAX_VBA_RELATED, VBA_PROJECT_PART, VBA_RELATED, rt, zip_entries};
@@ -83,6 +86,13 @@ pub(crate) struct Writer<'d> {
     endnotes: Vec<u32>,
     /// Header/footer part id → (file name, is footer).
     hf: Vec<(u32, String, bool)>,
+    /// The headers each slot has so far in body order, with sections' empty slots linked to the
+    /// ones before (as layout shows them): where a watermark needs a header of its own.
+    linked_headers: wordcraft_doc::section::HeaderSet,
+    /// The part id standing for a header written only to hold the watermark (no such part).
+    wm_header: u32,
+    /// The watermark shape to put at the start of the next top-level paragraph (a header's first).
+    pending_watermark: Option<String>,
     /// Paragraphs that need a `w14:paraId` (last paragraph of each comment), by address.
     para_ids: HashMap<usize, String>,
     /// A note reference mark to put at the start of the next paragraph.
@@ -92,7 +102,7 @@ pub(crate) struct Writer<'d> {
     /// Writing a TOC heading: its TOC field is held back so the entries become the field's result.
     toc_hold_end: bool,
     /// The held TOC field (instruction, locked, props), opened in the first entry as Word does.
-    toc_field: Option<(String, bool, wordcraft_doc::props::CharProps)>,
+    toc_field: Option<(String, bool, bool, wordcraft_doc::props::CharProps)>,
     /// Open the held TOC field at the start of the paragraph being written.
     toc_begin_here: bool,
     /// Close the open TOC field at the end of the paragraph being written.
@@ -149,6 +159,9 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         footnotes: Vec::new(),
         endnotes: Vec::new(),
         hf: Vec::new(),
+        linked_headers: Default::default(),
+        wm_header: (0..=u32::MAX).rev().find(|id| !doc.parts.contains_key(id)).unwrap_or(u32::MAX),
+        pending_watermark: None,
         para_ids: HashMap::new(),
         pending_mark: None,
         current_note: None,
@@ -231,7 +244,14 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         let tag = if footer { "w:ftr" } else { "w:hdr" };
         w.open(tag, &ns_refs);
         let blocks: Blocks = doc.parts.get(&id).map(|p| p.blocks.clone()).unwrap_or_default();
+        // The watermark goes in every header, at the start of its first paragraph.
+        wr.pending_watermark = match &doc.settings.watermark {
+            Some(wm) if !footer => watermark::run(wm, done, &doc.last_section),
+            _ => None,
+        };
         wr.blocks(&mut w, &blocks, &mut prels, false, 0);
+        // Always taken: the story ends with a top-level paragraph.
+        wr.pending_watermark = None;
         w.close(tag);
         push_part(
             &mut entries,
@@ -622,7 +642,7 @@ impl Writer<'_> {
     }
 
     fn hf_rel(&mut self, part: u32, footer: bool, rels: &mut PartRels) -> Option<String> {
-        let kind = self.doc.parts.get(&part)?.kind;
+        let kind = if part == self.wm_header && !footer { PartKind::Header } else { self.doc.parts.get(&part)?.kind };
         if !matches!(kind, PartKind::Header | PartKind::Footer) {
             return None;
         }
@@ -779,49 +799,52 @@ fn style_xml(w: &mut W, st: &Style, flagged: &[StyleKind]) {
             }
             w.close("w:tblPr");
         }
-        // One conditional formatting region (ECMA-376 §17.7.6): run properties, then cell borders
-        // and shading.
-        let cond = |w: &mut W,
-                    ty: &str,
-                    chr: &wordcraft_doc::CharProps,
-                    fill: Option<wordcraft_doc::Rgb>,
-                    borders: Option<wordcraft_doc::props::Borders>| {
-            if !props::has_rpr(chr) && fill.is_none() && borders.is_none() {
-                return;
+        // The conditional formatting parts (ECMA-376 §17.7.6): paragraph and run properties,
+        // then cell borders, shading and vertical alignment. The whole table's text formatting
+        // is the style's own (above).
+        for part in TablePart::ALL {
+            let f = t.part(part);
+            let ppr = ParaProps { align: f.align, ..ParaProps::default() };
+            let has_rpr = props::has_rpr(&f.chr);
+            // The whole table's borders are its table borders (`w:tblPr` above).
+            let borders = f.borders.filter(|_| part != TablePart::WholeTable);
+            let has_tc = f.fill.is_some() || borders.is_some() || f.v_align.is_some();
+            if !has_rpr && !has_tc && f.align.is_none() {
+                continue;
             }
-            w.open("w:tblStylePr", &[("w:type", ty)]);
-            if props::has_rpr(chr) {
+            w.open("w:tblStylePr", &[("w:type", part.ooxml())]);
+            if f.align.is_some() {
+                w.open("w:pPr", &[]);
+                props::ppr_inner(w, &ppr, false, None);
+                w.close("w:pPr");
+            }
+            if has_rpr {
                 w.open("w:rPr", &[]);
-                props::rpr_inner(w, chr);
+                props::rpr_inner(w, &f.chr);
                 w.close("w:rPr");
             }
-            if fill.is_some() || borders.is_some() {
+            if has_tc {
                 w.open("w:tcPr", &[]);
-                if let Some(bs) = &borders {
-                    props::borders(w, "w:tcBorders", bs, Some("w:insideH"), &[]);
+                if let Some(bs) = borders {
+                    props::borders(w, "w:tcBorders", &bs, Some("w:insideH"), &[]);
                 }
-                if let Some(f) = fill {
-                    w.empty("w:shd", &[("w:val", "clear"), ("w:color", "auto"), ("w:fill", &f.hex())]);
+                if let Some(c) = f.fill {
+                    w.empty("w:shd", &[("w:val", "clear"), ("w:color", "auto"), ("w:fill", &c.hex())]);
+                }
+                if let Some(v) = f.v_align {
+                    w.val(
+                        "w:vAlign",
+                        match v {
+                            VAlign::Top => "top",
+                            VAlign::Center => "center",
+                            VAlign::Bottom => "bottom",
+                        },
+                    );
                 }
                 w.close("w:tcPr");
             }
             w.close("w:tblStylePr");
-        };
-        cond(w, "wholeTable", &wordcraft_doc::CharProps::default(), t.fill, None);
-        cond(w, "firstRow", &t.header_chr, t.header_fill, t.header_borders);
-        // The total row's borders, its top edge falling back to the built-in top rule.
-        let total_borders = match (t.total_borders, t.total_border_top) {
-            (Some(mut b), top) => {
-                b.top = b.top.or(top);
-                Some(b)
-            }
-            (None, top) => top.map(|b| wordcraft_doc::props::Borders { top: Some(b), ..Default::default() }),
-        };
-        cond(w, "lastRow", &t.total_chr, t.total_fill, total_borders);
-        cond(w, "firstCol", &t.first_col_chr, t.first_col_fill, t.first_col_borders);
-        cond(w, "lastCol", &t.last_col_chr, t.last_col_fill, t.last_col_borders);
-        cond(w, "band1Vert", &t.col_band_chr, t.col_band_fill, t.col_band_borders);
-        cond(w, "band1Horz", &t.band_chr, t.band_fill, t.band_borders);
+        }
     }
     w.close("w:style");
 }
@@ -1031,6 +1054,10 @@ fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, template_rel: O
         w.close(tag);
     }
     w.open("w:compat", &[]);
+    // CT_Compat: the older switches come before the `w:compatSetting`s.
+    if doc.settings.sum_paragraph_spacing {
+        w.empty("w:doNotUseHTMLParagraphAutoSpacing", &[]);
+    }
     if s.allow_space_of_same_style_in_table {
         w.empty("w:allowSpaceOfSameStyleInTable", &[]);
     }

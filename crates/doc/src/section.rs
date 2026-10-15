@@ -2,7 +2,36 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::props::{Borders, VAlign};
+use crate::props::Borders;
+
+/// How a section's text sits on its pages, top to bottom (`w:vAlign`, ECMA-376 §17.6.23,
+/// ST_VerticalJc). Table cells and text boxes use [`crate::props::VAlign`], which has no
+/// Justified.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum PageVAlign {
+    #[default]
+    Top,
+    Center,
+    /// Justified (`both`): the room left on each page is shared out equally between the page's
+    /// paragraphs and tables, so the text runs from the top margin to the bottom one.
+    #[serde(alias = "both", alias = "justified")]
+    Justify,
+    Bottom,
+}
+
+impl PageVAlign {
+    /// From a command or file value: `top|center|justify|bottom` (also `both`, `justified`,
+    /// `middle`); anything else is Top.
+    pub fn parse(v: &str) -> PageVAlign {
+        match v {
+            "center" | "middle" => PageVAlign::Center,
+            "justify" | "justified" | "both" => PageVAlign::Justify,
+            "bottom" => PageVAlign::Bottom,
+            _ => PageVAlign::Top,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -227,7 +256,7 @@ impl NumFormat {
         NumFormat::ALL.into_iter().find(|f| f.ooxml() == s).unwrap_or(NumFormat::Decimal)
     }
     /// Format `n` (1-based). Formats WordCraft doesn't draw yet (Hebrew, Arabic, Hindi, Thai,
-    /// Vietnamese, Russian, text amounts) show decimal, as do values past a sequence's end
+    /// Vietnamese, text amounts) show decimal, as do values past a sequence's end
     /// (the 21st item of ①…⑳).
     pub fn format(self, n: u32) -> String {
         use crate::cjk_numbers as cjk;
@@ -237,6 +266,8 @@ impl NumFormat {
             NumFormat::LowerRoman => roman(n),
             NumFormat::UpperLetter => letters(n).to_uppercase(),
             NumFormat::LowerLetter => letters(n),
+            NumFormat::RussianUpper => russian_letters(n).to_uppercase(),
+            NumFormat::RussianLower => russian_letters(n),
             NumFormat::Ordinal => format!("{n}{}", ordinal_suffix(n)),
             NumFormat::CardinalText => cardinal_text(n),
             NumFormat::OrdinalText => ordinal_text(n),
@@ -275,8 +306,6 @@ impl NumFormat {
             | NumFormat::DecimalHalfWidth
             | NumFormat::Hex
             | NumFormat::VietnameseCounting
-            | NumFormat::RussianLower
-            | NumFormat::RussianUpper
             | NumFormat::Hebrew1
             | NumFormat::Hebrew2
             | NumFormat::ArabicAlpha
@@ -351,6 +380,22 @@ pub fn letters(n: u32) -> String {
     let n = n.min(780);
     let k = (n - 1) / 26 + 1;
     let c = (b'a' + ((n - 1) % 26) as u8) as char;
+    std::iter::repeat_n(c, k as usize).collect()
+}
+
+/// The 29 letters Word counts Russian lists with: а..я without ё, й, ъ and ь (ы stays).
+const RUSSIAN_LETTERS: [char; 29] =
+    ['а', 'б', 'в', 'г', 'д', 'е', 'ж', 'з', 'и', 'к', 'л', 'м', 'н', 'о', 'п', 'р', 'с', 'т', 'у', 'ф', 'х', 'ц', 'ч', 'ш', 'щ', 'ы', 'э', 'ю', 'я'];
+
+/// Word-style Russian letters: а..я, аа..яя, ааа.. (repeated letter, as [`letters`]).
+pub fn russian_letters(n: u32) -> String {
+    if n == 0 {
+        return String::new();
+    }
+    let len = RUSSIAN_LETTERS.len() as u32;
+    let n = n.min(len * 30);
+    let k = (n - 1) / len + 1;
+    let c = RUSSIAN_LETTERS.get(((n - 1) % len) as usize).copied().unwrap_or('а');
     std::iter::repeat_n(c, k as usize).collect()
 }
 
@@ -676,8 +721,16 @@ pub struct SectionProps {
     pub title_page: bool,
     pub page_num_start: Option<u32>,
     pub page_num_format: NumFormat,
+    /// The file carries a `w:pgNumType` element that sets nothing else (no start, decimal
+    /// format), so saving writes it back rather than dropping it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub page_num_set: bool,
     pub line_numbers: Option<LineNumbering>,
-    pub valign: VAlign,
+    pub valign: PageVAlign,
+    /// Form protection of the section (`w:formProt`, ECMA-376 §17.6.6): `Some` when the file
+    /// states it. Kept so saving writes it back; editing does not act on it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub form_prot: Option<bool>,
     pub page_borders: Option<Borders>,
     /// Text direction / bidi section.
     pub rtl: bool,
@@ -685,6 +738,9 @@ pub struct SectionProps {
     /// sections turn the page's text area (headers and footers stay horizontal).
     #[serde(skip_serializing_if = "is_horizontal")]
     pub text_direction: crate::props::TextDirection,
+    /// The file states the horizontal direction (`lrTb`) outright; saving writes it back.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub text_direction_set: bool,
     /// Tracked change of the section's properties (`w:sectPrChange`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fmt_change: Option<Box<crate::props::PropChange<SectionProps>>>,
@@ -718,11 +774,14 @@ impl Default for SectionProps {
             title_page: false,
             page_num_start: None,
             page_num_format: NumFormat::Decimal,
+            page_num_set: false,
             line_numbers: None,
-            valign: VAlign::Top,
+            valign: PageVAlign::Top,
+            form_prot: None,
             page_borders: None,
             rtl: false,
             text_direction: crate::props::TextDirection::Horizontal,
+            text_direction_set: false,
             fmt_change: None,
             doc_grid: None,
             footnote_pr: NoteProps::default(),
@@ -831,11 +890,24 @@ mod tests {
         assert_eq!(NumFormat::ChineseCountingThousand.format(101), "一百零一");
         assert_eq!(NumFormat::DecimalEnclosedCircle.format(3), "③");
         assert_eq!(NumFormat::Hebrew1.format(3), "3", "formats not drawn yet show decimal");
+        assert_eq!(NumFormat::RussianLower.format(0), "");
+        assert_eq!(NumFormat::RussianUpper.format(u32::MAX).chars().count(), 30);
         for f in NumFormat::ALL {
             assert_eq!(NumFormat::from_ooxml(f.ooxml()), f, "{f:?} round-trips");
             assert!(f == NumFormat::Bullet || f == NumFormat::None || !f.format(u32::MAX).is_empty(), "{f:?}");
         }
         assert_eq!(NumFormat::from_ooxml("klingon"), NumFormat::Decimal, "unknown formats are decimal");
+    }
+
+    #[test]
+    fn russian_letters_follow_word() {
+        // Word's own labels for a russianLower list: no ё, й, ъ or ь, then doubled letters.
+        let labels: Vec<String> = (1..=31).map(|n| NumFormat::RussianLower.format(n)).collect();
+        assert_eq!(labels.join(" "), "а б в г д е ж з и к л м н о п р с т у ф х ц ч ш щ ы э ю я аа бб");
+        assert_eq!(NumFormat::RussianLower.format(59), "ааа");
+        assert_eq!(NumFormat::RussianLower.format(100), "нннн");
+        assert_eq!(NumFormat::RussianUpper.format(26), "Ы");
+        assert_eq!(NumFormat::RussianUpper.format(36), "ЖЖ");
     }
 
     #[test]

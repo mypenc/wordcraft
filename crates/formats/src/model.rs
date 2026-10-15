@@ -265,6 +265,12 @@ impl FTable {
     /// After an importer that gives `rowspan` but no placeholder cells (HTML): insert covered
     /// cells into the rows below each spanning cell.
     pub fn insert_covered(&mut self) {
+        // Each spanning cell touches up to `rowspan - 1` rows below it; a table of many rows each
+        // carrying a large rowspan would otherwise be O(rows × rowspan) covered cells, each of
+        // which becomes a document cell downstream. Cap the total touched so a small file can't
+        // multiply into a huge table, whatever the rowspans claim.
+        const MAX_COVERED_WORK: usize = 1 << 17;
+        let mut work = 0usize;
         let nrows = self.rows.len();
         for r in 0..nrows {
             let mut g = 0usize;
@@ -273,6 +279,10 @@ impl FTable {
                 let (span, rs, covered) = (c.colspan.clamp(1, 63) as usize, c.rowspan.clamp(1, 1000) as usize, c.covered);
                 if rs > 1 && !covered {
                     for k in 1..rs {
+                        work += 1;
+                        if work > MAX_COVERED_WORK {
+                            return;
+                        }
                         let Some(row) = self.rows.get_mut(r + k) else { break };
                         // Find the index in that row at grid column `g`.
                         let mut x = 0usize;
@@ -603,7 +613,10 @@ impl<'a> Builder<'a> {
         }
         let cols = t.cols().clamp(1, wordcraft_doc::table::MAX_COLS);
         let width = self.doc.last_section.text_width().max(72.0);
-        let mut tb = Table::new(rows.len(), cols, width);
+        // One template row for the grid widths and props; the real rows are built below. Sizing it
+        // to `rows.len()` would allocate a full rows × cols cell grid only to clear it, which a
+        // tall table (many rows, wide from merged cells) turns into a large transient spike.
+        let mut tb = Table::new(1, cols, width);
         if t.borderless {
             tb.props.style = None;
         }
@@ -1021,6 +1034,21 @@ pub fn image_px(data: &[u8]) -> Option<(u32, u32)> {
     image::ImageReader::new(std::io::Cursor::new(data)).with_guessed_format().ok()?.into_dimensions().ok()
 }
 
+/// Largest allocation one decoded picture may make when it is re-encoded on export: the `image`
+/// crate's default, stated here so the bound doesn't depend on a library default that may change.
+const MAX_DECODE_ALLOC: u64 = 512 << 20;
+
+/// Decode an encoded image with a bounded allocation, so a small file that declares huge
+/// dimensions can't exhaust memory when a picture is re-encoded on export. `None` when it would
+/// be too large or doesn't decode.
+pub fn decode_bounded(data: &[u8]) -> Option<image::DynamicImage> {
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(data)).with_guessed_format().ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+    reader.limits(limits);
+    reader.decode().ok()
+}
+
 /// A picture from bytes with an optional display size (points); the natural size (96 dpi) is
 /// used otherwise, shrunk to fit a 6.5" column.
 pub fn make_img(data: impl Into<Arc<Vec<u8>>>, w: Option<f32>, h: Option<f32>, alt: &str) -> Option<Img> {
@@ -1101,7 +1129,8 @@ pub fn percent_decode(s: &str) -> Vec<u8> {
     while let Some(&c) = b.get(i) {
         if c == b'%'
             && let Some(h) = b.get(i + 1..i + 3)
-            && let Ok(v) = u8::from_str_radix(std::str::from_utf8(h).unwrap_or("zz"), 16)
+            && let Some(hex) = std::str::from_utf8(h).ok()
+            && let Ok(v) = u8::from_str_radix(hex, 16)
         {
             out.push(v);
             i += 3;
@@ -1120,6 +1149,8 @@ pub fn mime_of(ext: &str) -> &'static str {
         "gif" => "image/gif",
         "webp" => "image/webp",
         "bmp" => "image/bmp",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
         _ => "application/octet-stream",
     }
 }
@@ -1224,6 +1255,16 @@ pub fn parse_color(s: &str) -> Option<Rgb> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn insert_covered_is_bounded_on_hostile_rowspan() {
+        // Many rows each carrying the maximum rowspan would be O(rows × rowspan) covered cells;
+        // the work cap must keep insertion bounded (and quick) instead of exhausting memory.
+        let mut t =
+            FTable { rows: (0..20_000).map(|_| vec![Cell { rowspan: 1000, ..Default::default() }]).collect(), widths: Vec::new(), borderless: false };
+        t.insert_covered();
+        assert!(t.rows.iter().all(|r| r.len() <= 64), "a row grew past the column cap");
+    }
 
     #[test]
     fn base64_round_trip() {

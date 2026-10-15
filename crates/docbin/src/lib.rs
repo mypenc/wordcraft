@@ -15,6 +15,7 @@ mod fkp;
 mod fmt;
 mod list;
 mod media;
+mod metadata;
 mod notes;
 mod officeart;
 mod piece;
@@ -44,6 +45,10 @@ use table::ParaOut;
 const MAX_STREAM: u64 = 1 << 30;
 /// Most header/footer parts we create (matches the docx reader's cap).
 const MAX_PARTS: usize = 50_000;
+/// Hard ceiling on characters materialised across every story walk of one document (body,
+/// headers, notes, text boxes), whatever the file's size. The working budget is tied to the
+/// WordDocument stream (see [`read`]); this caps even a maximal stream.
+const MAX_TOTAL_CHARS: u64 = 64 << 20;
 /// `sprmCPicLocation`: the fc of a picture in the Data stream.
 const C_PIC_LOCATION: u16 = 0x6A03;
 /// `sprmPIlvl` / `sprmPIlfo`: the paragraph's list level and list.
@@ -144,6 +149,9 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
     };
 
     let mut doc = Document::new();
+    if let Some(core) = metadata::read(&mut comp) {
+        doc.core = core;
+    }
     doc.body.clear();
     doc.styles = fmt::stylesheet(&raw_styles, &fonts);
     doc.numbering = list::parse(&table, &fib, &fonts);
@@ -158,6 +166,12 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
     let hdd_base = fib.ccp.text.saturating_add(fib.ccp.ftn);
     let edn_base = hdd_base.saturating_add(fib.ccp.hdd).saturating_add(fib.ccp.atn);
     let mut pics = media::Pictures::default();
+    // Every materialised character comes from at least one byte of the WordDocument stream, so a
+    // legitimate document's total text (body plus every header, footnote and text box, each read
+    // once) cannot exceed its stream. A hostile piece or story table that aliases the same bytes
+    // many times can, so the walk is held to twice the stream's size — generous for real files,
+    // tight against aliasing — and never past the absolute ceiling.
+    let budget = std::cell::Cell::new((word.len() as u64).saturating_mul(2).min(MAX_TOTAL_CHARS));
 
     let ctx = WalkCtx {
         word: &word,
@@ -172,6 +186,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
         marks: &[],
         drawn: &[],
         sect_ends: &[],
+        budget: &budget,
     };
 
     // Drawings: text box stories become parts first, then the floating shapes and pictures
@@ -312,6 +327,10 @@ struct WalkCtx<'a> {
     /// Where sections end (main-document CPs, sorted): the section mark (0x0C) just before
     /// each ends the section's last paragraph, it isn't a page break inside it.
     sect_ends: &'a [u32],
+    /// Characters still allowed across every story walk of this document. Story ranges (headers,
+    /// footnotes, text boxes) are hostile and can each span a whole subdocument, so thousands of
+    /// them could otherwise materialise the same text thousands of times; this bounds the total.
+    budget: &'a std::cell::Cell<u64>,
 }
 
 /// State while assembling one paragraph from per-CP formatting.
@@ -385,6 +404,12 @@ fn walk(ctx: &WalkCtx, cp_start: u32, cp_end: u32, pics: &mut media::Pictures) -
                 continue;
             }
         };
+        // Every real character counts against the document-wide budget; once it is spent, stop
+        // (a hostile file with thousands of story ranges over the same text can't multiply on).
+        if ctx.budget.get() == 0 {
+            break;
+        }
+        ctx.budget.set(ctx.budget.get() - 1);
         // A section mark (0x0C) at a section's end is that section's last paragraph mark.
         let section_mark = c == '\u{C}' && ctx.sect_ends.binary_search(&cp.saturating_add(1)).is_ok();
         match c {
@@ -550,7 +575,7 @@ fn finish_field(pb: &mut ParaBuild, f: FieldBuild) {
         return;
     }
     pb.push('\u{FFFC}', CharProps::default());
-    pb.objects.push(InlineObject::Field { instr, result: result_text, locked: false, code: false });
+    pb.objects.push(InlineObject::Field { instr, result: result_text, locked: false, dirty: false, code: false, form: String::new() });
 }
 
 /// `HYPERLINK "url"` / `HYPERLINK url \l "bookmark"` → the model link target

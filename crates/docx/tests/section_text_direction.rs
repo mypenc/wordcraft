@@ -48,3 +48,14 @@ fn section_text_direction_round_trips_in_schema_order() {
     let again: Vec<TextDirection> = back.sections().iter().map(|(_, s)| s.text_direction).collect();
     assert_eq!(again, dirs);
 }
+
+#[test]
+fn explicit_horizontal_direction_is_kept_in_sections_and_cells() {
+    let body = r#"<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/><w:textDirection w:val="lrTb"/></w:tcPr><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Body</w:t></w:r></w:p><w:sectPr><w:textDirection w:val="lrTb"/></w:sectPr>"#;
+    let d = wordcraft_docx::read(&docx(body)).unwrap();
+    let xml = document_xml(&wordcraft_docx::write(&d).unwrap());
+    assert_eq!(xml.matches(r#"<w:textDirection w:val="lrTb"/>"#).count(), 2, "{xml}");
+    // A horizontal section or cell that never said so still writes nothing.
+    let plain = wordcraft_docx::read(&docx(r#"<w:p><w:r><w:t>Body</w:t></w:r></w:p><w:sectPr/>"#)).unwrap();
+    assert!(!document_xml(&wordcraft_docx::write(&plain).unwrap()).contains("textDirection"));
+}

@@ -241,7 +241,7 @@ pub fn cell_rects(l: &DocLayout, doc: &Document, range: &CellRange) -> Vec<(usiz
         for it in &pg.items {
             // A vertically merged cell's box spans its rows (#640); its continuation rows'
             // `covered` boxes would shade it twice.
-            if let Placed::Cell { rect, table, row, cell, story, covered: false } = it
+            if let Placed::Cell { rect, table, row, cell, story, covered: false, .. } = it
                 && *story == range.story
                 && *table == range.table
                 && picked.contains(&(*row, *cell))

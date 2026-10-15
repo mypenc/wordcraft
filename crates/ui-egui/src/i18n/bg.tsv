@@ -129,6 +129,9 @@
 	Bold	Получер
 	Bookmark	Отметка
 	Bookmark name:	Име на отметката:
+	Delete Bookmark	Изтриване на отметка
+	Hidden bookmarks	Скрити отметки
+	Sort by:	Сортиране по:
 	Border Painter	Рисуване на граници
 	Border\nPainter	Рисуване\nна граници
 	Borders	Граници
@@ -455,6 +458,8 @@
 	Labels	Етикети
 	Landscape	Пейзаж
 	Language	Език
+	{language} (no dictionary)	{language} (няма речник)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Не е инсталиран правописен речник за {language}, затова текстът не се проверява. WordCraft търси речника Hunspell {name} в папката WORDCRAFT_DICTIONARIES и на обичайните места в системата.
 	Lasso	Ласо
 	Last Column	Последна колона
 	Last commit	Последно подаване
@@ -512,7 +517,7 @@
 	Multiple Pages	Няколко страници
 	Name (A–Z)	Име (А–Я)
 	Name:	Име:
-	Narrow  0.5" all	Тесни  0.5" навсякъде
+	Narrow  {size} all	Тесни  {size} навсякъде
 	Navigation	Навигация
 	Navigation Pane	Навигационен панел
 	New	Нов
@@ -540,7 +545,7 @@
 	Nonbreaking Hyphen	Непрекъсваемо тире
 	Nonbreaking Space	Непрекъсваем интервал
 	None	Няма
-	Normal  1" all	Нормални  1" навсякъде
+	Normal  {size} all	Нормални  {size} навсякъде
 	Normal Style	Нормален стил
 	Not available right now	В момента не е налично
 	Not saved	Не е запазено
@@ -2236,6 +2241,11 @@
 	Add Font…	Добавяне на шрифт…
 	Added Fonts	Добавени шрифтове
 	Remove Added Font	Премахване на добавен шрифт
+	Load System Installed Fonts…	Зареждане на инсталирани системни шрифтове…
+	All system fonts are already available.	Всички системни шрифтове вече са налични.
+	Local font access is not supported by your browser.	Достъпът до локални шрифтове не се поддържа от браузъра ви.
+	Local font access was denied.	Достъпът до локални шрифтове беше отказан.
+	Loaded {count} system fonts.	Заредени са {count} системни шрифта.
 	Recent Colors	Последни цветове
 	More Colors…	Още цветове…
 	Standard	Стандартни
@@ -2441,6 +2451,17 @@
 	Pastes the clipboard's picture.	Поставя картината от клипборда.
 	Region:	Регион:
 	Automatic ({region})	Автоматично ({region})
+# Table style editor: every table style part (#714)
+	Odd Banded Rows	Нечетни редуващи се редове
+	Even Banded Rows	Четни редуващи се редове
+	Odd Banded Columns	Нечетни редуващи се колони
+	Even Banded Columns	Четни редуващи се колони
+	Top Left Cell	Горна лява клетка
+	Top Right Cell	Горна дясна клетка
+	Bottom Left Cell	Долна лява клетка
+	Bottom Right Cell	Долна дясна клетка
+	Inside Horizontal Border	Вътрешна хоризонтална граница
+	Inside Vertical Border	Вътрешна вертикална граница
 	Text of the nearest paragraph with a given style (running headers)	Текст на най-близкия абзац с даден стил (текущи колонтитули)
 	Style name:	Име на стил:
 # Mail merge: filter and sort recipients (#778)
@@ -2545,6 +2566,24 @@
 	Suggested	Предложения
 	Set Proofing Language…	Задаване на езика за проверка…
 	Language Preferences…	Езикови предпочитания…
+	Printer	Принтер
+	Select a printer	Изберете принтер
+	Refresh printers	Опресняване на принтерите
+	Two-sided printing	Двустранен печат
+	Printer default	По подразбиране на принтера
+	One-sided	Едностранен
+	Two-sided: long edge	Двустранен: дълъг ръб
+	Two-sided: short edge	Двустранен: къс ръб
+	Grayscale	Нюанси на сивото
+	Finding printers…	Търсене на принтери…
+	No printers found. Configure a system printer or export a PDF.	Не са намерени принтери. Настройте системен принтер или експортирайте PDF.
+	Printer discovery failed.	Търсенето на принтери е неуспешно.
+	Submitting print job…	Изпращане на задание за печат…
+	Print job submitted.	Заданието за печат е изпратено.
+	Print job submitted: {receipt}	Заданието за печат е изпратено: {receipt}
+	Print failed: the printing worker stopped.	Печатът е неуспешен: процесът на печат спря.
+	Print settings	Настройки за печат
+	Submit print job	Изпращане на задание за печат
 
 # Cross-reference dialog (#1003)
 	For which item:	За кой елемент:
@@ -2563,3 +2602,22 @@
 
 # Backstage › Recover (#586)
 	Recover	Възстановяване
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Огледални полета
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Съществуващ файл или уеб страница
+	Link to:	Връзка към:
+	Place in This Document	Място в този документ
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Колона {n}
+	Header row	Заглавен ред
+	No header row	Без заглавен ред
+	My list has	Списъкът ми има
+# Table Layout › Formula dialog (#1210)
+	Formula:	Формула:
+	Paste function:	Поставяне на функция:
+# Reading Mode column widths (#1040)
+	Narrow	Тясна
+	Medium	Средна

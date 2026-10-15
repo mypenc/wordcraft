@@ -7,6 +7,11 @@ const MAX: usize = 10_000;
 /// Parse the note reference/story PLCs. `ref_pair`/`txt_pair` are the FIB pair indices
 /// (`(2, 3)` for footnotes, `(46, 47)` for endnotes); story ranges are relative to the
 /// note subdocument.
+///
+/// The story CPs of a well-formed PLC ascend, so the stories are disjoint. A hostile table
+/// that steps back would make many notes read the same text again (each one materialised
+/// as its own part), so a story starting before the end of the last one kept is dropped:
+/// every subdocument CP becomes at most one note.
 pub(crate) fn parse_notes(table: &[u8], fib: &crate::fib::Fib, ref_pair: usize, txt_pair: usize) -> Vec<(u32, (u32, u32))> {
     let refs = fib.pair(ref_pair).and_then(|(fc, lcb)| plc_of(table, fc, lcb, 2)).unwrap_or_default();
     let txts = fib.pair(txt_pair).and_then(|(fc, lcb)| plc_of(table, fc, lcb, 0)).unwrap_or_default();
@@ -14,12 +19,15 @@ pub(crate) fn parse_notes(table: &[u8], fib: &crate::fib::Fib, ref_pair: usize, 
         return Vec::new();
     }
     let mut out = Vec::new();
+    let mut kept_to = 0u32;
     // The reference PLC's aFtnIdx order matches the story order; pair them by index.
     for (i, &cp) in refs.iter().enumerate() {
-        if let (Some(a), Some(b)) = (txts.get(i), txts.get(i + 1))
+        if let (Some(&a), Some(&b)) = (txts.get(i), txts.get(i + 1))
             && b > a
+            && a >= kept_to
         {
-            out.push((cp, (*a, *b)));
+            out.push((cp, (a, b)));
+            kept_to = b;
         }
     }
     out

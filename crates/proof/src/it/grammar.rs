@@ -9,6 +9,14 @@
 //! - **Capital letter at the start of a sentence**, knowing Italian abbreviations (`ecc.`,
 //!   `dott.`, `prof.`, `sig.`), initials, ordinal numbers (`1. posto`) and ellipses.
 //! - **Doubled punctuation** (`,,`, `..`, `;;`).
+//! - **`po'`**: `un pò` and `un po` → `un po'` (a truncation of `poco`: apostrophe, no accent).
+//! - **`qual è`**: `qual'è`, `qual'era` → `qual è`, `qual era` (a truncation, never elided).
+//! - **`È`**: `E'` written for the verb → `È`.
+//! - **`un` / `un'`**: the apostrophe only before a feminine word. `un'altro`, `un'anno` →
+//!   `un altro`, `un anno` (a masculine word in `-o`; `auto` and `eco` are feminine), and
+//!   `un altra`, `un amica` → `un'altra`, `un'amica` (a word in `-a`, except the masculine and
+//!   common-gender ones: `-ista`, `-ita`, `-ota`, `-cida`, `-ma`, `-eta`, `atleta`, `acrobata`…).
+//!   The same for `nessun`, `ciascun`, `qualcun` and `alcun`.
 //!
 //! No comma rule and no English rule (such as `a`/`an`) applies to Italian text.
 
@@ -17,8 +25,21 @@ use crate::{Issue, IssueKind, ProofLang, words};
 /// Words Italian repeats on purpose: emphatic doubling, interjections, onomatopoeia.
 const ALLOWED_REPEATS: &[&str] = &[
     "sì", "no", "piano", "bene", "male", "ecco", "oh", "ah", "eh", "mh", "bah", "ehi", "urrà", "evviva", "ciao", "addio", "adagio", "forte", "lento",
-    "chiaro",
+    "chiaro", "pian", "poco", "quasi", "presto", "subito", "zitto", "via", "così", "tanto", "molto", "pure", "dai", "su", "avanti", "basta", "aiuto",
 ];
+
+/// Indefinite articles (and the like) that elide to `un'` before a feminine word only.
+const UN_FORMS: &[&str] = &["un", "nessun", "ciascun", "qualcun", "alcun"];
+
+/// Feminine words in `-o` that start with a vowel (`un'auto`, `un'eco`).
+const FEMININE_IN_O: &[&str] = &["auto", "autoradio", "eco", "ecografo"];
+
+/// Endings of masculine or common-gender words in `-a` (`un artista`, `un idiota`, `un enigma`).
+const MASCULINE_A_ENDINGS: &[&str] = &["ista", "ita", "ota", "cida", "ma", "eta", "nauta", "iatra", "arca"];
+
+/// Words in `-a` after `un` that aren't feminine nouns: masculine or common-gender ones that fit
+/// no ending above, and verbs and pronouns (`un ha`, `un una`).
+const NOT_FEMININE_IN_A: &[&str] = &["acrobata", "autodidatta", "alfa", "omega", "ha", "una"];
 
 /// Abbreviations written with a final period after which a sentence goes on in lower case
 /// (lower case, without the period).
@@ -210,6 +231,100 @@ fn doubled_punctuation(text: &str, v: &mut Vec<Issue>) {
     }
 }
 
+/// Is `c` an apostrophe (straight or typographic)?
+fn is_apostrophe(c: char) -> bool {
+    matches!(c, '\'' | '’')
+}
+
+/// `pò` (never accented) and `po` without its apostrophe → `po'`. `Po` (the river) is left alone.
+fn po(text: &str, ws: &[(usize, usize)], v: &mut Vec<Issue>) {
+    for (a, b) in ws {
+        let Some(w) = text.get(*a..*b) else { continue };
+        let apostrophe = text.get(*b..).and_then(|r| r.chars().next()).is_some_and(is_apostrophe);
+        let fix = match w {
+            "pò" => "po'",
+            "Pò" => "Po'",
+            "po" if !apostrophe => "po'",
+            _ => continue,
+        };
+        v.push(issue(*a, *b, "Si scrive «po'», con l'apostrofo e senza accento".into(), vec![fix.into()]));
+    }
+}
+
+/// `qual'è` → `qual è` (any case): the fix when `word` is `qual` + apostrophe + `è`/`era`.
+pub(crate) fn qual_elided(word: &str) -> Option<String> {
+    let head_end = word.char_indices().take(4).last().map(|(i, c)| i + c.len_utf8())?;
+    let (head, rest) = (word.get(..head_end)?, word.get(head_end..)?);
+    let tail = rest.strip_prefix(is_apostrophe)?;
+    let tail_ok = matches!(tail.to_lowercase().as_str(), "è" | "era");
+    (head.eq_ignore_ascii_case("qual") && tail_ok).then(|| format!("{head} {tail}"))
+}
+
+fn qual_e(text: &str, ws: &[(usize, usize)], v: &mut Vec<Issue>) {
+    for (a, b) in ws {
+        if let Some(fix) = text.get(*a..*b).and_then(qual_elided) {
+            v.push(issue(*a, *b, "«Qual è» si scrive senza apostrofo".into(), vec![fix]));
+        }
+    }
+}
+
+/// `E'` for the verb → `È`. A quoted letter (`la lettera 'E'`) is left alone.
+fn e_apostrophe(text: &str, ws: &[(usize, usize)], v: &mut Vec<Issue>) {
+    for (a, b) in ws {
+        if text.get(*a..*b) != Some("E") {
+            continue;
+        }
+        let mut after = text.get(*b..).unwrap_or("").chars();
+        let Some(ap) = after.next().filter(|&c| is_apostrophe(c)) else { continue };
+        let ends = after.next().is_none_or(|c| c.is_whitespace());
+        let quoted = text.get(..*a).and_then(|t| t.chars().next_back()).is_some_and(|c| is_apostrophe(c) || c == '‘');
+        if ends && !quoted {
+            v.push(issue(*a, *b + ap.len_utf8(), "«È» si scrive con l'accento, non con l'apostrofo".into(), vec!["È".into()]));
+        }
+    }
+}
+
+/// Does `w` (lower case) start with a vowel or `h`, as the words `un'` elides before?
+fn starts_with_vowel(w: &str) -> bool {
+    w.chars().next().is_some_and(|c| "aeiouhàèéìòóù".contains(c))
+}
+
+/// Is `w` (lower case) a feminine word in `-a` (`altra`, `amica`, `ora`), as far as the ending
+/// tells?
+fn feminine_in_a(w: &str) -> bool {
+    w.chars().count() >= 2 && w.ends_with('a') && !MASCULINE_A_ENDINGS.iter().any(|e| w.ends_with(e)) && !NOT_FEMININE_IN_A.contains(&w)
+}
+
+/// `un'` before a masculine word (`un'altro` → `un altro`), and `un` without the apostrophe
+/// before a feminine one (`un altra` → `un'altra`). Only lower-case words: a name's gender isn't
+/// in its ending.
+fn un_apostrophe(text: &str, ws: &[(usize, usize)], v: &mut Vec<Issue>) {
+    for (a, b) in ws {
+        let Some(w) = text.get(*a..*b) else { continue };
+        let Some((head, tail)) = w.split_once(is_apostrophe) else { continue };
+        if UN_FORMS.contains(&head.to_lowercase().as_str())
+            && tail.chars().all(|c| c.is_alphabetic() && c.is_lowercase())
+            && starts_with_vowel(tail)
+            && tail.ends_with('o')
+            && !FEMININE_IN_O.contains(&tail)
+        {
+            v.push(issue(*a, *b, format!("Davanti a un nome maschile «{head}» non vuole l'apostrofo"), vec![format!("{head} {tail}")]));
+        }
+    }
+    for pair in ws.windows(2) {
+        let [(a0, b0), (a1, b1)] = pair else { continue };
+        let (Some(w0), Some(w1), Some(gap)) = (text.get(*a0..*b0), text.get(*a1..*b1), text.get(*b0..*a1)) else { continue };
+        if gap == " "
+            && UN_FORMS.contains(&w0.to_lowercase().as_str())
+            && w1.chars().all(|c| c.is_alphabetic() && c.is_lowercase())
+            && starts_with_vowel(w1)
+            && feminine_in_a(w1)
+        {
+            v.push(issue(*a0, *b1, format!("Davanti a un nome femminile si scrive «{w0}'», con l'apostrofo"), vec![format!("{w0}'{w1}")]));
+        }
+    }
+}
+
 /// Grammar issues in a paragraph of Italian text, in order.
 pub fn check(text: &str) -> Vec<Issue> {
     let ws: Vec<(usize, usize)> = words(text);
@@ -218,6 +333,10 @@ pub fn check(text: &str) -> Vec<Issue> {
     spaces(text, &mut v);
     sentence_capitals(text, &ws, &mut v);
     doubled_punctuation(text, &mut v);
+    po(text, &ws, &mut v);
+    qual_e(text, &ws, &mut v);
+    e_apostrophe(text, &ws, &mut v);
+    un_apostrophe(text, &ws, &mut v);
     v.sort_by_key(|i| (i.start, i.end));
     v
 }
@@ -248,6 +367,97 @@ mod tests {
             check("Vado a Roma. Il dott. Rossi è già lì... piano piano!")
         );
         assert!(check("Sì sì, bene bene :)").is_empty());
+    }
+
+    /// The fixes the rules offer for `t`, in order.
+    fn fixes(t: &str) -> Vec<(String, String)> {
+        check(t).into_iter().map(|i| (t.get(i.start..i.end).unwrap_or("").to_string(), i.suggestions.join("|"))).collect()
+    }
+
+    fn pair(a: &str, b: &str) -> (String, String) {
+        (a.to_string(), b.to_string())
+    }
+
+    #[test]
+    fn po_takes_an_apostrophe() {
+        assert_eq!(fixes("Dammi un pò di pane"), [pair("pò", "po'")]);
+        assert_eq!(fixes("Dammi un po di pane"), [pair("po", "po'")]);
+        assert_eq!(fixes("Pò di più"), [pair("Pò", "Po'")]);
+        assert!(fixes("Dammi un po' di pane, un po’ d'acqua").is_empty());
+        assert!(fixes("Il Po scorre a Torino").is_empty(), "the river");
+    }
+
+    #[test]
+    fn qual_e_has_no_apostrophe() {
+        assert_eq!(fixes("Dimmi qual'è il problema"), [pair("qual'è", "qual è")]);
+        assert_eq!(fixes("Qual’era la strada?"), [pair("Qual’era", "Qual era")]);
+        assert!(fixes("Qual è il problema? Quale era?").is_empty());
+        assert!(fixes("Quale'è").is_empty(), "not the truncation");
+        assert_eq!(qual_elided("qual'è").as_deref(), Some("qual è"));
+        assert_eq!(qual_elided("qua"), None);
+        assert_eq!(qual_elided(""), None);
+    }
+
+    #[test]
+    fn e_apostrophe_becomes_e_grave() {
+        assert_eq!(fixes("E' vero"), [pair("E'", "È")]);
+        assert_eq!(fixes("Lo so. E’ tardi"), [pair("E’", "È")]);
+        assert!(fixes("È vero. E poi?").is_empty());
+        assert!(fixes("La lettera 'E' è una vocale").is_empty(), "a quoted letter");
+    }
+
+    #[test]
+    fn un_apostrophe_follows_the_gender() {
+        assert_eq!(fixes("Ho visto un'altro amico"), [pair("un'altro", "un altro")]);
+        assert_eq!(fixes("È passato un’anno"), [pair("un’anno", "un anno")]);
+        assert_eq!(fixes("Prendo un altra strada"), [pair("un altra", "un'altra")]);
+        assert_eq!(fixes("Ho un amica a Roma"), [pair("un amica", "un'amica")]);
+        assert_eq!(fixes("Non c'è nessun altra via"), [pair("nessun altra", "nessun'altra")]);
+        for ok in [
+            "Un altro amico",
+            "Un'altra amica",
+            "Un'auto nuova",
+            "Un'eco lontana",
+            "Un artista",
+            "Un atleta",
+            "Un idiota",
+            "Un ipocrita",
+            "Un enigma",
+            "Un omicida",
+            "Un astronauta",
+            "Un acrobata",
+            "Un'ora",
+            "Un'idea",
+            "Un uomo",
+            "Un'Alfa",
+            "Un Andrea",
+            "Un ha",
+        ] {
+            assert!(fixes(ok).is_empty(), "{ok}: {:?}", fixes(ok));
+        }
+    }
+
+    #[test]
+    fn more_emphatic_doubles_are_allowed() {
+        for ok in ["Pian piano", "Poco poco", "Zitto zitto", "Via via", "Così così", "Dai dai"] {
+            assert!(fixes(ok).is_empty(), "{ok}: {:?}", fixes(ok));
+        }
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn never_panics(s in "\\PC{0,80}") {
+            for i in check(&s) {
+                proptest::prop_assert!(i.start <= i.end && i.end <= s.len());
+            }
+        }
+
+        #[test]
+        fn never_panics_on_italian_like_text(s in "[a-zàèéìòóùA-ZÈ ,.;:!?'’‘\"«»…\\-]{0,60}") {
+            for i in check(&s) {
+                proptest::prop_assert!(i.start <= i.end && i.end <= s.len() && s.is_char_boundary(i.start) && s.is_char_boundary(i.end));
+            }
+        }
     }
 
     fn test_dict_install() {

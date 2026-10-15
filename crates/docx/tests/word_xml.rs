@@ -213,3 +213,50 @@ fn hostile_word_xml_is_an_error_not_a_panic() {
     many.push_str("</pkg:package>");
     assert!(matches!(read_xml(many.as_bytes()), Err(DocxError::Limit(_))));
 }
+
+/// A Flat OPC package of one paragraph with a picture, whose `pkg:binaryData` holds `data` as
+/// written, and `extra` after the parts.
+fn picture_package(data: &str, extra: &str) -> String {
+    format!(
+        r#"<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml"><pkg:xmlData><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships></pkg:xmlData></pkg:part>
+  <pkg:part pkg:name="/word/_rels/document.xml.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml"><pkg:xmlData><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/dot.png"/></Relationships></pkg:xmlData></pkg:part>
+  <pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"><pkg:xmlData><w:document xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:v="urn:schemas-microsoft-com:vml"><w:body><w:p><w:r><w:t>Seed</w:t></w:r><w:r><w:pict><v:shape style="width:24pt;height:12pt"><v:imagedata r:id="rId6"/></v:shape></w:pict></w:r></w:p></w:body></w:document></pkg:xmlData></pkg:part>
+  <pkg:part pkg:name="/word/media/dot.png" pkg:contentType="image/png" pkg:compression="store"><pkg:binaryData>{data}</pkg:binaryData></pkg:part>{extra}
+</pkg:package>"#
+    )
+}
+
+/// A binary part's base64 reads the same as plain text, as CDATA or with character references;
+/// an entity in it is an error rather than bytes gone missing (#1353).
+#[test]
+fn flat_opc_binary_data_reads_the_same_in_cdata_and_character_references() {
+    let png = tiny_png_b64();
+    let media = |data: &str| read_xml(picture_package(data, "").as_bytes()).map(|d| d.media.values().cloned().collect::<Vec<_>>());
+    let plain = media(&png).unwrap();
+    assert_eq!(plain.len(), 1);
+    let (head, tail) = png.split_at(png.len() / 2);
+    let first = png.chars().next().unwrap();
+    for other in
+        [format!("<![CDATA[{png}]]>"), format!("{head}<![CDATA[{tail}]]>"), format!("&#{};{}", u32::from(first), &png[1..]).replace('\n', "&#xA;")]
+    {
+        assert_eq!(media(&other).unwrap(), plain, "{other}");
+    }
+    assert!(media(&format!("&amp;{png}")).is_err());
+}
+
+/// Work anywhere in a Flat OPC file is bounded, not only in the parts that are kept: nesting
+/// and elements no part reader looks at, and repeated part names, count too (#1353).
+#[test]
+fn flat_opc_limits_count_what_is_not_kept() {
+    let png = tiny_png_b64();
+    let limited = |extra: &str| matches!(read_xml(picture_package(&png, extra).as_bytes()), Err(DocxError::Limit(_)));
+    assert!(read_xml(picture_package(&png, "<x/>").as_bytes()).is_ok());
+    // Deep nesting outside the parts.
+    assert!(limited(&format!("<x>{}{}</x>", "<y>".repeat(1000), "</y>".repeat(1000))));
+    // One part name over and over, or other elements, past the part count.
+    assert!(limited(&r#"<pkg:part pkg:name="/word/media/dot.png"><pkg:binaryData>AA==</pkg:binaryData></pkg:part>"#.repeat(20_000)));
+    assert!(limited(&"<x/>".repeat(20_000)));
+    // A part nothing reads, one element over what the XML tree reader takes in a part (8 000 000).
+    assert!(limited(&format!(r#"<pkg:part pkg:name="/word/unused.xml"><pkg:xmlData><r>{}</r></pkg:xmlData></pkg:part>"#, "<y/>".repeat(8_000_000))));
+}

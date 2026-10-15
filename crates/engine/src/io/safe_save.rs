@@ -152,6 +152,21 @@ mod tests {
         assert_eq!(fs::read_dir(&d.0).unwrap().count(), 1);
     }
 
+    /// Exports (`write_file`) replace the destination instead of truncating it in place: another
+    /// hard link to the old file keeps the old bytes, and no temporary file is left behind.
+    #[test]
+    fn write_file_replaces_the_destination_instead_of_truncating_it() {
+        let d = Scratch::new();
+        let path = d.target();
+        let alias = d.0.join("alias.docx");
+        fs::write(&path, b"Original bytes.").unwrap();
+        fs::hard_link(&path, &alias).unwrap();
+        crate::io::write_file(&path.to_string_lossy(), b"Exported bytes.").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"Exported bytes.");
+        assert_eq!(fs::read(&alias).unwrap(), b"Original bytes.");
+        assert_eq!(fs::read_dir(&d.0).unwrap().count(), 2);
+    }
+
     #[cfg(unix)]
     #[test]
     fn new_temporary_files_are_private_until_prepared() {

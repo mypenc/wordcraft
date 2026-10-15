@@ -141,6 +141,9 @@
 	Bold	Fett
 	Bookmark	Textmarke
 	Bookmark name:	Textmarkenname:
+	Delete Bookmark	Textmarke löschen
+	Hidden bookmarks	Ausgeblendete Textmarken
+	Sort by:	Sortieren nach:
 	Border Painter	Rahmenlinien-Maler
 	Border\nPainter	Rahmenlinien-\nMaler
 	Borders	Rahmenlinien
@@ -453,6 +456,8 @@
 	Labels	Etiketten
 	Landscape	Querformat
 	Language	Sprache
+	{language} (no dictionary)	{language} (kein Wörterbuch)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Für {language} ist kein Rechtschreibwörterbuch installiert, daher wird die Sprache nicht geprüft. WordCraft sucht das Hunspell-Wörterbuch {name} im Ordner WORDCRAFT_DICTIONARIES und an den üblichen Systemorten.
 	Lasso	Lasso
 	Last Column	Letzte Spalte
 	Last commit	Letzter Commit
@@ -508,7 +513,7 @@
 	Multiple Pages	Mehrere Seiten
 	Name (A–Z)	Name (A–Z)
 	Name:	Name:
-	Narrow  0.5" all	Schmal  0,5" rundum
+	Narrow  {size} all	Schmal  {size} rundum
 	Navigation	Navigation
 	Navigation Pane	Navigationsbereich
 	New	Neu
@@ -535,7 +540,7 @@
 	Nonbreaking Hyphen	Geschützter Bindestrich
 	Nonbreaking Space	Geschütztes Leerzeichen
 	None	Keine
-	Normal  1" all	Normal  1" rundum
+	Normal  {size} all	Normal  {size} rundum
 	Normal Style	Formatvorlage „Standard“
 	Not available right now	Derzeit nicht verfügbar
 	Not saved	Nicht gespeichert
@@ -1553,6 +1558,11 @@
 	Add Font…	Schriftart hinzufügen…
 	Added Fonts	Hinzugefügte Schriftarten
 	Remove Added Font	Hinzugefügte Schriftart entfernen
+	Load System Installed Fonts…	Installierte Systemschriftarten laden…
+	All system fonts are already available.	Alle Systemschriftarten sind bereits verfügbar.
+	Local font access is not supported by your browser.	Lokaler Schriftartenzugriff wird von Ihrem Browser nicht unterstützt.
+	Local font access was denied.	Zugriff auf lokale Schriftarten wurde verweigert.
+	Loaded {count} system fonts.	{count} Systemschriftarten geladen.
 	Recent Colors	Zuletzt verwendete Farben
 	More Colors…	Weitere Farben…
 	Standard	Standard
@@ -2072,6 +2082,16 @@
 	Hindi	Hindi
 	Context	Kontext
 	System	System
+	Odd Banded Rows	Ungerade gestreifte Zeilen
+	Even Banded Rows	Gerade gestreifte Zeilen
+	Odd Banded Columns	Ungerade gestreifte Spalten
+	Even Banded Columns	Gerade gestreifte Spalten
+	Top Left Cell	Zelle oben links
+	Top Right Cell	Zelle oben rechts
+	Bottom Left Cell	Zelle unten links
+	Bottom Right Cell	Zelle unten rechts
+	Inside Horizontal Border	Innere horizontale Rahmenlinie
+	Inside Vertical Border	Innere vertikale Rahmenlinie
 # Mail merge: filter and sort recipients (#778)
 	Filter Recipients	Empfänger filtern
 	Sort Recipients	Empfänger sortieren
@@ -2164,6 +2184,24 @@
 	Suggested	Vorschläge
 	Set Proofing Language…	Sprache für die Korrekturhilfen festlegen…
 	Language Preferences…	Spracheinstellungen…
+	Printer	Drucker
+	Select a printer	Drucker auswählen
+	Refresh printers	Drucker aktualisieren
+	Two-sided printing	Beidseitiges Drucken
+	Printer default	Druckerstandard
+	One-sided	Einseitig
+	Two-sided: long edge	Beidseitig: lange Kante
+	Two-sided: short edge	Beidseitig: kurze Kante
+	Grayscale	Graustufen
+	Finding printers…	Drucker werden gesucht…
+	No printers found. Configure a system printer or export a PDF.	Keine Drucker gefunden. Richten Sie einen Systemdrucker ein oder exportieren Sie ein PDF.
+	Printer discovery failed.	Druckersuche fehlgeschlagen.
+	Submitting print job…	Druckauftrag wird gesendet…
+	Print job submitted.	Druckauftrag gesendet.
+	Print job submitted: {receipt}	Druckauftrag gesendet: {receipt}
+	Print failed: the printing worker stopped.	Drucken fehlgeschlagen: Der Druckvorgang wurde angehalten.
+	Print settings	Druckeinstellungen
+	Submit print job	Druckauftrag senden
 
 # Dictionaries folder (#1063)
 	Dictionaries	Wörterbücher
@@ -2175,3 +2213,22 @@
 
 # Backstage › Recover (#586)
 	Recover	Wiederherstellen
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Gegenüberliegende Seiten
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Datei oder Webseite
+	Link to:	Link zu:
+	Place in This Document	Aktuelles Dokument
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Spalte {n}
+	Header row	Überschriftszeile
+	No header row	Keine Überschriftszeile
+	My list has	Meine Liste hat
+# Table Layout › Formula dialog (#1210)
+	Formula:	Formel:
+	Paste function:	Funktion einfügen:
+# Reading Mode column widths (#1040)
+	Narrow	Schmal
+	Medium	Mittel

@@ -46,14 +46,21 @@ fn in_outline(s: &Session) -> Option<&'static str> {
     (s.view.mode != ViewMode::Outline).then_some("only in Outline view")
 }
 
+/// Runs another command as part of this one: it adds no undo checkpoint of its own, so one
+/// outline command is one undo step.
+fn run_joined(s: &mut Session, id: &str) -> CmdResult {
+    s.join_next_undo();
+    s.run(id, &json!({}))
+}
+
 const LEVEL: &str = r#"{"level": 1-9 | "body"}"#;
 const BLOCK: &str = r#"{"block"?: body paragraph index (default: the selection)}"#;
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("outline.promoteToHeading1", "Promote to Heading 1", "Outlining › Outline Tools", |s, _| set_levels(s, Some(1))),
-        CommandSpec::new("outline.promote", "Promote", "Outlining › Outline Tools", |s, _| s.run("para.promote", &json!({}))),
-        CommandSpec::new("outline.demote", "Demote", "Outlining › Outline Tools", |s, _| s.run("para.demote", &json!({}))),
+        CommandSpec::new("outline.promote", "Promote", "Outlining › Outline Tools", |s, _| run_joined(s, "para.promote")),
+        CommandSpec::new("outline.demote", "Demote", "Outlining › Outline Tools", |s, _| run_joined(s, "para.demote")),
         CommandSpec::new("outline.demoteToBody", "Demote to Body Text", "Outlining › Outline Tools", |s, _| set_levels(s, None)),
         CommandSpec::new("outline.level", "Outline Level", "Outlining › Outline Tools", |s, v| {
             let level = match v.get("level") {
@@ -67,8 +74,8 @@ pub fn specs() -> Vec<CommandSpec> {
             set_levels(s, level)
         })
         .params(LEVEL),
-        CommandSpec::new("outline.moveUp", "Move Up", "Outlining › Outline Tools", |s, _| s.run("para.moveUp", &json!({}))),
-        CommandSpec::new("outline.moveDown", "Move Down", "Outlining › Outline Tools", |s, _| s.run("para.moveDown", &json!({}))),
+        CommandSpec::new("outline.moveUp", "Move Up", "Outlining › Outline Tools", |s, _| run_joined(s, "para.moveUp")),
+        CommandSpec::new("outline.moveDown", "Move Down", "Outlining › Outline Tools", |s, _| run_joined(s, "para.moveDown")),
         CommandSpec::new("outline.expand", "Expand", "Outlining › Outline Tools", |s, v| expand(s, v, false))
             .key("Alt+Shift+=")
             .params(BLOCK)
@@ -150,6 +157,7 @@ pub fn specs() -> Vec<CommandSpec> {
             s.view.outline.first_line_only = p::bool(v, "value").unwrap_or(!s.view.outline.first_line_only);
             Ok(json!({"value": s.view.outline.first_line_only}))
         })
+        .key(super::non_mac("Alt+Shift+L"))
         .params(r#"{"value"?: bool}"#)
         .when(in_outline)
         .pure(),

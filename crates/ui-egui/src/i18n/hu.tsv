@@ -87,6 +87,9 @@
 	Book Title	Könyvcím
 	Bookmark	Könyvjelző
 	Bookmark name:	Könyvjelző neve:
+	Delete Bookmark	Könyvjelző törlése
+	Hidden bookmarks	Rejtett könyvjelzők
+	Sort by:	Rendezés:
 	Border Painter	Szegélyfestő
 	Border\nPainter	Szegély-\nfestő
 	Borders	Szegélyek
@@ -382,6 +385,8 @@
 	Labels	Címkék
 	Landscape	Fekvő
 	Language	Nyelv
+	{language} (no dictionary)	{language} (nincs szótár)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	A(z) {language} nyelvhez nincs telepítve helyesírási szótár, ezért nem ellenőrzi. A WordCraft a(z) {name} Hunspell-szótárat a WORDCRAFT_DICTIONARIES mappában és a szokásos rendszerhelyeken keresi.
 	Lasso	Lasszó
 	Last Column	Utolsó oszlop
 	Last commit	Utolsó commit
@@ -438,7 +443,7 @@
 	Multiple Pages	Több oldal
 	Name (A–Z)	Név (A–Z)
 	Name:	Név:
-	Narrow  0.5" all	Keskeny  0,5" mindenhol
+	Narrow  {size} all	Keskeny  {size} mindenhol
 	Navigation	Navigáció
 	Navigation Pane	Navigációs panel
 	New	Új
@@ -467,7 +472,7 @@
 	Nonbreaking Space	Nem törő szóköz
 	None	Nincs
 	Normal	Normál
-	Normal  1" all	Normál  1" mindenhol
+	Normal  {size} all	Normál  {size} mindenhol
 	Normal Indent	Normál behúzás
 	Normal Style	Normál stílus
 	Normal Table	Normál táblázat
@@ -1939,6 +1944,11 @@
 	Add Font…	Betűtípus hozzáadása…
 	Added Fonts	Hozzáadott betűtípusok
 	Remove Added Font	Hozzáadott betűtípus eltávolítása
+	Load System Installed Fonts…	Telepített rendszer-betűtípusok betöltése…
+	All system fonts are already available.	Minden rendszer-betűtípus elérhető már.
+	Local font access is not supported by your browser.	A böngészője nem támogatja a helyi betűtípusokhoz való hozzáférést.
+	Local font access was denied.	A helyi betűtípusokhoz való hozzáférés megtagadva.
+	Loaded {count} system fonts.	{count} rendszer-betűtípus betöltve.
 	Print Markup	Jelölések nyomtatása
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	PDF-ben, nyomtatásban és képen: megjegyzések az oldalak mellett és követett módosítások. Weboldal, Markdown és szöveg esetén: megjegyzéslista a végén.
 	Recent Colors	Legutóbbi színek
@@ -2451,6 +2461,16 @@
 	Reading Column Width	Olvasási oszlopszélesség
 	Reading Line Spacing	Olvasási sorköz
 	Reading Text Size	Olvasási szövegméret
+	Odd Banded Rows	Páratlan sávos sorok
+	Even Banded Rows	Páros sávos sorok
+	Odd Banded Columns	Páratlan sávos oszlopok
+	Even Banded Columns	Páros sávos oszlopok
+	Top Left Cell	Bal felső cella
+	Top Right Cell	Jobb felső cella
+	Bottom Left Cell	Bal alsó cella
+	Bottom Right Cell	Jobb alsó cella
+	Inside Horizontal Border	Belső vízszintes szegély
+	Inside Vertical Border	Belső függőleges szegély
 	Filter Recipients	Címzettek szűrése
 	Sort Recipients	Címzettek rendezése
 	Filter and Sort	Szűrés és rendezés
@@ -2553,6 +2573,24 @@
 	Set Proofing Language…	Nyelvi ellenőrzés nyelvének beállítása…
 	Language Preferences…	Nyelvi beállítások…
 	Title Bar	Címsáv
+	Printer	Nyomtató
+	Select a printer	Válasszon nyomtatót
+	Refresh printers	Nyomtatók frissítése
+	Two-sided printing	Kétoldalas nyomtatás
+	Printer default	Nyomtató alapértelmezése
+	One-sided	Egyoldalas
+	Two-sided: long edge	Kétoldalas: hosszú él
+	Two-sided: short edge	Kétoldalas: rövid él
+	Grayscale	Szürkeárnyalatos
+	Finding printers…	Nyomtatók keresése…
+	No printers found. Configure a system printer or export a PDF.	Nem található nyomtató. Állítson be egy rendszernyomtatót, vagy exportáljon PDF-et.
+	Printer discovery failed.	A nyomtatók keresése sikertelen.
+	Submitting print job…	Nyomtatási feladat küldése…
+	Print job submitted.	Nyomtatási feladat elküldve.
+	Print job submitted: {receipt}	Nyomtatási feladat elküldve: {receipt}
+	Print failed: the printing worker stopped.	A nyomtatás sikertelen: a nyomtatási folyamat leállt.
+	Print settings	Nyomtatási beállítások
+	Submit print job	Nyomtatási feladat küldése
 
 # Cross-reference dialog (#1003)
 	For which item:	Melyik elemhez:
@@ -2571,3 +2609,22 @@
 
 # Backstage › Recover (#586)
 	Recover	Helyreállítás
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Tükrözött margók
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Létező fájl vagy weblap
+	Link to:	Hivatkozás helye:
+	Place in This Document	Dokumentumon belüli hely
+# Table Layout › Sort dialog (#1205)
+	Column {n}	{n}. oszlop
+	Header row	Fejlécsor
+	No header row	Nincs fejlécsor
+	My list has	A listám tartalmaz
+# Table Layout › Formula dialog (#1210)
+	Formula:	Képlet:
+	Paste function:	Függvény beillesztése:
+# Reading Mode column widths (#1040)
+	Narrow	Keskeny
+	Medium	Közepes

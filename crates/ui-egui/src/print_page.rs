@@ -25,20 +25,37 @@ pub struct PrintSettings {
     pub collate: bool,
     /// The page shown in the preview (0-based).
     pub preview: usize,
+    /// `auto`, `portrait` or `landscape`.
+    pub orientation: String,
     /// The preview's zoom (1.0 is the page's real size), or `None` to fit the whole page.
     pub zoom: Option<f32>,
 }
 
 impl Default for PrintSettings {
     fn default() -> Self {
-        PrintSettings { range: "all".into(), pages: String::new(), parity: "all".into(), copies: 1, collate: true, preview: 0, zoom: None }
+        PrintSettings {
+            range: "all".into(),
+            pages: String::new(),
+            parity: "all".into(),
+            copies: 1,
+            collate: true,
+            preview: 0,
+            zoom: None,
+            orientation: "auto".into(),
+        }
     }
 }
 
 impl PrintSettings {
     /// The params of `ui.print` and `file.printPdf` for these settings.
     pub fn params(&self) -> Value {
-        let mut v = json!({"range": self.range, "parity": self.parity, "copies": self.copies, "collate": self.collate});
+        let mut v = json!({
+            "range": self.range,
+            "parity": self.parity,
+            "copies": self.copies,
+            "collate": self.collate,
+            "orientation": self.orientation,
+        });
         if self.range == "custom" {
             v["pages"] = json!(self.pages);
         }
@@ -48,6 +65,7 @@ impl PrintSettings {
 
 const RANGES: [(&str, &str); 4] = [("all", "All pages"), ("current", "Current page"), ("selection", "Selected pages"), ("custom", "Custom range")];
 const PARITIES: [(&str, &str); 3] = [("all", "All pages in the range"), ("odd", "Odd pages only"), ("even", "Even pages only")];
+const ORIENTATIONS: [(&str, &str); 3] = [("auto", "Auto orientation"), ("portrait", "Portrait"), ("landscape", "Landscape")];
 
 /// A choice list over `(id, label)` pairs; true when the choice changed.
 fn choice(ui: &mut Ui, salt: &str, current: &mut String, items: &[(&str, &str)]) -> bool {
@@ -178,6 +196,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     );
                 }
                 choice(ui, "print_parity", &mut app.ui.print.parity, &PARITIES);
+                ui.label(egui::RichText::new(tl!("Orientation")).font(medium(13.0)));
+                choice(ui, "print_orientation", &mut app.ui.print.orientation, &ORIENTATIONS);
 
                 match wordcraft_engine::print::plan(&app.ui.print.params(), total, current) {
                     Ok(plan) => {

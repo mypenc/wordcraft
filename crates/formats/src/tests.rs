@@ -618,6 +618,65 @@ fn hostile_importer_input_takes_linear_time() {
     }
 }
 
+/// Backtick runs that never close, each a different length, sent every code span and every link
+/// bracket scan over them looking for a closing run through the rest of the text: superlinear
+/// time on hostile Markdown.
+#[test]
+fn unmatched_backtick_runs_take_linear_time() {
+    use std::time::{Duration, Instant};
+    // Runs of 1, 2, … 2000 backticks (2 MB), none of them closed.
+    let runs = (1..=2000).map(|n| "`".repeat(n)).collect::<Vec<_>>().join(" ");
+    let cases = [runs.clone(), format!("{}{runs}{}", "[".repeat(8), "]".repeat(8)), format!("[{runs}")];
+    for text in cases {
+        let t = Instant::now();
+        let d = import("md", text.as_bytes()).unwrap().unwrap();
+        let plain = d.plain_text(Default::default());
+        let elapsed = t.elapsed();
+        eprintln!("{:?}... took {elapsed:?}", &text[..4]);
+        assert!(elapsed < Duration::from_secs(5), "{:?}... took {elapsed:?}", &text[..4]);
+        assert_eq!(plain.matches('`').count(), text.matches('`').count(), "every backtick stays text");
+    }
+}
+
+/// Code spans and brackets around backticks read as before the backtick runs were indexed.
+#[test]
+fn code_spans_and_links_around_backticks_read_as_before() {
+    // An escaped backtick before a span, a span holding a shorter run, a run nothing closes, a `]`
+    // inside a code span in link text, and link text with a backtick that nothing closes.
+    let flow = crate::markdown::parse("\\``e` `` a ` b `` then ``` and `c` [x `]` y](http://a.org) [p ` q](http://b.org) ``f");
+    let FBlock::Para(p) = &flow.blocks[0] else { panic!("{:?}", flow.blocks) };
+    let spans: Vec<(String, bool, Option<String>)> =
+        p.inlines.iter().filter_map(|i| if let model::Inline::Text(t, f) = i { Some((t.clone(), f.code, f.link.clone())) } else { None }).collect();
+    let code: Vec<&str> = spans.iter().filter(|s| s.1).map(|s| s.0.as_str()).collect();
+    assert_eq!(code, ["e", "a ` b", "c", "]"], "{spans:?}");
+    let linked = |url: &str| spans.iter().filter(|s| s.2.as_deref() == Some(url)).map(|s| s.0.as_str()).collect::<String>();
+    assert_eq!(linked("http://a.org"), "x ] y");
+    assert_eq!(linked("http://b.org"), "p ` q");
+    assert_eq!(p.text(), "`e a ` b then ``` and c x ] y p ` q ``f");
+}
+
+/// A `[` nothing closes, bracketed text that is not a link and links themselves used up the bracket
+/// scans' budget as if each had read the rest of the text: later links in the paragraph were plain
+/// text.
+#[test]
+fn brackets_do_not_turn_later_links_into_text() {
+    let links = |md: &str| {
+        let flow = crate::markdown::parse(md);
+        let FBlock::Para(p) = &flow.blocks[0] else { panic!("{:?}", flow.blocks) };
+        let mut urls: Vec<String> = p.inlines.iter().filter_map(|i| if let model::Inline::Text(_, f) = i { f.link.clone() } else { None }).collect();
+        urls.dedup();
+        urls
+    };
+    // An interval nothing closes, before a link.
+    assert_eq!(links("Intervals [0, 1) and [docs](http://x.org)"), ["http://x.org"]);
+    // References early in a long paragraph, a link at its end.
+    let refs = (1..=12).map(|n| format!("[{n}]")).collect::<Vec<_>>().join(" ");
+    assert_eq!(links(&format!("{refs} {}[docs](http://x.org)", "word ".repeat(4000))), ["http://x.org"]);
+    // Many links through one paragraph.
+    let urls: Vec<String> = (0..60).map(|n| format!("http://x.org/{n}")).collect();
+    assert_eq!(links(&urls.iter().map(|u| format!("[link]({u}) {}", "word ".repeat(20))).collect::<String>()), urls);
+}
+
 /// The bounded scans must not change how ordinary links, images, tags and entities read.
 #[test]
 fn bounded_scans_keep_ordinary_markdown_and_entities() {

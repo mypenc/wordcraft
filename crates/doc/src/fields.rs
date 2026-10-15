@@ -45,7 +45,7 @@ fn scan(story: StoryRef, bl: &Blocks, prefix: &mut Vec<u32>, depth: usize, out: 
                 let path = Path(prefix.clone());
                 for off in p.object_offsets() {
                     match p.object_at(off) {
-                        Some(InlineObject::FieldStart { instr, locked }) => {
+                        Some(InlineObject::FieldStart { instr, locked, .. }) => {
                             open.push((instr.clone(), *locked, Pos::new(story, path.clone(), off)));
                         }
                         Some(InlineObject::FieldEnd) => match open.pop() {

@@ -14,17 +14,24 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("caret.right", "Right", "Navigation", |s, v| lr(s, v, false)).key("Right").params(EXTEND).pure(),
         CommandSpec::new("caret.up", "Up", "Navigation", |s, v| vert(s, v, -1)).key("Up").params(EXTEND).pure(),
         CommandSpec::new("caret.down", "Down", "Navigation", |s, v| vert(s, v, 1)).key("Down").params(EXTEND).pure(),
-        // In a right-to-left paragraph the word to the left is the next one.
+        // In a right-to-left paragraph the word to the left is the next one. On macOS ⌘←/⌘→ go
+        // to the line's start and end, as in Word for Mac and every Mac text field (#954).
         CommandSpec::new("caret.wordLeft", "Word Left", "Navigation", |s, v| mv(s, v, if rtl_para(s) { word_right } else { word_left }))
-            .key("Mod+Left / Alt+Left")
+            .key(super::mac_or("Alt+Left", "Mod+Left / Alt+Left"))
             .params(EXTEND)
             .pure(),
         CommandSpec::new("caret.wordRight", "Word Right", "Navigation", |s, v| mv(s, v, if rtl_para(s) { word_left } else { word_right }))
-            .key("Mod+Right / Alt+Right")
+            .key(super::mac_or("Alt+Right", "Mod+Right / Alt+Right"))
             .params(EXTEND)
             .pure(),
-        CommandSpec::new("caret.home", "Line Start", "Navigation", |s, v| line(s, v, true)).key("Home").params(EXTEND).pure(),
-        CommandSpec::new("caret.end", "Line End", "Navigation", |s, v| line(s, v, false)).key("End").params(EXTEND).pure(),
+        CommandSpec::new("caret.home", "Line Start", "Navigation", |s, v| line(s, v, true))
+            .key(super::mac_or("Home / Mod+Left", "Home"))
+            .params(EXTEND)
+            .pure(),
+        CommandSpec::new("caret.end", "Line End", "Navigation", |s, v| line(s, v, false))
+            .key(super::mac_or("End / Mod+Right", "End"))
+            .params(EXTEND)
+            .pure(),
         CommandSpec::new("caret.paraUp", "Paragraph Up", "Navigation", |s, v| mv(s, v, para_up)).key("Mod+Up / Alt+Up").params(EXTEND).pure(),
         CommandSpec::new("caret.paraDown", "Paragraph Down", "Navigation", |s, v| mv(s, v, para_down))
             .key("Mod+Down / Alt+Down")

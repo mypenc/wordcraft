@@ -166,6 +166,9 @@
 	Bold	Напівжирний
 	Bookmark	Закладка
 	Bookmark name:	Назва закладки:
+	Delete Bookmark	Видалити закладку
+	Hidden bookmarks	Приховані закладки
+	Sort by:	Сортувати за:
 	Border Painter	Пензель меж
 	Border\nPainter	Пензель\nмеж
 	Borders	Межі
@@ -525,6 +528,8 @@
 	Labels	Етикетки
 	Landscape	Альбомна
 	Language	Мова
+	{language} (no dictionary)	{language} (немає словника)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Орфографічний словник для мови «{language}» не встановлено, тому текст не перевіряється. WordCraft шукає словник Hunspell {name} у теці WORDCRAFT_DICTIONARIES та в звичайних системних розташуваннях.
 	Lasso	Ласо
 	Last Column	Останній стовпець
 	Last commit	Останній коміт
@@ -580,7 +585,7 @@
 	Multiple Pages	Кілька сторінок
 	Name (A–Z)	Назва (А–Я)
 	Name:	Назва:
-	Narrow  0.5" all	Вузькі — усі по 0,5″
+	Narrow  {size} all	Вузькі — усі по {size}
 	Navigation	Навігація
 	Navigation Pane	Панель навігації
 	New	Новий
@@ -607,7 +612,7 @@
 	Nonbreaking Hyphen	Нерозривний дефіс
 	Nonbreaking Space	Нерозривний пробіл
 	None	Немає
-	Normal  1" all	Звичайні — усі по 1″
+	Normal  {size} all	Звичайні — усі по {size}
 	Normal Style	Звичайний стиль
 	Not available right now	Зараз недоступно
 	Not saved	Не збережено
@@ -1568,6 +1573,11 @@
 	Add Font…	Додати шрифт…
 	Added Fonts	Додані шрифти
 	Remove Added Font	Видалити доданий шрифт
+	Load System Installed Fonts…	Завантажити встановлені системні шрифти…
+	All system fonts are already available.	Усі системні шрифти вже доступні.
+	Local font access is not supported by your browser.	Ваш браузер не підтримує доступ до локальних шрифтів.
+	Local font access was denied.	У доступі до локальних шрифтів відмовлено.
+	Loaded {count} system fonts.	Завантажено системних шрифтів: {count}.
 	Recent Colors	Останні кольори
 	More Colors…	Інші кольори…
 	Standard	Стандартні
@@ -2093,6 +2103,16 @@
 	AutoFit Column by Double-Clicking	Добір ширини стовпця подвійним клацанням
 	Region:	Регіон:
 	Automatic ({region})	Автоматично ({region})
+	Odd Banded Rows	Непарні смугасті рядки
+	Even Banded Rows	Парні смугасті рядки
+	Odd Banded Columns	Непарні смугасті стовпці
+	Even Banded Columns	Парні смугасті стовпці
+	Top Left Cell	Ліва верхня клітинка
+	Top Right Cell	Права верхня клітинка
+	Bottom Left Cell	Ліва нижня клітинка
+	Bottom Right Cell	Права нижня клітинка
+	Inside Horizontal Border	Внутрішня горизонтальна межа
+	Inside Vertical Border	Внутрішня вертикальна межа
 	Text of the nearest paragraph with a given style (running headers)	Текст найближчого абзацу із заданим стилем (живі колонтитули)
 	Style name:	Назва стилю:
 # Mail merge: filter and sort recipients (#778)
@@ -2177,6 +2197,24 @@
 	Suggested	Пропоновані
 	Set Proofing Language…	Вибрати мову перевірки правопису…
 	Language Preferences…	Мовні параметри…
+	Printer	Принтер
+	Select a printer	Виберіть принтер
+	Refresh printers	Оновити принтери
+	Two-sided printing	Двосторонній друк
+	Printer default	За замовчуванням принтера
+	One-sided	Односторонній
+	Two-sided: long edge	Двосторонній: довгий край
+	Two-sided: short edge	Двосторонній: короткий край
+	Grayscale	Відтінки сірого
+	Finding printers…	Пошук принтерів…
+	No printers found. Configure a system printer or export a PDF.	Принтерів не знайдено. Налаштуйте системний принтер або експортуйте PDF.
+	Printer discovery failed.	Не вдалося знайти принтери.
+	Submitting print job…	Надсилання завдання на друк…
+	Print job submitted.	Завдання на друк надіслано.
+	Print job submitted: {receipt}	Завдання на друк надіслано: {receipt}
+	Print failed: the printing worker stopped.	Друк не вдався: процес друку зупинився.
+	Print settings	Параметри друку
+	Submit print job	Надіслати завдання на друк
 
 # Dictionaries folder (#1063)
 	Dictionaries	Словники
@@ -2188,3 +2226,22 @@
 
 # Backstage › Recover (#586)
 	Recover	Відновити
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Дзеркальні поля
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Файл або веб-сторінка
+	Link to:	Зв'язати з:
+	Place in This Document	Місце в документі
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Стовпець {n}
+	Header row	Рядок заголовка
+	No header row	Без рядка заголовка
+	My list has	Мій список містить
+# Table Layout › Formula dialog (#1210)
+	Formula:	Формула:
+	Paste function:	Вставити функцію:
+# Reading Mode column widths (#1040)
+	Narrow	Вузька
+	Medium	Середня

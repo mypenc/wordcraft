@@ -167,9 +167,20 @@ fn vectors() -> &'static Mutex<MediaCache<Option<Arc<Vector>>>> {
     C.get_or_init(|| Mutex::new(MediaCache { map: HashMap::new(), bytes: 0 }))
 }
 
-/// Decode an encoded image to a premultiplied pixmap.
+/// Largest side (pixels) a document picture may decode to: what a `Pixmap` can hold (`u16`
+/// sides, which [`premul_pixmap`] enforces after decoding). Applying it as a decode limit rejects
+/// a small file that declares a bigger image at header time, before anything is allocated.
+const MAX_DECODE_SIDE: u32 = u16::MAX as u32;
+
+/// Decode an encoded image to a premultiplied pixmap. The dimension limit above and the default
+/// allocation cap (512 MB, what `load_from_memory` applied) bound the decode during paint.
 pub fn decode_pixmap(bytes: &[u8]) -> Option<Pixmap> {
-    let img = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_DECODE_SIDE);
+    limits.max_image_height = Some(MAX_DECODE_SIDE);
+    reader.limits(limits);
+    let img = reader.decode().ok()?.to_rgba8();
     let (w, h) = img.dimensions();
     premul_pixmap(w, h, img.as_raw())
 }
@@ -1027,7 +1038,16 @@ pub fn shape_path(kind: ShapeKind, r: kurbo::Rect, corner: Option<u32>) -> BezPa
             kurbo::RoundedRect::from_rect(r, f64::from(radius)).to_path(0.1)
         }
         ShapeKind::Ellipse => kurbo::Ellipse::from_rect(r).to_path(0.1),
+        ShapeKind::FlowchartOr => {
+            let mut p = kurbo::Ellipse::from_rect(r).to_path(0.1);
+            p.move_to((r.x0, cy));
+            p.line_to((r.x1, cy));
+            p.move_to((cx, r.y0));
+            p.line_to((cx, r.y1));
+            p
+        }
         ShapeKind::Triangle => poly(&[(cx, r.y0), (r.x1, r.y1), (r.x0, r.y1)]),
+        ShapeKind::RightTriangle => poly(&[(r.x0, r.y0), (r.x1, r.y1), (r.x0, r.y1)]),
         ShapeKind::Diamond => poly(&[(cx, r.y0), (r.x1, cy), (cx, r.y1), (r.x0, cy)]),
         // DrawingML's `line`: top-left to bottom-right (flips give the other directions).
         ShapeKind::Line => {
@@ -1603,8 +1623,23 @@ mod tests {
     #[test]
     fn shapes_have_paths() {
         let r = kurbo::Rect::new(0.0, 0.0, 10.0, 10.0);
-        for k in [ShapeKind::Rectangle, ShapeKind::Ellipse, ShapeKind::Star, ShapeKind::Heart, ShapeKind::Arrow, ShapeKind::Line] {
+        for k in
+            [ShapeKind::Rectangle, ShapeKind::Ellipse, ShapeKind::FlowchartOr, ShapeKind::Star, ShapeKind::Heart, ShapeKind::Arrow, ShapeKind::Line]
+        {
             assert!(!shape_path(k, r, None).elements().is_empty());
+        }
+    }
+
+    #[test]
+    fn flowchart_or_spokes() {
+        let r = kurbo::Rect::new(0.0, 0.0, 10.0, 10.0);
+        let path = shape_path(ShapeKind::FlowchartOr, r, None);
+        let elements = path.elements();
+        for pair in [
+            [kurbo::PathEl::MoveTo((0.0, 5.0).into()), kurbo::PathEl::LineTo((10.0, 5.0).into())],
+            [kurbo::PathEl::MoveTo((5.0, 0.0).into()), kurbo::PathEl::LineTo((5.0, 10.0).into())],
+        ] {
+            assert!(elements.windows(2).any(|w| w == pair), "missing spoke {pair:?}");
         }
     }
 

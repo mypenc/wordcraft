@@ -820,14 +820,18 @@ fn toc_ui(app: &mut WordApp, ui: &mut Ui, f: &mut TocForm) -> Next {
     if ok || cancel { Next::Close } else { Next::Stay }
 }
 
-fn toc_options_ui(_app: &mut WordApp, ui: &mut Ui, f: &mut TocForm, was: &TocForm) -> Next {
+fn toc_options_ui(app: &mut WordApp, ui: &mut Ui, f: &mut TocForm, was: &TocForm) -> Next {
     heading(ui, "Collect entries from:");
     ui.checkbox(&mut f.heading_styles, crate::i18n::fmt(tl!("Heading styles (levels 1–{n})"), &[("n", &f.levels.to_string())]));
     ui.label(tl!("Other styles and their TOC level:"));
+    // A solid scroll bar takes its own room beside the list instead of floating over the level boxes.
+    ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
     egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
         egui::Grid::new("toc_styles").num_columns(2).spacing(vec2(10.0, 3.0)).show(ui, |ui| {
             for (name, level) in f.style_levels.iter_mut() {
-                ui.label(name.as_str());
+                // Built-in styles read in the interface language; the document keeps the English name.
+                let shown = app.session.doc.styles.styles.iter().find(|st| st.name == *name).map_or_else(|| name.clone(), crate::i18n::style_name);
+                ui.label(shown);
                 ui.add(egui::DragValue::new(level).range(0..=9).custom_formatter(|v, _| if v < 0.5 { String::new() } else { format!("{v:.0}") }));
                 ui.end_row();
             }

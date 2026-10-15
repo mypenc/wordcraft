@@ -54,6 +54,110 @@ fn mirrored_margins_put_the_inside_margin_toward_the_binding() {
 }
 
 #[test]
+fn inside_and_outside_floats_swap_sides_on_even_pages() {
+    // #1181: shapes Word places in the outside margin of a book (mirrored margins) all came out
+    // in the right margin. Inside 108 plus a 10pt gutter, outside 36; the paragraph on page 2
+    // carries the same six shapes as page 1's, told apart by their widths.
+    use super::tests::{rect_shape, shapes};
+    use wordcraft_doc::para::{Anchor, Float, FloatAlign, Wrap};
+    let mut d = Document::from_text("Odd page\nEven page");
+    d.last_section.margin_left = 108.0;
+    d.last_section.margin_right = 36.0;
+    d.last_section.gutter = 10.0;
+    d.settings.mirror_margins = true;
+    if let Some(Block::Para(p)) = d.body.get_mut(1).map(Arc::make_mut) {
+        p.props.page_break_before = Some(true);
+    }
+    let floats = [
+        (Anchor::Margin, Some(FloatAlign::Outside), 0.0),
+        (Anchor::OutsideMargin, Some(FloatAlign::Center), 0.0),
+        (Anchor::InsideMargin, Some(FloatAlign::Center), 0.0),
+        (Anchor::Page, Some(FloatAlign::Inside), 0.0),
+        (Anchor::Page, None, 10.0),
+        (Anchor::LeftMargin, Some(FloatAlign::End), 0.0),
+    ];
+    for block in 0..2 {
+        for (i, (h_rel, h_align, x)) in floats.iter().enumerate() {
+            let f = Float { wrap: Wrap::InFrontOfText, h_rel: *h_rel, h_align: *h_align, x: *x, ..Default::default() };
+            d.insert_object(&Pos::body(block, 0), rect_shape(20.0 + 2.0 * i as f32, 10.0, f), &Default::default()).unwrap();
+        }
+    }
+    // Left edge of shape `i` on an odd and on an even page (page coordinates).
+    let want = |i: usize, even: bool| {
+        let w = 20.0 + 2.0 * i as f32;
+        match (i, even) {
+            (0, false) => 576.0 - w,
+            (0, true) => 36.0,
+            (1, false) => 576.0 + (36.0 - w) / 2.0,
+            (1, true) => (36.0 - w) / 2.0,
+            (2, false) => (118.0 - w) / 2.0,
+            (2, true) => 494.0 + (118.0 - w) / 2.0,
+            (3, false) => 0.0,
+            (3, true) => 612.0 - w,
+            (4, _) => 10.0,
+            (5, false) => 118.0 - w,
+            _ => 36.0 - w,
+        }
+    };
+    let l = lay(&d);
+    assert_eq!(l.pages.len(), 2);
+    for (pi, page) in l.pages.iter().enumerate() {
+        let r = shapes(&page.items);
+        assert_eq!(r.len(), floats.len(), "page {pi}: {r:?}");
+        for (i, f) in floats.iter().enumerate() {
+            let w = 20.0 + 2.0 * i as f32;
+            let got = r.iter().find(|r| (r.w - w).abs() < 0.01).unwrap();
+            let x = want(i, page.number % 2 == 0);
+            assert!((got.x - x).abs() < 0.01, "page {} shape {i} ({:?}): at {}, want {x}", page.number, f, got.x);
+        }
+    }
+    // Without mirrored margins the margins stay put, but inside and outside still follow the
+    // page (ECMA-376 §20.4.3.4): the inside of an even page is its right side.
+    d.settings.mirror_margins = false;
+    let l = lay(&d);
+    let r = shapes(&l.pages[1].items);
+    let at = |w: f32| r.iter().find(|r| (r.w - w).abs() < 0.01).unwrap().x;
+    assert!((at(20.0) - 118.0).abs() < 0.01, "outside of the margins on page 2: {}", at(20.0));
+    assert!((at(26.0) - (612.0 - 26.0)).abs() < 0.01, "inside of page 2: {}", at(26.0));
+    assert!((at(28.0) - 10.0).abs() < 0.01, "{}", at(28.0));
+}
+
+#[test]
+fn outside_floating_tables_swap_sides_on_even_pages() {
+    // #1181, for a floating table (`w:tblpXSpec="outside"`): on page 2 of a book the outside is
+    // the left. One positioned from the page edge stays there on both pages.
+    use wordcraft_doc::para::{Anchor, FloatAlign};
+    use wordcraft_doc::props::TableFloat;
+    let table_x = |page_two: bool, float: TableFloat| {
+        let mut d = Document::from_text("First\nSecond\nAfter");
+        d.last_section.margin_left = 108.0;
+        d.last_section.margin_right = 36.0;
+        d.last_section.gutter = 10.0;
+        d.settings.mirror_margins = true;
+        if let Some(Block::Para(p)) = d.body.get_mut(1).map(Arc::make_mut) {
+            p.props.page_break_before = Some(page_two);
+        }
+        let mut t = wordcraft_doc::Table::new(1, 1, 100.0);
+        t.props.float = Some(float);
+        d.insert_block(StoryRef::Body, &Path::top(2), Block::Table(t)).unwrap();
+        let l = lay(&d);
+        let page = &l.pages[page_two as usize];
+        let x = page.items.iter().find_map(|it| match it {
+            Placed::Lines { story: StoryRef::Body, path, x, .. } if path.0.len() > 1 => Some(*x),
+            _ => None,
+        });
+        x.unwrap()
+    };
+    let outside = TableFloat { h_rel: Anchor::Margin, v_rel: Anchor::Paragraph, h_align: Some(FloatAlign::Outside), ..Default::default() };
+    let (odd, even) = (table_x(false, outside), table_x(true, outside));
+    assert!(odd > 576.0 - 100.0 - 0.01 && odd < 576.0, "odd page: at the right margin, text at {odd}");
+    assert!(even > 36.0 - 0.01 && even < 36.0 + 20.0, "even page: at the left margin, text at {even}");
+    let from_page = TableFloat { h_rel: Anchor::Page, v_rel: Anchor::Paragraph, x: 200.0, ..Default::default() };
+    let (odd, even) = (table_x(false, from_page), table_x(true, from_page));
+    assert!((odd - even).abs() < 0.01, "same place from the page edge: {odd} and {even}");
+}
+
+#[test]
 fn a_tall_footer_pushes_the_body_up() {
     // #453: an eight-line footer reaches far above the 72pt bottom margin.
     let mut d = Document::from_text(&"Body line\n".repeat(60));
@@ -160,7 +264,8 @@ fn caret_in_a_continued_footnote_is_found_on_its_page() {
 /// own pages). The footer shows each letter's last page, not the file's stale result.
 #[test]
 fn page_references_in_footers_show_their_bookmarks_page() {
-    let field = |instr: &str| InlineObject::Field { instr: instr.into(), result: "9".into(), locked: false, code: false };
+    let field =
+        |instr: &str| InlineObject::Field { instr: instr.into(), result: "9".into(), locked: false, dirty: false, code: false, form: String::new() };
     let footer = |d: &mut Document, mark: &str| {
         let mut p = Paragraph::with_text("Page  of ", Default::default());
         p.insert_object(5, field("PAGE"), &Default::default()).unwrap();
@@ -251,7 +356,14 @@ fn page_ref_footer(d: &mut Document, marks: &[&str]) -> u32 {
     let mut p = Paragraph::new();
     for mark in marks {
         let n = p.len();
-        let field = InlineObject::Field { instr: format!("PAGEREF {mark}"), result: "9".into(), locked: false, code: false };
+        let field = InlineObject::Field {
+            instr: format!("PAGEREF {mark}"),
+            result: "9".into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+        };
         p.insert_object(n, field, &Default::default()).unwrap();
     }
     let id = d.add_part(PartKind::Footer, vec![para_block(p)]);
@@ -314,7 +426,8 @@ fn page_references_in_footer_text_boxes_are_resolved() {
     use wordcraft_doc::para::{Float, ShapeKind, Wrap};
     let text_box = |d: &mut Document| {
         let mut p = Paragraph::new();
-        let field = InlineObject::Field { instr: "PAGEREF End".into(), result: "9".into(), locked: false, code: false };
+        let field =
+            InlineObject::Field { instr: "PAGEREF End".into(), result: "9".into(), locked: false, dirty: false, code: false, form: String::new() };
         p.insert_object(0, field, &Default::default()).unwrap();
         let story = d.add_part(PartKind::TextBox, vec![para_block(p)]);
         InlineObject::Shape {
@@ -358,4 +471,36 @@ fn page_references_in_footer_text_boxes_are_resolved() {
     let l = lay(&d);
     assert!(box_text(&l, footer_box).iter().all(|t| t == "2") && !box_text(&l, footer_box).is_empty(), "{:?}", box_text(&l, footer_box));
     assert_eq!(box_text(&l, body_box), ["9"]);
+}
+
+#[test]
+fn widow_control_moves_a_three_line_paragraph_whole() {
+    // A three-line paragraph with room for two at the bottom of a page can't leave a widow (two
+    // and one) nor an orphan (one and two): Word moves it whole. A four-line one splits two and
+    // two. Sweep the paragraph down the page a point at a time and check every split.
+    let mut split4 = false;
+    for (want, words) in [(3usize, 45usize), (4, 55)] {
+        for (fill, shift) in (30usize..60).flat_map(|f| (0..15).step_by(2).map(move |s| (f, s))) {
+            let filler = "Filler line.\n".repeat(fill);
+            let mut d = Document::from_text(&format!("{filler}{}\nAfter.", "word ".repeat(words)));
+            d.format_paragraphs(&Pos::body(0, 0), &Pos::body(0, 0), &|p| p.space_before = Some(shift as f32)).unwrap();
+            let l = lay(&d);
+            let pieces: Vec<(usize, usize)> = l
+                .pages
+                .iter()
+                .filter_map(|p| {
+                    p.items.iter().find_map(|it| match it {
+                        Placed::Lines { story: StoryRef::Body, path, para, l0, l1, .. } if *path == Path::top(fill) => {
+                            Some((l1 - l0, para.lines.len()))
+                        }
+                        _ => None,
+                    })
+                })
+                .collect();
+            assert!(pieces.iter().all(|&(_, n)| n == want), "{words} words: {pieces:?}");
+            assert!(pieces.iter().all(|&(c, _)| c >= 2), "shift {shift}, {want} lines split as {pieces:?}");
+            split4 |= want == 4 && pieces.len() == 2;
+        }
+    }
+    assert!(split4, "the sweep never took the paragraph across a page break");
 }

@@ -490,6 +490,12 @@ impl Document {
         out
     }
 
+    /// How many content controls allow form filling (`w:lock` content editing) across every
+    /// story; 0 means a `w:edit="forms"` document has nothing left editable.
+    pub fn fillable_controls(&self) -> usize {
+        self.control_stories().into_iter().map(|story| self.control_ranges(story).iter().filter(|r| r.control.lock.can_edit()).count()).sum()
+    }
+
     /// The innermost content control holding `p`.
     pub fn control_at(&self, p: &Pos) -> Option<ControlRange> {
         let para = self.para_at(p)?;

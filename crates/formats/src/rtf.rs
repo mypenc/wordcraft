@@ -9,9 +9,9 @@
 //!
 //! Import: a tolerant reader for groups and destinations (unknown `\*` destinations, headers,
 //! footers, notes and objects are skipped), `\par \line \tab \page`, `\uN` with `\ucN`
-//! fallback skipping, `\'hh` and 8-bit text in the document's code page (`\ansicpg`) or the
-//! current font's (`\fcharset`, `\cpg`: Cyrillic, Central European, Greek…; Windows-1252 when
-//! none is named), the formatting words above, stylesheet-based
+//! fallback skipping, `\'hh` and 8-bit text in the document's code page (`\ansicpg`, `\mac`, `\pc`, `\pca`) or
+//! the current font's (`\fcharset`, `\cpg`: Cyrillic, Central European, Greek, Mac OS Roman…;
+//! Windows-1252 when none is named), the formatting words above, stylesheet-based
 //! headings and `\outlinelevel`, lists through `\ls`/`\ilvl`, fields, bookmarks, pictures and
 //! tables. Group nesting and picture sizes are capped.
 
@@ -173,7 +173,10 @@ impl Writer {
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
         let body = if ctl.is_empty() { esc(t) } else { format!("{{{ctl} {}}}", esc(t)) };
-        match &f.link {
+        // A script, `file:`, UNC or other non-web target is written as plain text, as the HTML and
+        // Markdown exporters do: Word follows a HYPERLINK field's target on click, and a UNC one
+        // leaks the reader's NTLM credentials.
+        match f.link.as_deref().filter(|l| wordcraft_doc::link::is_safe_href(l)) {
             Some(l) => {
                 out.push_str(&format!("{{\\field{{\\*\\fldinst{{HYPERLINK \"{}\"}}}}{{\\fldrslt{{{}}}}}}}", esc(&l.replace('"', "%22")), body));
             }
@@ -186,8 +189,9 @@ impl Writer {
             "png" => (img.data.to_vec(), "\\pngblip"),
             "jpeg" | "jpg" => (img.data.to_vec(), "\\jpegblip"),
             _ => {
-                // Re-encode other formats as PNG.
-                let Ok(dec) = image::load_from_memory(&img.data) else { return };
+                // Re-encode other formats as PNG, bounding the decode so a tiny file declaring
+                // huge dimensions can't exhaust memory on export.
+                let Some(dec) = model::decode_bounded(&img.data) else { return };
                 let mut buf = Vec::new();
                 if dec.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png).is_err() {
                     return;
@@ -1083,7 +1087,7 @@ impl Reader {
     /// default font's, else the document's.
     fn byte_char(&self, b: u8) -> char {
         let cp = self.st.cp.or_else(|| self.font_cps.get(&self.deff).copied()).unwrap_or(if self.ansicpg == 0 { 1252 } else { self.ansicpg });
-        wordcraft_doc::encoding::windows_byte(cp, b)
+        wordcraft_doc::encoding::code_page_byte(cp, b)
     }
 
     fn commit_style(&mut self) {
@@ -1477,7 +1481,8 @@ impl Reader {
                 }
                 return;
             }
-            Dest::FontTbl => {
+            // Font names take Unicode escapes (with fallback skipping) like the body.
+            Dest::FontTbl if !matches!(w, "u" | "uc") => {
                 match w {
                     "f" => {
                         self.font_cur = pv;
@@ -1486,11 +1491,16 @@ impl Reader {
                     }
                     "fcharset" => self.font_cp_cur = wordcraft_doc::encoding::charset_code_page(pv),
                     // A font's explicit code page (`\cpg1251`) wins over its charset.
-                    "cpg" if pv > 0 && wordcraft_doc::encoding::SINGLE_BYTE_CODE_PAGES.contains(&(pv as u16)) => self.font_cp_cur = Some(pv as u16),
+                    "cpg" => {
+                        if let Some(cp) = u16::try_from(pv).ok().filter(|cp| wordcraft_doc::encoding::is_byte_code_page(*cp)) {
+                            self.font_cp_cur = Some(cp);
+                        }
+                    }
                     _ => {}
                 }
                 return;
             }
+            Dest::FontTbl => {}
             Dest::ColorTbl => {
                 let v = pv.clamp(0, 255) as u8;
                 match w {
@@ -1651,10 +1661,15 @@ impl Reader {
             }
             "fs" => self.st.fmt.size = if pv > 0 { Some((pv as f32 / 2.0).clamp(1.0, 1638.0)) } else { None },
             "ansicpg" => {
-                if pv > 0 && wordcraft_doc::encoding::SINGLE_BYTE_CODE_PAGES.contains(&(pv as u16)) {
-                    self.ansicpg = pv as u16;
+                if let Some(cp) = u16::try_from(pv).ok().filter(|cp| wordcraft_doc::encoding::is_byte_code_page(*cp)) {
+                    self.ansicpg = cp;
                 }
             }
+            // The Macintosh and IBM PC character sets: 8-bit text is Mac OS Roman, or DOS code
+            // page 437 (`\pc`) or 850 (`\pca`) (#1653).
+            "mac" if self.ansicpg == 0 => self.ansicpg = wordcraft_doc::encoding::MAC_ROMAN_CODE_PAGE,
+            "pc" if self.ansicpg == 0 => self.ansicpg = 437,
+            "pca" if self.ansicpg == 0 => self.ansicpg = 850,
             "deff" => self.deff = pv,
             "f" => {
                 self.st.cp = self.font_cps.get(&pv).copied();
@@ -1908,7 +1923,7 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
                         r.info_depth = Some(r.depth());
                     }
                     if r.skip_chars > 0
-                        && matches!(r.st.dest, Dest::Body | Dest::Info(_) | Dest::FldInst | Dest::Bookmark)
+                        && matches!(r.st.dest, Dest::Body | Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::FontTbl)
                         && !matches!(word, "par" | "pard" | "cell" | "row")
                     {
                         r.skip_chars -= 1;
@@ -2245,6 +2260,29 @@ mod tests {
     }
 
     #[test]
+    fn unicode_escapes_in_font_names() {
+        // Ordinary fallback, hex fallback and \uc0 all give "Café Sans"; the fallback is not kept.
+        for name in [r"Caf\u233? Sans", r"Caf\u233\'e9 Sans", r"\uc0 Caf\u233  Sans", r"\uc2 Caf\u233\'e9\'e9 Sans"] {
+            let rtf = format!(r"{{\rtf1\ansi\deff0{{\fonttbl{{\f0 {name};}}{{\f1 \u923?ambda;}}}}\plain x {{\f1 y}}\par}}");
+            let d = import(rtf.as_bytes()).unwrap();
+            assert_eq!(d.styles.default_chr.font.as_deref(), Some("Café Sans"), "{name}");
+            // A body run in a Unicode-named font keeps that name.
+            let f = parse(rtf.as_bytes()).unwrap();
+            let y_font = f.blocks.iter().find_map(|b| match b {
+                FBlock::Para(p) => p.inlines.iter().find_map(|i| match i {
+                    Inline::Text(t, fmt) if t.trim() == "y" => fmt.font.clone(),
+                    _ => None,
+                }),
+                FBlock::Table(_) => None,
+            });
+            assert_eq!(y_font.as_deref(), Some("Λambda"), "{name}");
+            // Our export writes font names as `\uN?`; reading it back gives the same name.
+            let back = import(export(&d).as_bytes()).unwrap();
+            assert_eq!(back.styles.default_chr.font.as_deref(), Some("Café Sans"), "{name}");
+        }
+    }
+
+    #[test]
     fn page_size_and_margins() {
         let d = import(br"{\rtf1\ansi\paperw11906\paperh16838\margl1134\margr850\margt1134\margb1134 x\par}").unwrap();
         let s = &d.last_section;
@@ -2327,6 +2365,20 @@ mod tests {
         // Raw 8-bit text (not escaped) follows the same code page.
         let f = parse(b"{\\rtf1\\ansi\\ansicpg1251 \xc4\xee\xec\\par}").unwrap();
         assert_eq!(texts(&f), ["Normal:Дом"]);
+        // #1653: a Macintosh document (LibreOffice's fdo85889-mac.rtf) is Mac OS Roman, and so is
+        // a font with the Mac charset in a Windows document.
+        let f = parse(br"{\rtf1\mac \deff0{\fonttbl{\f0\fmodern Helvetica;}}\pard\f0\fs20 \'f1\'f2\'f3\par}").unwrap();
+        assert_eq!(texts(&f), ["Normal:ÒÚÛ"]);
+        let f = parse(br"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}{\f1\fcharset77 Geneva;}}caf\'e9 {\f1 caf\'8e \'d2ok\'d3}\par}").unwrap();
+        assert_eq!(texts(&f), ["Normal:café café “ok”"]);
+        // DOS documents: `\pc` is code page 437, `\pca` 850; a font can name one with `\cpg`.
+        let f = parse(br"{\rtf1\pc\deff0{\fonttbl{\f0 Courier;}}caf\'82 \'a0 la carte\par}").unwrap();
+        assert_eq!(texts(&f), ["Normal:café á la carte"]);
+        let f = parse(br"{\rtf1\pca\deff0{\fonttbl{\f0 Courier;}{\f1\cpg437 Courier;}}\'9d {\f1 \'9d}\par}").unwrap();
+        assert_eq!(texts(&f), ["Normal:Ø ¥"]);
+        // A code page number out of range is ignored, not truncated to another one.
+        let f = parse(br"{\rtf1\ansi\ansicpg65973 caf\'e9\par}").unwrap();
+        assert_eq!(texts(&f), ["Normal:café"]);
     }
 
     #[test]

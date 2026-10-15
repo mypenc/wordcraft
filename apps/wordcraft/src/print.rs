@@ -26,7 +26,7 @@ pub fn finish_pending_jobs() {
 }
 
 pub fn submit() -> Submit {
-    Box::new(|bytes, settings: Settings, collate| {
+    Box::new(|bytes, settings: Settings, collate, options| {
         let (sender, receiver) = std::sync::mpsc::channel();
         let worker = std::thread::Builder::new().name("print-submit".into()).spawn(move || {
             let job = craft_print::Job {
@@ -41,7 +41,7 @@ pub fn submit() -> Submit {
                 grayscale: settings.grayscale,
                 scaling: craft_print::Scaling::ShrinkToFit,
                 title: "WordCraft document".into(),
-                ..Default::default()
+                options,
             };
             let _ = sender.send(craft_print::submit(&bytes, &job).map_err(|error| error.to_string()));
         });

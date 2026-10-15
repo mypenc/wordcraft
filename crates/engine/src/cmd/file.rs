@@ -66,14 +66,14 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("file.rename", "Rename Document", "File › Info", rename).params(r#"{"name": string (document name without its extension)}"#).pure(),
         CommandSpec::new("file.new", "New", "File", new).key("Mod+N").params(r#"{"template"?: "blank|sample|letter|resume|report"}"#).pure(),
         CommandSpec::new("file.open", "Open", "File", open)
-            .key("Mod+O / Mod+F12")
+            .key("Mod+O / Mod+F12 / Mod+Alt+F2")
             .params(r#"{"path": string, "data"?: base64 (the file's bytes; `path` then only names it), "password"?: string (for a password-protected Word document)}"#)
             .pure(),
         CommandSpec::new("file.save", "Save", "File", save)
-            .key("Mod+S / Shift+F12")
+            .key("Mod+S / Shift+F12 / Alt+Shift+F2")
             .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup), "format"?: "wordml2003" (an .xml file as a Word 2003 XML Document) | "flatopc" (as a Word XML Document, the default; saving over a Word 2003 XML file keeps that format)}"#)
             .pure(),
-        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key("F12").params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save)}"#).pure(),
+        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key(super::mac_or("F12 / Mod+Shift+S", "F12 / Alt+F2")).params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save)}"#).pure(),
         // Pure: the password must not land in Repeat or a recorded macro, and it isn't an edit
         // to undo; it marks the document as changed itself.
         CommandSpec::new("file.encrypt", "Encrypt with Password", "File › Info › Protect Document", encrypt)
@@ -107,13 +107,14 @@ pub fn specs() -> Vec<CommandSpec> {
             s.ui_requests.push(json!({"open": "print"}));
             sel_result(s)
         })
-        .key("Mod+P / Mod+Shift+F12 / Mod+F2")
+        .key("Mod+P / Mod+Shift+F12 / Mod+F2 / Mod+Alt+I")
         .pure(),
         CommandSpec::new("file.close", "Close", "File", |s, _| {
             s.ui_requests.push(json!({"close": true}));
             sel_result(s)
         })
         .key("Mod+W / Mod+F4")
+        .params(r#"{"force"?: bool (desktop app's control channel and MCP bridge only: without it a document with unsaved changes is an error and stays open; with it the changes are discarded. Headless sessions never ask)}"#)
         .pure(),
         CommandSpec::new("file.properties", "Properties", "File › Info", properties)
             .params(r#"{"title"?, "subject"?, "author"?, "keywords"?, "comments"?, "category"?, "custom"?: {name: string | null (removes)}}"#),
@@ -146,7 +147,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("document.inspect", "Inspect Document", "Agents", inspect).params(r#"{"text"?: bool}"#).pure(),
         CommandSpec::new("document.text", "Document Text", "Agents", |s, v| {
             let story = super::story_param(s, v);
-            Ok(json!({"text": s.doc.plain_text(story)}))
+            Ok(json!({"text": s.doc.final_text(story)}))
         })
         .pure(),
         CommandSpec::new("document.paragraph", "Paragraph Details", "Agents", paragraph).params(r#"{"path": [n], "story"?: Story}"#).pure(),
@@ -182,19 +183,21 @@ fn new(s: &mut Session, v: &Value) -> CmdResult {
         "letter" => crate::sample::letter(),
         "resume" => crate::sample::resume(),
         "report" => crate::sample::report(),
-        // The Normal template: the region's paper (#838), written in the editing language (the
-        // templates' text is English).
-        _ => {
-            let mut d = s.blank_document();
-            if let Some(lang) = &s.editing_lang {
-                d.styles.default_chr.lang = Some(lang.clone());
-            }
-            d
-        }
+        _ => normal_document(s),
     };
     s.set_document(doc);
     s.path = None;
     sel_result(s)
+}
+
+/// A blank document on the Normal template: the region's paper (#838), written in the editing
+/// language (the templates' text is English).
+fn normal_document(s: &Session) -> Document {
+    let mut d = s.blank_document();
+    if let Some(lang) = &s.editing_lang {
+        d.styles.default_chr.lang = Some(lang.clone());
+    }
+    d
 }
 
 fn open(s: &mut Session, v: &Value) -> CmdResult {
@@ -205,7 +208,15 @@ fn open(s: &mut Session, v: &Value) -> CmdResult {
     let password = p::str(v, "password");
     let (mut doc, encrypted) = if let Some(data) = p::str(v, "data") {
         let bytes = super::insert::base64_decode(data).ok_or_else(|| CmdError::Params("bad base64".into()))?;
-        crate::io::open_bytes_in(path, &bytes, password, &s.region()).map_err(CmdError::Failed)?
+        // An empty file (File Explorer's New › Microsoft Word Document makes one) opens as a new
+        // blank document that saves back to it (#1384).
+        if bytes.is_empty() {
+            (normal_document(s), false)
+        } else {
+            crate::io::open_bytes_in(path, &bytes, password, &s.region()).map_err(CmdError::Failed)?
+        }
+    } else if crate::io::is_empty_file(std::path::Path::new(path)) {
+        (normal_document(s), false)
     } else {
         crate::io::open_path_in(std::path::Path::new(path), password, &s.region()).map_err(CmdError::Failed)?
     };

@@ -9,8 +9,8 @@
 //!
 //! Everything read here comes from other programs: sizes are capped as it is read.
 //!
-//! Written here: a copy holding an equation puts HTML (the equation as MathML) beside its text
-//! (#816), for programs that read MathML (pasting into Word and LibreOffice not yet verified). arboard sets HTML with a
+//! Written here: a copy puts HTML beside its text, so other programs keep its formatting (#1523),
+//! with equations as MathML (#816; pasting into Word and LibreOffice not yet verified). arboard sets HTML with a
 //! text alternative on every desktop platform; formats of other names (Word's "Office Open XML"
 //! with OMML, #1297) it can't, so they aren't offered.
 

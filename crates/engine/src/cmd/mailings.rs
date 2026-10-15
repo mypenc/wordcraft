@@ -475,7 +475,14 @@ fn insert_field(s: &mut Session, instr: &str, placeholder: &str) -> CmdResult {
     let at = delete_selection(s)?;
     let end = s.doc.insert_object(
         &at,
-        InlineObject::Field { instr: instr.to_string(), result: placeholder.to_string(), locked: false, code: false },
+        InlineObject::Field {
+            instr: instr.to_string(),
+            result: placeholder.to_string(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+        },
         &props,
     )?;
     s.sel = Selection::caret(end);
@@ -1382,7 +1389,7 @@ fn labels(s: &mut Session, v: &Value) -> CmdResult {
             if !content.is_empty() {
                 made += 1;
             }
-            cell.props.valign = wordcraft_doc::props::VAlign::Center;
+            cell.props.valign = Some(wordcraft_doc::props::VAlign::Center);
             cell.blocks = content
                 .split('\n')
                 .take(20)

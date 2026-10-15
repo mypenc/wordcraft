@@ -7,7 +7,7 @@
 //! - each body paragraph is a **paragraph**, a **heading** (with its outline level) or a **list
 //!   item** (with its list level, grouped into lists), holding one **text run** per laid-out line
 //!   with its characters' screen positions, so a reader can follow the caret by character, word
-//!   and line and point at text;
+//!   and line and point at text, and a magnifier can keep the caret in view;
 //! - tables are **table → row → cell**, pictures and charts **images** named by their alt text,
 //!   hyperlinks **links** around their text runs; list numbers are **list markers**.
 //!
@@ -365,11 +365,19 @@ impl Builder<'_> {
                     }
                 }
                 lb.run.link = link;
-                let (x0, x1) = (line.cl_left(k).unwrap_or(0.0), line.cl_right(k).unwrap_or(0.0));
-                push_char(&mut lb.run, text, x0.min(x1), (x1 - x0).abs());
+                // A line break ends its line as the paragraph mark does, and takes the same room.
+                let (x, w) = if cl.kind == ClKind::LineBreak {
+                    line.mark_box()
+                } else {
+                    let (x0, x1) = (line.cl_left(k).unwrap_or(0.0), line.cl_right(k).unwrap_or(0.0));
+                    (x0.min(x1), (x1 - x0).abs())
+                };
+                push_char(&mut lb.run, text, x, w);
             }
             if line.end == LineEnd::Para {
-                // The paragraph mark ends the run, as AccessKit expects of a paragraph's end.
+                // The paragraph mark ends the run, as AccessKit expects of a paragraph's end. It
+                // takes the room a selection shows it with: magnifiers keep the caret in view by
+                // the box of the character after it, which on an empty line is this mark (#1119).
                 if lb.run.link.is_some() && !lb.run.lens.is_empty() {
                     self.flush(&mut lb, line, at);
                 }
@@ -378,8 +386,8 @@ impl Builder<'_> {
                 }
                 lb.run.link = None;
                 lb.map.push((para.text_len, lb.seg, lb.run.lens.len()));
-                let x = line.visual_end_x();
-                push_char(&mut lb.run, "\n", x, 0.0);
+                let (x, w) = line.mark_box();
+                push_char(&mut lb.run, "\n", x, w);
             }
             if !lb.run.lens.is_empty() || lb.prev.is_none() {
                 self.flush(&mut lb, line, at);
@@ -518,6 +526,26 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// What AccessKit is told about `app` after a few frames in `ctx`, with AccessKit on.
+    fn described(app: &mut crate::WordApp, ctx: &egui::Context) -> accesskit::TreeUpdate {
+        ctx.enable_accesskit();
+        let mut update = None;
+        for _ in 0..4 {
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1440.0, 900.0))),
+                time: Some(ctx.input(|i| i.time) + 0.1),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                app.logic(ui.ctx());
+                app.ui(ui);
+            });
+            out.textures_delta.clear();
+            update = out.platform_output.accesskit_update.take();
+        }
+        update.expect("AccessKit output")
+    }
+
     /// #488: with AccessKit on, the canvas describes the document: a heading with its level, a
     /// paragraph, a list item in a list, a table's rows and cells and a link, with the text in
     /// text runs and the caret at its paragraph and character.
@@ -547,23 +575,7 @@ mod tests {
         let caret = app.session.sel.focus.clone();
         assert!(caret.path.0.len() == 1 && caret.off == 4, "{caret:?}");
 
-        let ctx = egui::Context::default();
-        ctx.enable_accesskit();
-        let mut update = None;
-        for i in 0..4 {
-            let input = egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1440.0, 900.0))),
-                time: Some(i as f64 * 0.1),
-                ..Default::default()
-            };
-            let mut out = ctx.run_ui(input, |ui| {
-                app.logic(ui.ctx());
-                app.ui(ui);
-            });
-            out.textures_delta.clear();
-            update = out.platform_output.accesskit_update.take();
-        }
-        let update = update.expect("AccessKit output");
+        let update = described(&mut app, &egui::Context::default());
         let nodes: HashMap<NodeId, &Node> = update.nodes.iter().map(|(id, n)| (*id, n)).collect();
 
         // A tree: every node has at most one parent.
@@ -641,6 +653,45 @@ mod tests {
         let run = nodes[&s.focus.node];
         assert_eq!(run.role(), Role::TextRun);
         assert_eq!(run.value(), Some("Read this "));
+    }
+
+    /// #1119: a magnifier keeps the caret in view by the box of the character after it (Windows
+    /// Magnifier asks for that box, the caret's own being empty). On an empty line that character
+    /// is the line's end mark — the paragraph mark after Enter, a line break between two Shift+Enter
+    /// breaks — and it takes room where the caret is, so the view follows the caret onto the line.
+    #[test]
+    fn a_magnifier_finds_the_caret_on_an_empty_line() {
+        let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        let ctx = egui::Context::default();
+        app.run("text.insert", json!({"text": "First line"})).unwrap();
+        app.run("text.newParagraph", json!({})).unwrap();
+        assert_end_mark_at_caret(&mut app, &ctx, "Enter");
+        for cmd in ["text.lineBreak", "text.lineBreak", "caret.left"] {
+            app.run(cmd, json!({})).unwrap_or_else(|e| panic!("{cmd}: {e}"));
+        }
+        assert_end_mark_at_caret(&mut app, &ctx, "Shift+Enter");
+    }
+
+    /// The character after the caret is the end mark of the empty line the caret is on, with room,
+    /// starting where the caret is drawn.
+    fn assert_end_mark_at_caret(app: &mut crate::WordApp, ctx: &egui::Context, step: &str) {
+        let update = described(app, ctx);
+        let nodes: HashMap<NodeId, &Node> = update.nodes.iter().map(|(id, n)| (*id, n)).collect();
+        let doc = nodes.values().find(|n| n.role() == Role::Document).expect("a document node");
+        let at = doc.text_selection().expect("the caret").focus;
+        let run = nodes[&at.node];
+        assert_eq!(run.value(), Some("\n"), "{step}: the caret is on an empty line");
+        // The character's box, as AccessKit works it out from the run.
+        let b = run.bounds().expect("the run's bounds");
+        let x0 = b.x0 + f64::from(run.character_positions().expect("positions")[at.character_index]);
+        let w = f64::from(run.character_widths().expect("widths")[at.character_index]);
+        let (caret, height) = crate::canvas::caret_screen(app).expect("the caret on screen");
+        assert!(w > 0.0, "{step}: the end mark takes room");
+        assert!((x0 - f64::from(caret.x)).abs() < 0.5, "{step}: it starts at the caret: {x0} vs {caret:?}");
+        assert!(
+            b.y0 <= f64::from(caret.y) + 0.5 && f64::from(caret.y + height) <= b.y1 + 0.5,
+            "{step}: it is on the caret's line: {b:?} vs caret {caret:?} + {height}"
+        );
     }
 
     /// Hostile layouts and junk geometry don't panic and the tree stays bounded.

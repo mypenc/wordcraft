@@ -13,23 +13,30 @@ use crate::options::MeasureExt;
 use crate::theme::{Tokens, semibold};
 
 /// Stops closer than this (points) are the same stop.
-const SAME_POS: f32 = 0.5;
+/// A leader choice: the value, its menu label (translated), and the fill the closed box shows.
+const LEADERS: [(TabLeader, &str, &str); 5] = [
+    (TabLeader::None, "None", ""),
+    (TabLeader::Dot, "1 ……", "……"),
+    (TabLeader::Hyphen, "2 ------", "------"),
+    (TabLeader::Underscore, "3 ______", "______"),
+    (TabLeader::MiddleDot, "4 ······", "······"),
+];
+
+/// [`wordcraft_doc::props::TAB_POS_EPS`]: the engine replaces stops within this tolerance.
+const SAME_POS: f32 = wordcraft_doc::props::TAB_POS_EPS;
 
 fn unit() -> wordcraft_geom::Unit {
     crate::options::unit()
 }
 
-/// The Tabs dialog's fields. Positions in `stops` and `cleared` are points; `pos` and
-/// `default_tab` are in the interface unit.
+/// The Tabs dialog's fields. Positions in `stops` and `cleared` are points; `default_tab` is in
+/// the interface unit.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TabsForm {
     pub stops: Vec<TabStop>,
     #[serde(skip)]
     pub basis: Vec<TabStop>,
-    pub pos: f32,
-    pub align: TabAlign,
-    pub leader: TabLeader,
     pub default_tab: f32,
     #[serde(skip)]
     pub basis_default: f32,
@@ -37,6 +44,9 @@ pub struct TabsForm {
     pub cleared: Vec<f32>,
     pub clear_all: bool,
     pub selected: Option<usize>,
+    /// The row whose position was last edited in place: it wins a merge in [`TabsForm::normalize`].
+    #[serde(skip)]
+    last_edit: Option<usize>,
 }
 
 impl TabsForm {
@@ -51,39 +61,103 @@ impl TabsForm {
         Some(TabsForm {
             basis: stops.clone(),
             stops,
-            pos: first.map(|t| t.pos / k).unwrap_or(0.0),
-            align: first.map(|t| t.align).unwrap_or_default(),
-            leader: first.map(|t| t.leader).unwrap_or_default(),
             default_tab,
             basis_default: default_tab,
             cleared: Vec::new(),
             clear_all: false,
             selected: first.map(|_| 0),
+            last_edit: None,
         })
     }
 
-    /// Set (add or replace) the stop the fields describe.
-    pub fn set(&mut self) {
-        let pos = self.pos * unit().pt_per_unit();
-        if !pos.is_finite() || self.stops.len() >= 64 {
+    /// Add a stop at the next free multiple of the default interval after the last stop —
+    /// left aligned, no leader — selected and ready to edit in place.
+    pub fn new_stop(&mut self) {
+        let step = if self.default_tab.is_finite() && self.default_tab > 0.0 { self.default_tab * unit().pt_per_unit() } else { 36.0 };
+        let taken = |p: f32| self.stops.iter().any(|t| (t.pos - p).abs() < SAME_POS) || self.cleared.iter().any(|c| (c - p).abs() < SAME_POS);
+        let last = self.stops.iter().map(|t| t.pos).fold(0.0f32, f32::max);
+        let mut p = (last / step).floor() * step + step;
+        while taken(p) && p <= 1584.0 {
+            p += step;
+        }
+        if !p.is_finite() || p > 1584.0 || self.stops.len() >= 64 {
             return;
         }
-        self.stops.retain(|t| (t.pos - pos).abs() >= SAME_POS);
-        self.cleared.retain(|c| (c - pos).abs() >= SAME_POS);
-        self.stops.push(TabStop { pos, align: self.align, leader: self.leader });
+        self.stops.push(TabStop { pos: p, align: TabAlign::default(), leader: TabLeader::default() });
         self.stops.sort_by(|a, b| a.pos.total_cmp(&b.pos));
-        self.selected = self.stops.iter().position(|t| (t.pos - pos).abs() < SAME_POS);
+        self.selected = self.stops.iter().position(|t| (t.pos - p).abs() < SAME_POS);
+        self.last_edit = None;
     }
 
-    /// Clear the selected stop (or the one at the position field).
-    pub fn clear(&mut self) {
-        let pos = self.pos * unit().pt_per_unit();
-        let i = self.selected.filter(|i| *i < self.stops.len()).or_else(|| self.stops.iter().position(|t| (t.pos - pos).abs() < SAME_POS));
-        if let Some(i) = i {
-            let t = self.stops.remove(i);
-            self.cleared.push(t.pos);
+    /// The list edits a stop's position in place: clamp to the engine's ±1584 bound. The list
+    /// stays in row order while the field is being edited; [`TabsForm::normalize`] restores
+    /// position order when the edit ends.
+    pub fn set_pos(&mut self, i: usize, pos: f32) {
+        if !pos.is_finite() {
+            return;
         }
-        self.selected = None;
+        if let Some(t) = self.stops.get_mut(i) {
+            t.pos = pos.clamp(-1584.0, 1584.0);
+            let p = t.pos;
+            self.cleared.retain(|c| (c - p).abs() >= SAME_POS);
+            self.last_edit = Some(i);
+        }
+    }
+
+    /// The list edits a stop's alignment in place; the fields follow when it is the selected row.
+    pub fn set_align(&mut self, i: usize, align: TabAlign) {
+        if let Some(t) = self.stops.get_mut(i) {
+            t.align = align;
+        }
+    }
+
+    /// The list edits a stop's leader in place; the fields follow when it is the selected row.
+    pub fn set_leader(&mut self, i: usize, leader: TabLeader) {
+        if let Some(t) = self.stops.get_mut(i) {
+            t.leader = leader;
+        }
+    }
+
+    /// Restore position order after in-place edits, merging stops moved onto one another
+    /// (the edited row wins), and keep the selection on its stop.
+    pub fn normalize(&mut self) {
+        // Only an in-place position edit (set_pos) can disorder the list; without one this is
+        // a no-op, so the dialog may call it every frame.
+        if self.last_edit.is_none() {
+            return;
+        }
+        let followed = self.selected.and_then(|i| self.stops.get(i)).copied();
+        let edited = self.last_edit.take();
+        let mut merged: Vec<(usize, TabStop)> = Vec::with_capacity(self.stops.len());
+        for (j, t) in self.stops.iter().enumerate() {
+            match merged.iter().position(|(_, x)| (x.pos - t.pos).abs() < SAME_POS) {
+                // The edited stop holds its ground; the row that drifted onto it goes.
+                Some(k) if edited == Some(merged[k].0) => {}
+                Some(k) => {
+                    merged.remove(k);
+                    merged.push((j, *t));
+                }
+                None => merged.push((j, *t)),
+            }
+        }
+        merged.sort_by(|a, b| a.1.pos.total_cmp(&b.1.pos));
+        self.stops = merged.into_iter().map(|(_, t)| t).collect();
+        self.selected = followed.and_then(|t| self.stops.iter().position(|x| (x.pos - t.pos).abs() < SAME_POS));
+    }
+
+    /// Clear stop `i` (the list's × button and the Delete key).
+    pub fn remove_stop(&mut self, i: usize) {
+        if i >= self.stops.len() {
+            return;
+        }
+        let t = self.stops.remove(i);
+        self.cleared.push(t.pos);
+        self.last_edit = None;
+        self.selected = match self.selected {
+            Some(s) if s == i => None,
+            Some(s) if s > i => Some(s - 1),
+            s => s,
+        };
     }
 
     pub fn clear_all(&mut self) {
@@ -123,30 +197,108 @@ pub fn tabs(app: &mut WordApp, ui: &mut Ui, f: &mut TabsForm) -> bool {
     let k = u.pt_per_unit();
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(tl!("Tab stop position:"));
-            ui.add(egui::DragValue::new(&mut f.pos).speed(0.05).range(-22.0 * 72.0 / k..=22.0 * 72.0 / k).measure(u).max_decimals(2));
+            ui.horizontal(|ui| {
+                if ui.button(tl!("New")).clicked() {
+                    f.new_stop();
+                }
+                if ui.add_enabled(!f.stops.is_empty(), egui::Button::new(tl!("Clear All"))).clicked() {
+                    f.clear_all();
+                }
+            });
             let mut pick = None;
             egui::Frame::new().stroke(Stroke::new(1.0, Tokens::get(ui.ctx()).input_border)).inner_margin(4.0).show(ui, |ui| {
-                ui.set_min_size(vec2(150.0, 96.0));
-                egui::ScrollArea::vertical().max_height(96.0).show(ui, |ui| {
-                    for (i, t) in f.stops.iter().enumerate() {
-                        if ui.selectable_label(f.selected == Some(i), u.format_with(t.pos, crate::options::decimal())).clicked() {
-                            pick = Some(i);
-                        }
+                // A fixed width: the scroll area fills it (rows and scrollbar at its edge)
+                // without growing the dialog.
+                ui.set_width(278.0);
+                ui.set_min_height(96.0);
+                let mut remove = None;
+                let mut row_active = false;
+                // The stops as an inline-editable table: position, alignment, clear. Fill the
+                // frame, so rows span its width and the scrollbar sits at its edge.
+                egui::ScrollArea::vertical().max_height(96.0).auto_shrink([false, true]).show(ui, |ui| {
+                    for i in 0..f.stops.len() {
+                        let Some(t) = f.stops.get(i).copied() else { continue };
+                        ui.push_id(i, |ui| {
+                            let row = ui.horizontal(|ui| {
+                                // Position, edited in place: the interface unit by default, any
+                                // unit spelled out, either decimal separator (`.measure`).
+                                let mut pv = t.pos / k;
+                                let r = ui.add_sized(
+                                    vec2(58.0, 18.0),
+                                    egui::DragValue::new(&mut pv).speed(0.05).range(-1584.0 / k..=1584.0 / k).measure(u).max_decimals(2),
+                                );
+                                if r.changed() {
+                                    f.set_pos(i, pv * k);
+                                }
+                                if r.has_focus() || r.dragged() {
+                                    row_active = true;
+                                    if f.selected != Some(i) {
+                                        pick = Some(i);
+                                    }
+                                }
+                                // Alignment, picked in place.
+                                let mut a = t.align;
+                                egui::ComboBox::from_id_salt("tab_align").width(86.0).selected_text(tl!(crate::ruler_tabs::kind_label(a))).show_ui(
+                                    ui,
+                                    |ui| {
+                                        for v in crate::ruler_tabs::KINDS {
+                                            ui.selectable_value(&mut a, v, tl!(crate::ruler_tabs::kind_label(v)));
+                                        }
+                                    },
+                                );
+                                if a != t.align {
+                                    f.set_align(i, a);
+                                    pick = Some(i);
+                                }
+                                // Leader, picked in place; the closed box shows just the fill.
+                                let mut l = t.leader;
+                                let shown = LEADERS
+                                    .iter()
+                                    .find(|(v, _, _)| *v == l)
+                                    .map(|(_, _, fill)| if fill.is_empty() { tl!("None").to_string() } else { (*fill).to_string() })
+                                    .unwrap_or_default();
+                                egui::ComboBox::from_id_salt("tab_leader").width(64.0).selected_text(shown).show_ui(ui, |ui| {
+                                    for (v, label, _) in LEADERS {
+                                        ui.selectable_value(&mut l, v, tl!(label));
+                                    }
+                                });
+                                if l != t.leader {
+                                    f.set_leader(i, l);
+                                    pick = Some(i);
+                                }
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.add_space(10.0); // clear of the scrollbar
+                                    if ui.add(egui::Button::new("×").small().frame(false)).on_hover_text(tl!("Clear")).clicked() {
+                                        remove = Some(i);
+                                    }
+                                });
+                            });
+                            if f.selected == Some(i) {
+                                let tok = Tokens::get(ui.ctx());
+                                ui.painter().rect_stroke(row.response.rect.expand(1.0), 2.0, Stroke::new(1.0, tok.accent), egui::StrokeKind::Outside);
+                            }
+                        });
                     }
                 });
+                if let Some(i) = remove {
+                    f.remove_stop(i);
+                } else if f.selected.is_some() && ui.memory(|m| m.focused().is_none()) && ui.input(|inp| inp.key_pressed(egui::Key::Delete)) {
+                    // Delete clears the selected stop when nothing is being typed.
+                    if let Some(i) = f.selected {
+                        f.remove_stop(i);
+                    }
+                } else if !row_active {
+                    // Rows go back into position order once no position field is being edited.
+                    f.normalize();
+                }
             });
-            if let Some(i) = pick
-                && let Some(t) = f.stops.get(i)
-            {
+            if let Some(i) = pick.filter(|i| *i < f.stops.len()) {
                 f.selected = Some(i);
-                f.pos = t.pos / k;
-                f.align = t.align;
-                f.leader = t.leader;
             }
         });
         ui.add_space(12.0);
         ui.vertical(|ui| {
+            ui.set_min_width(130.0);
             ui.label(tl!("Default tab stops:"));
             ui.add(egui::DragValue::new(&mut f.default_tab).speed(0.05).range(1.0 / k..=1584.0 / k).measure(u).max_decimals(2));
             ui.add_space(8.0);
@@ -163,54 +315,9 @@ pub fn tabs(app: &mut WordApp, ui: &mut Ui, f: &mut TabsForm) -> bool {
             ui.label(egui::RichText::new(list).weak());
         });
     });
-    ui.separator();
-    ui.label(egui::RichText::new(tl!("Alignment")).font(semibold(12.5)));
-    ui.horizontal_wrapped(|ui| {
-        for (a, l) in [
-            (TabAlign::Left, "Left"),
-            (TabAlign::Center, "Center"),
-            (TabAlign::Right, "Right"),
-            (TabAlign::Decimal, "Decimal"),
-            (TabAlign::Bar, "Bar"),
-        ] {
-            ui.radio_value(&mut f.align, a, tl!(l));
-        }
-    });
-    ui.label(egui::RichText::new(tl!("Leader")).font(semibold(12.5)));
-    ui.horizontal_wrapped(|ui| {
-        for (l, label) in [
-            (TabLeader::None, "None"),
-            (TabLeader::Dot, "1 ……"),
-            (TabLeader::Hyphen, "2 ------"),
-            (TabLeader::Underscore, "3 ______"),
-            (TabLeader::MiddleDot, "4 ······"),
-        ] {
-            ui.radio_value(&mut f.leader, l, tl!(label));
-        }
-    });
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        if ui.button(tl!("Set")).clicked() {
-            f.set();
-        }
-        if ui.add_enabled(!f.stops.is_empty(), egui::Button::new(tl!("Clear"))).clicked() {
-            f.clear();
-        }
-        if ui.add_enabled(!f.stops.is_empty(), egui::Button::new(tl!("Clear All"))).clicked() {
-            f.clear_all();
-        }
-    });
     let (ok, cancel) = buttons(ui, tl!("OK"));
-    if ok {
-        // A position typed but not Set is set on OK, as the field shows it.
-        let pos = f.pos * k;
-        let typed = f.selected.is_none() && !f.clear_all && f.cleared.iter().all(|c| (c - pos).abs() >= SAME_POS) && pos > 0.0;
-        if typed && !f.stops.iter().any(|t| (t.pos - pos).abs() < SAME_POS) {
-            f.set();
-        }
-        if let Some(params) = f.params() {
-            let _ = app.run("para.tabs", params);
-        }
+    if ok && let Some(params) = f.params() {
+        let _ = app.run("para.tabs", params);
     }
     ok || cancel
 }
@@ -691,31 +798,105 @@ mod tests {
         assert!(f.commands().is_empty());
     }
 
-    /// #320: the Tabs dialog opens from the Paragraph dialog's command path, and Set / Clear /
-    /// Clear All become one `para.tabs` call.
+    /// #320: the Tabs dialog opens from the Paragraph dialog's command path, and the table's
+    /// edits (New, in-place cells, ×, Clear All) become one `para.tabs` call on OK.
     #[test]
-    fn tabs_form_sets_and_clears() {
+    fn tabs_table_builds_and_clears() {
         let mut app = app_with("a\tb");
         let _ = app.run("para.tabs", json!({}));
         let Some(Dialog::Tabs { form }) = app.dialog.take() else { panic!("Tabs opens without params") };
         let mut f = *form;
         assert!(f.stops.is_empty());
-        let k = unit().pt_per_unit();
-        f.pos = 72.0 / k;
-        f.align = TabAlign::Right;
-        f.leader = TabLeader::Dot;
-        f.set();
-        f.pos = 144.0 / k;
-        f.set();
-        f.selected = Some(1);
-        f.clear();
+        // New, New: rows at one and two default intervals, each selected as it lands.
+        f.new_stop();
+        f.new_stop();
+        assert_eq!((f.stops[0].pos, f.stops[1].pos, f.selected), (36.0, 72.0, Some(1)));
+        f.set_align(1, TabAlign::Right);
+        f.set_leader(1, TabLeader::Dot);
+        f.remove_stop(0);
         let params = f.params().unwrap_or_default();
         let _ = app.run("para.tabs", params);
         let props = app.session.doc.para_at(&app.session.sel.focus).map(|p| p.props.clone()).unwrap_or_default();
         assert_eq!(props.tabs, Some(vec![TabStop { pos: 72.0, align: TabAlign::Right, leader: TabLeader::Dot }]));
+        // Unchanged, OK runs nothing; Clear All clears.
         let mut f = TabsForm::read(&app).unwrap_or_else(|| panic!("form"));
         assert!(f.params().is_none());
         f.clear_all();
         assert_eq!(f.params(), Some(json!({"clearAll": true})));
+    }
+
+    /// The list is an inline-edit table: changing a row's position or alignment stages the
+    /// change (clear + set), rows resort once editing ends, and collisions merge.
+    #[test]
+    fn tabs_list_edits_stage_moves_and_alignment() {
+        let mut app = app_with("a\tb");
+        let _ = app.run("para.tabs", json!({"set": [{"pos": 72.0, "align": "right", "leader": "dot"}, {"pos": 144.0}]}));
+        let mut f = TabsForm::read(&app).unwrap_or_else(|| panic!("form"));
+        f.set_pos(0, 108.0);
+        f.normalize();
+        assert_eq!(f.params(), Some(json!({"set": [{"pos": 108.0, "align": "right", "leader": "dot"}], "clear": [72.0]})));
+        assert_eq!(f.selected, Some(0), "the selection follows its stop");
+
+        // Moving a row onto another merges them (the edited row wins), and junk input
+        // changes nothing but clamping.
+        f.set_pos(0, 144.0);
+        f.normalize();
+        assert_eq!(f.stops.len(), 1);
+        assert_eq!(f.params(), Some(json!({"set": [{"pos": 144.0, "align": "right", "leader": "dot"}], "clear": [72.0]})));
+        f.set_pos(0, f32::NAN);
+        f.set_pos(7, 72.0);
+        f.set_pos(0, 99999.0);
+        f.normalize();
+        assert_eq!(f.stops[0].pos, 1584.0, "positions clamp to the engine bound");
+
+        // Alignment and leader picked on a row stage a set for just that stop.
+        let mut f = TabsForm::read(&app).unwrap_or_else(|| panic!("form"));
+        f.set_align(1, TabAlign::Decimal);
+        f.set_leader(1, TabLeader::Underscore);
+        assert_eq!(f.params(), Some(json!({"set": [{"pos": 144.0, "align": "decimal", "leader": "underscore"}]})));
+        f.set_align(9, TabAlign::Bar);
+        f.set_leader(9, TabLeader::Dot);
+
+        // What the position field parses: the interface unit by default, any unit spelled out.
+        assert_eq!(wordcraft_geom::parse_measure("1.5", wordcraft_geom::Unit::Inches), Some(108.0));
+        assert_eq!(wordcraft_geom::parse_measure("2,54 cm", wordcraft_geom::Unit::Inches), Some(72.0));
+    }
+
+    /// New adds a row at the next free multiple of the default interval — skipping taken and
+    /// cleared positions — and × / Delete clear rows, keeping the selection sensible.
+    #[test]
+    fn tabs_new_adds_and_remove_clears() {
+        let mut app = app_with("a\tb");
+        let _ = app.run("para.tabs", json!({"set": [{"pos": 72.0, "align": "right"}, {"pos": 144.0}]}));
+        let mut f = TabsForm::read(&app).unwrap_or_else(|| panic!("form"));
+        assert_eq!(f.default_tab * unit().pt_per_unit(), 36.0, "the document default interval");
+        f.new_stop();
+        assert_eq!((f.stops.len(), f.selected), (3, Some(2)));
+        assert_eq!((f.stops[2].pos, f.stops[2].align, f.stops[2].leader), (180.0, TabAlign::Left, TabLeader::None));
+        assert_eq!(f.params(), Some(json!({"set": [{"pos": 180.0, "align": "left", "leader": "none"}]})));
+
+        // Cleared and taken positions are skipped.
+        let mut f = TabsForm::read(&app).unwrap_or_else(|| panic!("form"));
+        f.remove_stop(1);
+        f.cleared.push(108.0);
+        f.new_stop();
+        assert_eq!(f.stops[1].pos, 180.0, "72 holds a stop; 108 and 144 are cleared; 180 is free");
+
+        // × / Delete: clearing a row keeps the selection sensible.
+        let mut f = TabsForm::read(&app).unwrap_or_else(|| panic!("form"));
+        f.selected = Some(1);
+        f.remove_stop(0);
+        assert_eq!((f.stops.len(), f.selected, f.cleared.clone()), (1, Some(0), vec![72.0]));
+        assert_eq!(f.params(), Some(json!({"clear": [72.0]})));
+        f.remove_stop(0);
+        assert_eq!((f.stops.len(), f.selected), (0, None));
+        f.remove_stop(7);
+        assert_eq!(f.cleared, vec![72.0, 144.0], "an index past the end changes nothing");
+
+        // An empty paragraph starts at one interval.
+        let app = app_with("plain");
+        let mut f = TabsForm::read(&app).unwrap_or_else(|| panic!("form"));
+        f.new_stop();
+        assert_eq!(f.stops[0].pos, 36.0);
     }
 }

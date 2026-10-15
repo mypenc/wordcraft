@@ -32,6 +32,9 @@ pub enum ProofLang {
     /// Russian (`ru`, `ru-RU`): the installed Hunspell dictionary (when there is one), the Russian
     /// grammar rules and the Russian word-division rules.
     Ru,
+    /// Czech (`cs`, `cs-CZ`): the installed Hunspell dictionary, dictionary-driven suggestions
+    /// and generic punctuation checks. Hyphenation keeps the fallback English patterns.
+    Cs,
     /// A language without proofing tools here (`fr-FR`, `ja-JP`, `x-none`…). Like Word without
     /// the language's proofing tools: no spelling or grammar marks, so its words are never
     /// flagged as English misspellings. Hyphenation keeps using the English patterns, as before
@@ -41,7 +44,8 @@ pub enum ProofLang {
 
 impl ProofLang {
     /// Every language with a spelling dictionary, in display order.
-    pub const PROOFED: [ProofLang; 7] = [ProofLang::En, ProofLang::Pl, ProofLang::Pt, ProofLang::It, ProofLang::Hr, ProofLang::Tr, ProofLang::Ru];
+    pub const PROOFED: [ProofLang; 8] =
+        [ProofLang::En, ProofLang::Pl, ProofLang::Pt, ProofLang::It, ProofLang::Hr, ProofLang::Tr, ProofLang::Ru, ProofLang::Cs];
 
     /// The proofing language of a BCP 47 tag (`pl-PL`, `en_GB`, `PL`…). Only the primary subtag
     /// counts. No tag (or an empty one) is English, WordCraft's default editing language.
@@ -64,12 +68,14 @@ impl ProofLang {
             ProofLang::Tr
         } else if primary.eq_ignore_ascii_case("ru") || primary.eq_ignore_ascii_case("rus") {
             ProofLang::Ru
+        } else if primary.eq_ignore_ascii_case("cs") || primary.eq_ignore_ascii_case("ces") || primary.eq_ignore_ascii_case("cze") {
+            ProofLang::Cs
         } else {
             ProofLang::Other
         }
     }
 
-    /// The primary language subtag (`en`, `pl`, `bg`, `tr`, `ru`); empty for [`ProofLang::Other`].
+    /// The primary language subtag (`en`, `pl`, `bg`, `tr`, `ru`, `cs`); empty for [`ProofLang::Other`].
     pub fn code(self) -> &'static str {
         match self {
             ProofLang::En => "en",
@@ -80,6 +86,7 @@ impl ProofLang {
             ProofLang::Hr => "hr",
             ProofLang::Tr => "tr",
             ProofLang::Ru => "ru",
+            ProofLang::Cs => "cs",
             ProofLang::Other => "",
         }
     }
@@ -159,6 +166,11 @@ mod tests {
         for t in ["it", "it-IT", "IT_it", "it-CH", "it-CH.UTF-8", " it-IT ", "ita"] {
             assert_eq!(ProofLang::from_tag(Some(t)), ProofLang::It, "{t}");
         }
+        for t in ["cs", "cs-CZ", "CS-cz", "cs_CZ", " ces ", "CES", "cze", "CZE"] {
+            assert_eq!(ProofLang::from_tag(Some(t)), ProofLang::Cs, "{t}");
+        }
+        assert_eq!(ProofLang::Cs.code(), "cs");
+        assert!(ProofLang::Cs.is_proofed() && ProofLang::PROOFED.contains(&ProofLang::Cs));
         for t in ["en", "en-US", "en-GB", "EN_au", "en-Latn-US"] {
             assert_eq!(ProofLang::from_tag(Some(t)), ProofLang::En, "{t}");
         }
@@ -168,7 +180,7 @@ mod tests {
         for t in ["tr", "tr-TR", "tr-CY", "TR_tr", "tur"] {
             assert_eq!(ProofLang::from_tag(Some(t)), ProofLang::Tr, "{t}");
         }
-        for t in ["fr-FR", "de", "x-none", "ja-JP", "plx", "bgx", "trx", "e", "-"] {
+        for t in ["fr-FR", "de", "x-none", "ja-JP", "plx", "bgx", "trx", "csx", "e", "-"] {
             assert_eq!(ProofLang::from_tag(Some(t)), ProofLang::Other, "{t}");
         }
         assert_eq!(ProofLang::from_tag(None), ProofLang::En);

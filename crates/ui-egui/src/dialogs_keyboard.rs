@@ -286,10 +286,7 @@ mod tests {
         assert_eq!(b.session.keymap.resolve(&b.session.registry, "Mod+B").map(|s| s.id), Some("format.italic"));
 
         let mut c = app();
-        c.apply_prefs(
-            serde_json::from_str(r#"{"tab": "Insert", "keyboard": {"assigned": {"Mod+Q": "gone.command", "Bad+": 1}, "removed": 7}}"#).unwrap(),
-        );
-        assert_eq!(c.ui.tab, "Insert");
+        c.apply_prefs(serde_json::from_str(r#"{"keyboard": {"assigned": {"Mod+Q": "gone.command", "Bad+": 1}, "removed": 7}}"#).unwrap());
         assert!(c.session.keymap.is_empty());
     }
 }

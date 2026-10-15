@@ -2,14 +2,14 @@
 use craft_ui::printing::Labels;
 pub use craft_ui::printing::{Discover, Duplex, Feedback, Printer, Settings, State};
 
-/// Native submission adds WordCraft's PDF-page collation setting to the shared spooler settings.
-pub type Submit = Box<dyn Fn(Vec<u8>, Settings, bool) -> std::sync::mpsc::Receiver<Result<String, String>>>;
+/// Native submission adds WordCraft's PDF-page collation setting and spooler options to the shared spooler settings.
+pub type Submit = Box<dyn Fn(Vec<u8>, Settings, bool, Vec<(String, String)>) -> std::sync::mpsc::Receiver<Result<String, String>>>;
 
 /// Metadata for the app-owned commands. Inspecting it never discovers printers or submits.
 pub fn commands(app: &crate::WordApp) -> Vec<serde_json::Value> {
     use serde_json::json;
     let enabled = if app.services.print_native.is_some() { app.printing.ready() } else { app.services.print.is_some() };
-    let submit_params = "range?: all|current|selection|custom; pages?: string (1-3,5); parity?: all|odd|even; copies?: integer 1..999; collate?: bool. Native uses the selected printer, duplex and grayscale from ui.printSettings; omitted copies/collation use current settings. Browser printing opens its dialog. Submits only when explicitly executed.";
+    let submit_params = "range?: all|current|selection|custom; pages?: string (1-3,5); parity?: all|odd|even; copies?: integer 1..999; collate?: bool; orientation?: auto|portrait|landscape. Native uses the selected printer, duplex and grayscale from ui.printSettings; omitted copies/collation use current settings. Browser printing opens its dialog. Submits only when explicitly executed.";
     vec![
         json!({"id":"ui.printSettings", "label":"Print settings", "location":"File › Print", "shortcut":null,
             "params":"printer?: discovered name; copies?: integer 1..999; duplex?: printerDefault|off|longEdge|shortEdge|null; grayscale?: bool; refresh?: bool. Empty params inspect printer/copies/duplex/grayscale, printers, busy/discovering/ready and status/detail. Updates are atomic; refresh discovers only on native hosts. Never submits or opens a dialog.",
@@ -156,7 +156,23 @@ pub fn submit(app: &mut crate::WordApp, params: &serde_json::Value) -> Result<se
         }
         let len = bytes.len();
         if let Some(submit) = &app.services.print_native {
-            app.printing.begin(submit(bytes, settings, collate)).map_err(|_| "A print job is already being submitted.".to_owned())?;
+            let mut print_options = Vec::new();
+            let orientation = params.get("orientation").and_then(|v| v.as_str()).unwrap_or(&app.ui.print.orientation);
+            let is_landscape = if orientation == "landscape" {
+                true
+            } else if orientation == "portrait" {
+                false
+            } else {
+                let lay = app.session.export_layout();
+                lay.pages.first().is_some_and(|p| p.w > p.h)
+            };
+            if is_landscape {
+                print_options.push(("orientation-requested".into(), "4".into()));
+                print_options.push(("landscape".into(), "true".into()));
+            } else {
+                print_options.push(("orientation-requested".into(), "3".into()));
+            }
+            app.printing.begin(submit(bytes, settings, collate, print_options)).map_err(|_| "A print job is already being submitted.".to_owned())?;
             app.print_feedback_seen = None;
         } else if let Some(print) = &app.services.print {
             print(&bytes)?;

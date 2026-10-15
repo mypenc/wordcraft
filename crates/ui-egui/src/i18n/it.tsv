@@ -126,6 +126,9 @@
 	Bold	Grassetto
 	Bookmark	Segnalibro
 	Bookmark name:	Nome segnalibro:
+	Delete Bookmark	Elimina segnalibro
+	Hidden bookmarks	Segnalibri nascosti
+	Sort by:	Ordina per:
 	Border Painter	Copia bordi
 	Border\nPainter	Copia\nbordi
 	Borders	Bordi
@@ -451,6 +454,8 @@
 	Labels	Etichette
 	Landscape	Orizzontale
 	Language	Lingua
+	{language} (no dictionary)	{language} (nessun dizionario)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Non è installato alcun dizionario ortografico per {language}, quindi non viene controllata. WordCraft cerca il dizionario Hunspell {name} nella cartella WORDCRAFT_DICTIONARIES e nelle posizioni di sistema abituali.
 	Lasso	Lazo
 	Last Column	Ultima colonna
 	Last commit	Ultimo commit
@@ -508,7 +513,7 @@
 	Multiple Pages	Più pagine
 	Name (A–Z)	Nome (A–Z)
 	Name:	Nome:
-	Narrow  0.5" all	Stretto  0,5" ovunque
+	Narrow  {size} all	Stretto  {size} ovunque
 	Navigation	Navigazione
 	Navigation Pane	Riquadro di spostamento
 	New	Nuovo
@@ -536,7 +541,7 @@
 	Nonbreaking Hyphen	Trattino unificatore
 	Nonbreaking Space	Spazio unificatore
 	None	Nessuno
-	Normal  1" all	Normale  1" ovunque
+	Normal  {size} all	Normale  {size} ovunque
 	Normal Style	Stile normale
 	Not available right now	Non disponibile al momento
 	Not saved	Non salvato
@@ -1620,6 +1625,11 @@
 	Add Font…	Aggiungi carattere…
 	Added Fonts	Caratteri aggiunti
 	Remove Added Font	Rimuovi carattere aggiunto
+	Load System Installed Fonts…	Carica caratteri di sistema installati…
+	All system fonts are already available.	Tutti i caratteri di sistema sono già disponibili.
+	Local font access is not supported by your browser.	L'accesso ai caratteri locali non è supportato dal browser.
+	Local font access was denied.	L'accesso ai caratteri locali è stato negato.
+	Loaded {count} system fonts.	Caricati {count} caratteri di sistema.
 	Recent Colors	Colori recenti
 	More Colors…	Altri colori…
 	Standard	Standard
@@ -2448,6 +2458,16 @@ preview	Title	Esempio
 	Hindi	Hindi
 	Context	Contesto
 	System	Sistema
+	Odd Banded Rows	Righe alternate dispari
+	Even Banded Rows	Righe alternate pari
+	Odd Banded Columns	Colonne alternate dispari
+	Even Banded Columns	Colonne alternate pari
+	Top Left Cell	Cella in alto a sinistra
+	Top Right Cell	Cella in alto a destra
+	Bottom Left Cell	Cella in basso a sinistra
+	Bottom Right Cell	Cella in basso a destra
+	Inside Horizontal Border	Bordo orizzontale interno
+	Inside Vertical Border	Bordo verticale interno
 # Mail merge: filter and sort recipients (#778)
 	Filter Recipients	Filtra destinatari
 	Sort Recipients	Ordina destinatari
@@ -2505,7 +2525,7 @@ preview	Title	Esempio
 	Remove my name from comments, changes and file properties when saving	Rimuovi il mio nome da commenti, modifiche e proprietà del file al salvataggio
 	Leave out the date and time of comments and tracked changes when saving	Ometti data e ora di commenti e revisioni al salvataggio
 	The document you are editing keeps the names and dates; only the saved file leaves them out.	Il documento che stai modificando conserva nomi e date; solo il file salvato li omette.
-	Privacy Settings	Impostazioni di privacy attuali
+	Privacy Settings	Impostazioni di privacy
 	Waiting for the save to finish…	In attesa del termine del salvataggio…
 	Saving {name} was cancelled, so it is still open and nothing was lost.	Il salvataggio di {name} è stato annullato: il documento è ancora aperto e non è andato perso nulla.
 	Paper	Carta
@@ -2540,6 +2560,24 @@ preview	Title	Esempio
 	Suggested	Suggerimenti
 	Set Proofing Language…	Imposta lingua di correzione…
 	Language Preferences…	Preferenze lingua…
+	Printer	Stampante
+	Select a printer	Seleziona una stampante
+	Refresh printers	Aggiorna stampanti
+	Two-sided printing	Stampa fronte-retro
+	Printer default	Predefinito della stampante
+	One-sided	Solo fronte
+	Two-sided: long edge	Fronte-retro: lato lungo
+	Two-sided: short edge	Fronte-retro: lato corto
+	Grayscale	Scala di grigi
+	Finding printers…	Ricerca stampanti in corso…
+	No printers found. Configure a system printer or export a PDF.	Nessuna stampante trovata. Configura una stampante di sistema oppure esporta un PDF.
+	Printer discovery failed.	Ricerca stampanti non riuscita.
+	Submitting print job…	Invio del lavoro di stampa in corso…
+	Print job submitted.	Lavoro di stampa inviato.
+	Print job submitted: {receipt}	Lavoro di stampa inviato: {receipt}
+	Print failed: the printing worker stopped.	Stampa non riuscita: il processo di stampa si è interrotto.
+	Print settings	Impostazioni di stampa
+	Submit print job	Invia lavoro di stampa
 
 # Cross-reference dialog (#1003)
 	For which item:	Per quale elemento:
@@ -2558,3 +2596,48 @@ preview	Title	Esempio
 
 # Backstage › Recover (#586)
 	Recover	Ripristina
+
+# Bibliography styles, proofing messages and labels the French, Hungarian, Polish and Bulgarian catalogs added
+	APA	APA
+	Capitalize the first word of a sentence	Metti la maiuscola alla prima parola della frase
+	Chicago	Chicago
+	Extra space	Spazio in più
+	GB/T 7714	GB/T 7714
+	GOST (name sort)	GOST (ordinamento per nome)
+	GOST (title sort)	GOST (ordinamento per titolo)
+	Harvard (Anglia)	Harvard (Anglia)
+	IEEE	IEEE
+	ISO 690 (author-date)	ISO 690 (autore-data)
+	ISO 690 (numerical)	ISO 690 (numerico)
+	Large	Grande
+	Limit and	Limite e
+	Log	Logaritmo
+	MLA	MLA
+	Possible spelling mistake	Possibile errore di ortografia
+	Remove the space before the punctuation	Rimuovi lo spazio prima della punteggiatura
+	SIST02	SIST02
+	The spelling and grammar check is complete.	Il controllo ortografico e grammaticale è terminato.
+	Turabian	Turabian
+	Use "a" before a consonant sound	Usa "a" davanti a un suono consonantico
+	Use "an" before a vowel sound	Usa "an" davanti a un suono vocalico
+	➕ New comment	➕ Nuovo commento
+	📂  Browse…	📂  Sfoglia…
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Margini speculari
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	File o pagina Web esistente
+	Link to:	Collega a:
+	Place in This Document	Posizione nel documento
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Colonna {n}
+	Header row	Riga di intestazione
+	No header row	Nessuna riga di intestazione
+	My list has	L’elenco ha
+# Table Layout › Formula dialog (#1210)
+	Formula:	Formula:
+	Paste function:	Incolla funzione:
+# Reading Mode column widths (#1040)
+	Narrow	Stretta
+	Medium	Media

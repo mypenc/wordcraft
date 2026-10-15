@@ -405,8 +405,7 @@ mod tests {
         assert_eq!(b.session.ribbon.qat(), ["file.save", "edit.undo", "edit.redo", "format.bold"]);
 
         let mut c = app();
-        c.apply_prefs(serde_json::from_str(r#"{"tab": "Insert", "ribbon": {"tabs": 3, "qat": ["gone.command", "edit.undo"]}}"#).unwrap());
-        assert_eq!(c.ui.tab, "Insert");
+        c.apply_prefs(serde_json::from_str(r#"{"ribbon": {"tabs": 3, "qat": ["gone.command", "edit.undo"]}}"#).unwrap());
         assert!(c.session.ribbon.ribbon_is_default());
         assert_eq!(c.session.ribbon.qat(), ["edit.undo"]);
     }

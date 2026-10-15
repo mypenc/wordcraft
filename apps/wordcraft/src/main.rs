@@ -30,9 +30,9 @@ use wordcraft_ui_egui::{
     window_geometry::{WindowGeometry, take_rescue},
 };
 
-/// The app, the restored window geometry until the first frame has checked it, the control
-/// server's key file (removed on exit), the file dialogs the app asked for and, on macOS, the
-/// documents opened from Finder.
+/// The app, the restored window geometry (or, with none, the default: no position) until the
+/// first frame that knows the monitor has checked it, the control server's key file (removed on
+/// exit), the file dialogs the app asked for and, on macOS, the documents opened from Finder.
 struct App(
     WordApp,
     Option<WindowGeometry>,
@@ -47,10 +47,23 @@ impl eframe::App for App {
         apple_events::poll(&self.4, &mut self.0, ctx);
         self.0.logic(ctx);
         self.3.show(frame);
+        // A window that doesn't fit on its screen (the default size on a laptop) shrinks to fit
+        // there, so all of the scroll bar can be dragged (#1215). Checked on the frame that first
+        // knows the monitor: the off-screen check below takes the pending geometry then.
+        if let Some((pos, size)) = ctx.input(|i| self.1.and_then(|g| g.fit_on_monitor(i.viewport()))) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+        }
         let prev = self.0.ui.window;
         self.0.ui.window = ctx.input(|i| WindowGeometry::track(prev, i.viewport(), i.viewport_rect().size()));
+        // The first frame, once the monitor is known (as `take_rescue` waits for): maximize a
+        // window that opened at its normal size so it never flashed on screen half-opened.
+        let maximize = self.1.and_then(|g| g.maximize_after_open()).filter(|_| ctx.input(|i| i.viewport().monitor_size.is_some()));
         if let Some(pos) = ctx.input(|i| take_rescue(&mut self.1, i.viewport())) {
             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+        }
+        if let Some(command) = maximize {
+            ctx.send_viewport_cmd(command);
         }
         // The window's close button: with unsaved changes, ask first (`WordApp::close_requested`).
         let closing = ctx.input(|i| i.viewport().close_requested());
@@ -191,13 +204,33 @@ fn save_prefs(app: &WordApp) {
         return;
     }
     if let Some(p) = prefs_path() {
-        if let Some(dir) = p.parent() {
-            let _ = std::fs::create_dir_all(dir);
+        if let Some(dir) = p.parent()
+            && let Err(e) = std::fs::create_dir_all(dir)
+        {
+            log::warn!("preferences: cannot create {}: {e}", dir.display());
+            return;
         }
-        if let Ok(bytes) = serde_json::to_vec_pretty(&app.prefs()) {
-            let _ = std::fs::write(&p, bytes);
+        match serde_json::to_vec_pretty(&app.prefs()) {
+            Ok(bytes) => {
+                if let Err(e) = write_prefs(&p, &bytes) {
+                    log::warn!("preferences: cannot save {}: {e}", p.display());
+                }
+            }
+            Err(e) => log::warn!("preferences: cannot serialize: {e}"),
         }
     }
+}
+
+/// Writes `bytes` to a sibling temporary file and renames it over `path`, so a failed or
+/// interrupted write leaves the previous preferences in place.
+fn write_prefs(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "ui.json".into());
+    let tmp = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    let written = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    written
 }
 
 /// Native file dialogs, shown without blocking the window (`file_dialogs`, #94), File › Print
@@ -249,6 +282,40 @@ fn build_sha() -> &'static str {
     option_env!("WORDCRAFT_BUILD_SHA").map(|s| s.get(..8).unwrap_or(s)).unwrap_or("dev")
 }
 
+/// The arguments as text, and apart the files whose names aren't valid Unicode, such as a Latin-1
+/// one (#1440). A `--control` port that isn't is an error.
+fn text_args() -> (Vec<String>, Vec<std::path::PathBuf>) {
+    let (mut args, mut files) = (Vec::new(), Vec::new());
+    for (i, a) in std::env::args_os().skip(1).enumerate() {
+        match a.into_string() {
+            Ok(a) => args.push(a),
+            Err(a) if args.last().is_some_and(|p| p == "--control") => {
+                // Unlike `eprintln!`, never panics.
+                let (n, lossy) = (i + 1, a.to_string_lossy());
+                let _ = std::io::Write::write_fmt(&mut std::io::stderr(), format_args!("wordcraft: argument {n} is not valid Unicode: {lossy}\n"));
+                std::process::exit(2);
+            }
+            Err(a) => files.push(a.into()),
+        }
+    }
+    (args, files)
+}
+
+/// Open a file whose name isn't valid Unicode (#1440). `file.open` takes its path as text, so it
+/// gets the file's bytes under the lossy name, and the document then keeps the real path to save to.
+fn open_non_unicode(app: &mut WordApp, path: &std::path::Path) {
+    let name = path.to_string_lossy();
+    let opened = std::fs::read(path)
+        .map_err(|e| e.to_string())
+        .and_then(|bytes| app.run("file.open", serde_json::json!({"path": name, "data": wordcraft_engine::cmd::insert::base64_encode(&bytes)})));
+    match opened {
+        // Not when it waits for a password: that open names the document itself.
+        Ok(r) if r.get("pending").is_none() => app.session.path = Some(path.into()),
+        Ok(_) => {}
+        Err(e) => log::warn!("{name}: {e}"),
+    }
+}
+
 fn main() -> eframe::Result {
     // First, so the panic hook and every start-up warning are recorded (`logging`).
     let logger = logging::install();
@@ -256,10 +323,19 @@ fn main() -> eframe::Result {
     let mut control_port: Option<u16> = std::env::var("WORDCRAFT_CONTROL_PORT").ok().and_then(|p| p.parse().ok());
     let mut files = Vec::new();
     let mut sample = false;
-    let mut args = std::env::args().skip(1);
+    let (args, other_files) = text_args();
+    let mut bad_control: Option<Option<String>> = None;
+    let mut args = args.into_iter().peekable();
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--control" => control_port = args.next().and_then(|p| p.parse().ok()),
+            // A flag after `--control` stays a flag; a bad or missing port is an error (#1426).
+            "--control" => {
+                let port = args.next_if(|p| p.strip_prefix('-').is_none_or(|n| n.starts_with(|c: char| c.is_ascii_digit())));
+                match port.as_deref().and_then(|p| p.parse::<std::num::NonZeroU16>().ok()) {
+                    Some(p) => control_port = Some(p.get()),
+                    None => bad_control = Some(port),
+                }
+            }
             "--sample" => sample = true,
             "--version" => {
                 println!("wordcraft {} ({})", env!("CARGO_PKG_VERSION"), build_sha());
@@ -272,6 +348,12 @@ fn main() -> eframe::Result {
             }
             _ => files.push(a),
         }
+    }
+    // After the loop, so `--version` later on the line still wins. Unlike `eprintln!`, never panics.
+    if let Some(port) = bad_control {
+        let got = port.map(|p| format!(", got {p:?}")).unwrap_or_default();
+        let _ = std::io::Write::write_fmt(&mut std::io::stderr(), format_args!("wordcraft: --control needs a port number from 1 to 65535{got}\n"));
+        std::process::exit(2);
     }
     // The log file lives in the settings directory, next to the preferences; opened after the
     // arguments, so `--version` leaves no file behind. Records logged until now are written to it
@@ -374,7 +456,7 @@ fn main() -> eframe::Result {
             // Nothing to open (no files, no sample, no control channel driving the editor): start
             // on File › Home, as Word does (#766), unless the Start screen option is off. Files
             // macOS hands over later open on top of it and close it (`apple_events`).
-            if files.is_empty() && !sample && control_port.is_none() {
+            if files.is_empty() && other_files.is_empty() && !sample && control_port.is_none() {
                 app.start_screen();
             }
             for f in files {
@@ -382,9 +464,13 @@ fn main() -> eframe::Result {
                     log::warn!("{f}: {e}");
                 }
             }
+            for f in other_files {
+                open_non_unicode(&mut app, &f);
+            }
             Ok(Box::new(App(
                 app,
-                restored,
+                // With nothing restored, the window the system placed is checked all the same.
+                Some(restored.unwrap_or_default()),
                 key_file,
                 dialogs,
                 #[cfg(target_os = "macos")]
@@ -392,4 +478,56 @@ fn main() -> eframe::Result {
             )))
         }),
     )
+}
+
+// Not on macOS: APFS refuses file names that aren't valid UTF-8, so no such file can exist there.
+#[cfg(all(test, unix, not(target_os = "macos")))]
+mod tests {
+    use super::*;
+    use std::os::unix::ffi::OsStringExt;
+
+    #[test]
+    fn a_file_whose_name_isnt_unicode_opens_and_saves_back_to_itself() {
+        let dir = std::env::temp_dir().join(format!("wc-app-non-utf8-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(std::ffi::OsString::from_vec(b"caf\xe9.txt".to_vec()));
+        std::fs::write(&path, "Bonjour").unwrap();
+
+        let mut app = WordApp::new(Session::new(wordcraft_doc::Document::new()), Services::default());
+        open_non_unicode(&mut app, &path);
+        assert_eq!(app.session.doc.plain_text(wordcraft_doc::StoryRef::Body).trim(), "Bonjour");
+        assert_eq!(app.session.path.as_deref(), Some(path.as_path()));
+
+        app.run("caret.docEnd", serde_json::json!({})).unwrap();
+        app.run("text.insert", serde_json::json!({"text": " encore"})).unwrap();
+        app.run("file.save", serde_json::json!({})).unwrap();
+        assert!(std::fs::read_to_string(&path).unwrap().contains("Bonjour encore"));
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "a second file was written");
+
+        // A file that can't be read is a warning, as one that fails to open by name is.
+        open_non_unicode(&mut app, &dir.join(std::ffi::OsString::from_vec(b"gon\xe9.txt".to_vec())));
+        assert_eq!(app.session.path.as_deref(), Some(path.as_path()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod prefs_tests {
+    use super::write_prefs;
+
+    #[test]
+    fn failed_preferences_write_keeps_the_old_file_and_reports_the_error() {
+        let dir = std::env::temp_dir().join(format!("wordcraft-prefs-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ui.json");
+        std::fs::write(&path, b"old").unwrap();
+        write_prefs(&path, b"new").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        // A directory squatting on the temporary name makes the preparation step fail.
+        std::fs::create_dir(dir.join(format!(".ui.json.{}.tmp", std::process::id()))).unwrap();
+        assert!(write_prefs(&path, b"newer").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
