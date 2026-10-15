@@ -1325,6 +1325,8 @@ fn cell_margins_without_params_keep_the_current_margins() {
     assert_eq!(margins(&s), Some([3.0, 10.0, 4.0, 12.0]), "no params must not reset the margins");
     run(&mut s, "table.cellMargins", json!({"left": 7.0}));
     assert_eq!(margins(&s), Some([3.0, 7.0, 4.0, 12.0]));
+}
+
 /// #1945: the Quick Access Toolbar can be hidden and shown again.
 #[test]
 fn quick_access_toolbar_can_be_hidden() {
