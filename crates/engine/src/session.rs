@@ -179,6 +179,10 @@ pub struct ViewState {
     /// and page count are unchanged.
     #[serde(default)]
     pub hide_white_space: bool,
+    /// Middle-click scrolling of the canvas (#1065); off frees the middle button, e.g. for
+    /// pasting the selection on Linux (#1934).
+    #[serde(default = "on")]
+    pub middle_click_scroll: bool,
     /// Outline view: collapsed headings, Show Level, first lines, text formatting.
     #[serde(default)]
     pub outline: crate::cmd::outline::OutlineState,
@@ -244,6 +248,7 @@ impl Default for ViewState {
             draw: Default::default(),
             field_codes: false,
             hide_white_space: false,
+            middle_click_scroll: true,
             outline: Default::default(),
             design_mode: false,
             full_screen: false,

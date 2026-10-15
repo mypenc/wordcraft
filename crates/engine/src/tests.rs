@@ -1311,6 +1311,17 @@ fn clipboard_pane_is_capped_and_rejects_bad_indexes() {
     assert_eq!(s.clip_history.items()[0].text, "w29");
 }
 
+/// #1934: middle-click scrolling is on by default and can be turned off.
+#[test]
+fn middle_click_scrolling_can_be_turned_off() {
+    let mut s = s();
+    assert!(s.view.middle_click_scroll);
+    run(&mut s, "view.middleClickScroll", json!({}));
+    assert!(!s.view.middle_click_scroll);
+    run(&mut s, "view.middleClickScroll", json!({"value": true}));
+    assert!(s.view.middle_click_scroll);
+}
+
 #[test]
 fn tables_commands() {
     let mut s = s();
