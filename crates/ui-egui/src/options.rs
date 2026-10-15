@@ -258,6 +258,10 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     if ui.checkbox(&mut qat, tl!("Show the Quick Access Toolbar")).changed() {
         let _ = app.run("view.hideQuickAccess", json!({"value": !qat}));
     }
+    let mut middle = app.session.view.middle_click_scroll;
+    if ui.checkbox(&mut middle, tl!("Scroll with the middle mouse button")).changed() {
+        let _ = app.run("view.middleClickScroll", json!({"value": middle}));
+    }
     numeral_picker(app, ui);
     ui.add_space(8.0);
     section(ui, "Printing");

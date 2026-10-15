@@ -179,6 +179,10 @@ pub struct ViewState {
     /// and page count are unchanged.
     #[serde(default)]
     pub hide_white_space: bool,
+    /// Middle-click scrolling of the canvas (#1065); off frees the middle button, e.g. for
+    /// pasting the selection on Linux (#1934).
+    #[serde(default = "on")]
+    pub middle_click_scroll: bool,
     /// File › Options › Display › Quick Access Toolbar: hide the toolbar in the title bar (#1945).
     #[serde(default)]
     pub hide_quick_access: bool,
@@ -247,6 +251,7 @@ impl Default for ViewState {
             draw: Default::default(),
             field_codes: false,
             hide_white_space: false,
+            middle_click_scroll: true,
             hide_quick_access: false,
             outline: Default::default(),
             design_mode: false,

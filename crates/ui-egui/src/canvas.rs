@@ -991,7 +991,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         egui::Vec2::ZERO
     };
     // Middle-click scrolling (#1065): Print Layout and the other editing views, not Read Mode.
-    let middle_delta = if app.session.view.read_mode || app.dialog.is_some() {
+    let middle_delta = if app.session.view.read_mode || app.dialog.is_some() || !app.session.view.middle_click_scroll {
         app.canvas.auto_scroll.cancel();
         egui::Vec2::ZERO
     } else {

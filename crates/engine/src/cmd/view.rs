@@ -45,6 +45,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.hideQuickAccess", "Hide Quick Access Toolbar", "View › Show", |s, v| toggle(s, v, |x| &mut x.hide_quick_access))
             .params(r#"{"value"?: bool}"#)
             .pure(),
+        CommandSpec::new("view.middleClickScroll", "Middle-Click Scrolling", "View › Show", |s, v| toggle(s, v, |x| &mut x.middle_click_scroll))
+            .params(r#"{"value"?: bool}"#)
+            .pure(),
         CommandSpec::new("view.focus", "Focus", "View › Immersive", |s, v| toggle(s, v, |x| &mut x.focus_mode)).pure(),
         CommandSpec::new("view.ruler", "Ruler", "View › Show", |s, v| toggle(s, v, |x| &mut x.ruler)).pure(),
         // The drawing grid over the page (screen only; never printed or exported).
